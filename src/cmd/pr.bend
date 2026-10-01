@@ -656,8 +656,8 @@ def create(+env: Cli.Env) -> IO(Unit):
       do IO<Unit>:
         +head : String = Cli.flag(args, "--head", "")
         +title : String = Cli.flag(args, "--title", "")
-        h : String <- need.flag(env, "--head", head, String.is_empty(head))
-        t : String <- need.flag(env, "--title", title, String.is_empty(title))
+        h : String <- need.flag(env, "head", head, String.is_empty(head))
+        t : String <- need.flag(env, "title", title, String.is_empty(title))
         body : String <- body.text(env, args)
         base : String = Cli.flag(args, "--base", "main")
         r : Api.Reply <- Api.send(repo, tok, "POST", Api.path(repo, "pulls"), Some{create.body(h, base, t, body)})
@@ -838,7 +838,7 @@ def comment(+env: Cli.Env) -> IO(Unit):
         +num : String = Cli.arg(args, 1n)
         +n : String <- need.number(env, num, number.ok(U32.read(num)))
         +b : String <- body.text(env, args)
-        txt : String <- need.flag(env, "--body", b, String.is_empty(b))
+        txt : String <- need.flag(env, "body", b, String.is_empty(b))
         r : Api.Reply <- Api.send(repo, tok, "POST", Api.path(repo, comment.url(forge.of(repo), n)), Some{comment.body(txt)})
         written(env, web.url(repo, n), r)
 
