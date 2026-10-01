@@ -23,10 +23,10 @@ def row.of(ps: List<&1, String & String>) -> Map<&2, String>:
   row.go(ps, Map.new(&2, String))
 
 def gitea.public() -> Map<&2, String>:
-  row.of([("full_name", "example/sandbox"), ("private", "False"), ("internal", "False"), ("stars_count", "3"), ("forks_count", "1"), ("open_issues_count", "2")])
+  row.of([("full_name", "example/sandbox"), ("private", "false"), ("internal", "false"), ("stars_count", "3"), ("forks_count", "1"), ("open_issues_count", "2")])
 
 def gitea.private() -> Map<&2, String>:
-  row.of([("full_name", "example/secret"), ("private", "True"), ("internal", "False"), ("stars_count", "0")])
+  row.of([("full_name", "example/secret"), ("private", "true"), ("internal", "false"), ("stars_count", "0")])
 
 def github() -> Map<&2, String>:
   row.of([("full_name", "example/bend"), ("visibility", "public"), ("stargazers_count", "9")])
@@ -42,7 +42,7 @@ def rgb.show(+c: String, m: Maybe<&2, Ui.Rgb>) -> String:
       c ++ " = none"
 
 def release.demo() -> Map<&2, String>:
-  row.of([("tag_name", "v1"), ("published_at", ""), ("created_at", "2026-01-02T03:04:05Z"), ("draft", "False"), ("prerelease", "True")])
+  row.of([("tag_name", "v1"), ("published_at", ""), ("created_at", "2026-01-02T03:04:05Z"), ("draft", "false"), ("prerelease", "true")])
 
 def drops() -> String:
   String.join(Rel.flag.drop(Rel.flag.drop(["release", "create", "--draft", "v1", "--prerelease"], "--draft"), "--prerelease"), " ")

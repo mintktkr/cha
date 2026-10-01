@@ -27,9 +27,9 @@ def forge.name(f: Ctx.Forge) -> String:
     case Ctx.GitHub{}:
       "github"
 
-# a flattened JSON bool field, which Api.rows renders as "True" or "False"
+# a flattened JSON bool field, which Api.rows renders as "true" or "false"
 def bool.f(+x: Map<&2, String>, +k: String) -> Bool:
-  String.eq(Api.f(x, k), "True")
+  String.eq(Api.f(x, k), "true")
 
 # s with pre in front of it, unless s is empty
 def prefixed(+s: String, +pre: String) -> String:
@@ -106,7 +106,7 @@ def nibble.of(+x: U32, digit: Bool, low: Bool) -> U32:
 
 # one hex digit's value; garbage on anything else, so callers check the shape first
 def nibble(+c: Char) -> U32:
-  nibble.of(Char.to_u32(c), Char.is_digit(c), U32.is_lt(Char.to_u32(c), 97))
+  nibble.of(Char.to_u32(c), Char.is_digit(c), U32.is_ge(Char.to_u32(c), 97))
 
 def hex.alpha(+x: U32) -> Bool:
   Bool.or(Bool.and(U32.is_ge(x, 97), U32.is_le(x, 102)), Bool.and(U32.is_ge(x, 65), U32.is_le(x, 70)))

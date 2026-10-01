@@ -37,9 +37,9 @@ def created(+env: Cli.Env, +msg: String, +url: String) -> IO(Unit):
 def prefixed(+s: String, +pre: String) -> String:
   Ctx.or.if(pre ++ s, "", String.is_empty(s))
 
-# a flattened JSON bool field, which Api.rows renders as "True" or "False"
+# a flattened JSON bool field, which Api.rows renders as "true" or "false"
 def bool.f(+x: Map<&2, String>, +k: String) -> Bool:
-  String.eq(Api.f(x, k), "True")
+  String.eq(Api.f(x, k), "true")
 
 # Rows
 # ----

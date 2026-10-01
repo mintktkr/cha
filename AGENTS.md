@@ -25,9 +25,11 @@ Humans and agents, under the same rules. A coding agent named **memu** is a regu
 | `src/ui.bend` | palette, colour decision, `Ui.state`, `Ui.glow`, `Ui.info`/`error`/`done` |
 | `src/help.bend` | `cha help` |
 | `src/cmd/*.bend` | one file per command group, each exposing `run(env)` |
-| `test/*_check.bend` | offline checks, plus live ones against public forges |
+| `test/*_check.bend` | offline checks: `scripts/check.sh` runs them and they must exit 0 |
+| `test/*_live.bend` | checks against real forges, run by hand |
+| `LAWS.bend`, `PROOF.bend` | the laws and their proofs |
 
-`scripts/check.sh` type-checks everything and runs the offline checks. Run it before every commit.
+`scripts/check.sh` checks definition order, type-checks every file, proves the laws and runs the offline checks. Run it before every commit. `bend PROOF.bend` on its own always ends with "SOME PROOFS FAIL" plus a list of defs relying on foreign code (the tty and http effects pulled in by `ui` and `api`). That's cha's green state. `check.sh` fails only on a law error, a TODO, or a law that itself relies on foreign code.
 
 ## Bend patterns used here
 
@@ -47,7 +49,20 @@ These are the walls every newcomer hits. `src/` has a working example of each.
   - `bend main.bend -- <args>` runs on the JS lane in seconds.
   - `bend main.bend --check-only` type-checks. For `main.bend` it always ends with a list of "defs that rely on unsafe or foreign code": that's the network and tty effects, and it's expected. A real error prints `Error:` with a `Location:`.
   - A native build, `bend main.bend -o out/cha`, takes minutes. Do it once at the end, not in the edit loop.
+- **The JS lane is heavy.** Every `bend main.bend -- ...` recompiles the whole program and takes 2-3 GB of memory. Run one bend process at a time, wrapped in `timeout`. Several agents in parallel will exhaust a 16 GB machine.
+- **A known JS-lane hang**: calling a helper that takes a `+Map` and returns a String from inside a recursive row-mapping def can loop forever with runaway memory (likely upstream bendlang/bend#1206). If a run hangs, inline the call.
+- **Wall-clock time**: `IO.now()` is monotonic, not wall time. Use `Time.now()` from `0x3bfb4ae4d3b87b90f01bfcd298211455/time.bend` (bend-kit-time@0.1.0.0, already a hairpin dependency).
 - **Live tests**: read anonymously from public forges, for example `-R codeberg.org/forgejo/forgejo` or `-R github.com/bendlang/bend`. Only write to repos you were explicitly given for testing.
+
+## Forge quirks cha handles
+
+- Gitea 1.25 ignores `limit` unless `page` is also sent.
+- Gitea creates issues with label IDs, ignores unknown label names on add, and replaces the whole set on `PUT .../labels`, wiping it for an unknown name. Resolve names before any write.
+- Gitea answers a blocked merge with HTTP 405 "Please try again later". It means a conflict or a moved base, not a rate limit.
+- Gitea 1.25 has no API to rerun or cancel an Actions run.
+- Gitea timestamps carry a local offset (`-03:00`), so compare parsed instants, never strings.
+- GitHub lists pull requests among issues (they carry `pull_request.url`) and 404s on a trailing slash after `repos/o/r`.
+- `actions/runs` answers an object (`workflow_runs`), not an array.
 
 ## Hard rules
 

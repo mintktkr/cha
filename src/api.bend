@@ -44,7 +44,7 @@ def client(repo: Ctx.Repo, +tok: String) -> Hairpin.Client:
 def path(repo: Ctx.Repo, +rest: String) -> String:
   match repo:
     case Ctx.Repo{f, h, o, n}:
-      "repos/" ++ o ++ "/" ++ n ++ "/" ++ rest
+      "repos/" ++ o ++ "/" ++ n ++ Ctx.or.if("/" ++ rest, "", String.is_empty(rest))
 
 # Link headers
 # ------------
@@ -138,6 +138,14 @@ def text(b: Bytes.Bytes) -> String:
 def utf8(s: String) -> Json.Val:
   Json.Str{Json.utf8(s)}
 
+# true/false the way JSON spells them, not Bool.show's True/False
+def json.bool(on: Bool) -> String:
+  match on:
+    case True{}:
+      "true"
+    case False{}:
+      "false"
+
 def str.of(m: Maybe<&1, Json.Val>) -> String:
   match m:
     case Some{Json.Str{s}}:
@@ -145,7 +153,7 @@ def str.of(m: Maybe<&1, Json.Val>) -> String:
     case Some{Json.Num{s}}:
       Bytes.to_string(s)
     case Some{Json.Flag{on}}:
-      Bool.show(on)
+      json.bool(on)
     case x:
       ""
 
@@ -188,7 +196,7 @@ def flat.go(fuel: Nat, work: List<&1, String & Json.Val>, acc: Map<&2, String>) 
     case 1n+p Con{(+k, Json.Null{}), t}:
       flat.go(p, t, Map.set(&2, String, acc, k, ""))
     case 1n+p Con{(+k, Json.Flag{on}), t}:
-      flat.go(p, t, Map.set(&2, String, acc, k, Bool.show(on)))
+      flat.go(p, t, Map.set(&2, String, acc, k, json.bool(on)))
     case 1n+p Con{(+k, Json.Num{n}), t}:
       flat.go(p, t, Map.set(&2, String, acc, k, Bytes.to_string(n)))
     case 1n+p Con{(+k, Json.Str{s}), t}:

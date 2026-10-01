@@ -10,7 +10,7 @@ check() {
   echo "✓ $1"
 }
 check main.bend
-for t in test/*_check.bend; do check "$t"; done
+for t in test/*.bend; do check "$t"; done
 # bend PROOF.bend exits 1 because the effects ui and api pull in (tty, http) are listed
 # as unsafe or foreign. That is expected, so fail only on a law error, a TODO, or a proof
 # that itself appears in that list.
@@ -21,4 +21,9 @@ if [ -f PROOF.bend ]; then
   fi
   echo "✓ PROOF.bend ($(grep -c '^law ' LAWS.bend) laws)"
 fi
-"$bend" test/ctx_check.bend
+# *_check.bend run offline and must exit 0; *_live.bend talk to real forges, run them by hand
+for t in test/*_check.bend; do
+  out=$("$bend" "$t" 2>&1) || { echo "$out" | tail -20; echo "✗ ran $t"; exit 1; }
+  if grep -qE '^(FAIL|✗)|mismatch' <<<"$out"; then echo "$out" | grep -E 'FAIL|✗|mismatch' | head; echo "✗ ran $t"; exit 1; fi
+  echo "✓ ran $t"
+done
