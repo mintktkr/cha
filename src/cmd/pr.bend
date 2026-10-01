@@ -30,7 +30,7 @@ def web.url(+repo: Ctx.Repo, +n: String) -> String:
     case Ctx.Repo{Ctx.GitHub{}, +h, +o, +nm}:
       "https://" ++ h ++ "/" ++ o ++ "/" ++ nm ++ "/pull/" ++ n
 
-# a forge path as a full URL
+# yes when cond, no otherwise: a branch on a computed value, which match can't do
 def pick.if(+yes: String, +no: String, cond: Bool) -> String:
   match cond:
     case True{}:
@@ -38,6 +38,7 @@ def pick.if(+yes: String, +no: String, cond: Bool) -> String:
     case False{}:
       no
 
+# a forge path as a full URL
 def abs.url(+host: String, +u: String) -> String:
   pick.if("https://" ++ host ++ u, u, String.starts_with(u, "/"))
 
