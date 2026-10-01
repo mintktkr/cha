@@ -49,8 +49,9 @@ Glyphs: `✓` for ok, `✗` for errors.
 
 - Small commits with plain messages. No attribution trailers or `Co-Authored-By` lines.
 - Stage specific files, never `git add -A`.
-- Work on a branch and open a PR. The maintainer merges. Agents never merge their own PRs.
-- Autonomous agent work happens in its own worktree on a `<agent>/<topic>` branch, for example `memu/pagination`. The PR body says in one plain sentence that an agent opened it.
+- Maintainers, memu included, commit straight to `main` for now. Keep `main` green: `bend PROOF.bend` and the checks pass before every push.
+- Outside contributors work on a branch and open a PR. The maintainer merges.
+- Parallel agent work happens in separate worktrees on `<agent>/<topic>` branches, for example `memu/pagination`, so the agents never share a checkout.
 
 ## Agent skills
 
