@@ -1,0 +1,38 @@
+# Maintainer: Marco <mint@muu.space>
+pkgname=cha
+pkgver=0.0.1
+pkgrel=1
+pkgdesc='A forge CLI for Gitea, Forgejo and GitHub'
+arch=('x86_64' 'aarch64')
+url='https://github.com/mintktkr/cha'
+license=('MIT')
+depends=('glibc' 'openssl')
+makedepends=('git' 'clang')
+install=cha.install
+_bendver=2.0.34
+source=("git+https://github.com/mintktkr/cha.git#tag=v$pkgver")
+source_x86_64=("https://github.com/bendlang/bend/releases/download/v$_bendver/bend-$_bendver-linux-x64.tar.gz")
+source_aarch64=("https://github.com/bendlang/bend/releases/download/v$_bendver/bend-$_bendver-linux-arm64.tar.gz")
+sha256sums=('SKIP')
+sha256sums_x86_64=('78106a97af242429dcc057258eb8d10f69cddebcd5e263022185a52d003e09bf')
+sha256sums_aarch64=('416a17d282a9fd05ab9637a238b51d5ca508114d9773c37d1c11cad595440ed1')
+
+build() {
+  cd cha
+  # bend fetches the hub packages main.bend imports, checked against their hashes
+  "$srcdir/bend/bin/bend" main.bend -o cha
+}
+
+check() {
+  cd cha
+  [ "$(./cha version)" = "$pkgver" ]
+  [ "$(./cha help | grep -c $'\x1b')" = 0 ]
+}
+
+package() {
+  cd cha
+  install -Dm755 cha "$pkgdir/usr/bin/cha"
+  ./cha completions fish | install -Dm644 /dev/stdin "$pkgdir/usr/share/fish/vendor_completions.d/cha.fish"
+  install -Dm644 skills/cha/SKILL.md "$pkgdir/usr/share/cha/skills/cha/SKILL.md"
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}

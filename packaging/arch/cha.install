@@ -1,0 +1,4 @@
+post_install() {
+  echo "cha: an agent skill is installed at /usr/share/cha/skills/cha"
+  echo "     let your agents find it:  ln -s /usr/share/cha/skills/cha ~/.agents/skills/cha"
+}

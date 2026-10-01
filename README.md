@@ -26,6 +26,23 @@ $ cha moved --since 1d
 
 > 🫖 **Early days.** These commands are the plan. The [issues](https://github.com/mintktkr/cha/issues) show what works so far.
 
+## 📦 Install
+
+**Arch Linux**: `packaging/arch/PKGBUILD` builds cha from source with a pinned Bend toolchain, or grab the package from the [latest release](https://github.com/mintktkr/cha/releases/latest):
+
+```console
+$ cd packaging/arch && makepkg -si
+```
+
+**From source**: install [Bend](https://bend-lang.com) 2.0.34 and clang, then:
+
+```console
+$ bend main.bend -o cha && install -m755 cha ~/.local/bin/
+$ cha completions fish > ~/.config/fish/completions/cha.fish
+```
+
+**For your agents**: `skills/cha/SKILL.md` teaches coding agents how to use cha. Link it where they look for skills, for example `ln -s $PWD/skills/cha ~/.agents/skills/cha`. The Arch package installs it to `/usr/share/cha/skills/cha`.
+
 ## 🌸 Why
 
 - **One tool for every forge.** The same commands work against a self-hosted Gitea and against github.com. cha reads the host and repo from the current checkout's remote.
