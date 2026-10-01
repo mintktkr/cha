@@ -86,11 +86,11 @@ def start(+on: Bool, +args: List<&2, String>, +w: String, simple: Nat) -> IO(Uni
         +tok : String <- token.of(m)
         go(on, args, m, tok, w)
     case 1n:
-      Help.run(on, List.drop(&2, String, args, 1n))
+      Help.run(on, List.drop(&2, String, Cli.positional(args), 1n))
     case 2n:
       IO.print(version())
     case 3n+k:
-      Help.completions(on, List.drop(&2, String, args, 1n))
+      Help.completions(on, List.drop(&2, String, Cli.positional(args), 1n))
 
 # 0: a command that needs a repo; 1: help; 2: version; 3: completions
 def simple(+w: String) -> Nat:
