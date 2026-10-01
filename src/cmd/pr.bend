@@ -31,12 +31,19 @@ def web.url(+repo: Ctx.Repo, +n: String) -> String:
       "https://" ++ h ++ "/" ++ o ++ "/" ++ nm ++ "/pull/" ++ n
 
 # a forge path as a full URL
+def pick.if(+yes: String, +no: String, cond: Bool) -> String:
+  match cond:
+    case True{}:
+      yes
+    case False{}:
+      no
+
 def abs.url(+host: String, +u: String) -> String:
-  Ctx.or.if("https://" ++ host ++ u, u, String.starts_with(u, "/"))
+  pick.if("https://" ++ host ++ u, u, String.starts_with(u, "/"))
 
 # end text with a newline, unless it already does
 def nled(+s: String) -> String:
-  Ctx.or.if(s, s ++ "\n", String.ends_with(s, "\n"))
+  pick.if(s, s ++ "\n", String.ends_with(s, "\n"))
 
 # a line on stderr, through the palette
 def note(+env: Cli.Env, msg: String) -> IO(Unit):
@@ -44,10 +51,15 @@ def note(+env: Cli.Env, msg: String) -> IO(Unit):
     case Cli.Env{r, t, +c, j, a}:
       Ui.info(c, msg)
 
+# a flattened JSON bool reads as True or False
+# (Api.flat turns every Json.Flag into Bool.show)
+def flag.of(+s: String) -> Bool:
+  String.eq(String.to_lower(s), "true")
+
 # merged is a bool on a Gitea pull request and on a viewed GitHub one; a listed
 # GitHub pull request only carries merged_at
 def merged.of(+row: Map<&2, String>) -> Bool:
-  String.eq(Api.f(row, "merged"), "true") || Bool.not(String.is_empty(Api.f(row, "merged_at")))
+  flag.of(Api.f(row, "merged")) || Bool.not(String.is_empty(Api.f(row, "merged_at")))
 
 def state.merged(+s: String, merged: Bool) -> String:
   match merged:
@@ -242,7 +254,7 @@ def mergeable.if(+on: Bool, +state: String, yes: Bool, no: Bool) -> String:
       Ui.dim(on, "mergeable: " ++ Ctx.or(state, "?"))
 
 def mergeable.line(+on: Bool, +state: String) -> String:
-  mergeable.if(on, state, String.eq(state, "true"), String.eq(state, "false"))
+  mergeable.if(on, state, flag.of(state), Bool.not(flag.of(state)) && Bool.not(String.is_empty(state)))
 
 def body.block(+b: String, empty: Bool) -> String:
   match empty:
@@ -480,24 +492,70 @@ def checks.bytes(+env: Cli.Env, r: Api.Reply) -> IO(Bytes.Bytes):
     case Api.Reply{+status, next, body}:
       got.body(env, body, status, Api.ok(status))
 
-# Gitea answers a combined state plus its statuses; target_url may be a path
-def checks.row.gitea(+x: Map<&2, String>, +host: String) -> Map<&2, String>:
-  name = Api.f(x, "context")
-  st = Api.f(x, "status")
-  url = Api.f(x, "target_url")
-  Map.set(&2, String, Map.set(&2, String, Map.set(&2, String, x, "name", name), "state", st), "url", abs.url(host, url))
+# Checks arrive as a list inside an object, so read them from the flattened object:
+# <list>.# counts them and <list>.<i>.<field> reads one.
+type Source is Data:
+  Gitea{}
+  GhStatus{}
+  GhRun{}
 
-def checks.rows.gitea(xs: List<&2, Map<&2, String>>, +host: String) -> List<&2, Map<&2, String>>:
-  match xs:
-    case Nil{}:
-      Nil{}
-    case Con{+x, rest}:
-      Con{checks.row.gitea(x, host), checks.rows.gitea(rest, host)}
+def check.row(+name: String, +state: String, +url: String) -> Map<&2, String>:
+  Map.set(&2, String, Map.set(&2, String, Map.set(&2, String, Map.new(&2, String), "name", name), "state", state), "url", url)
+
+def check.name(+row: Map<&2, String>, +p: String, s: Source) -> String:
+  match s:
+    case Gitea{}:
+      Api.f(row, p ++ ".context")
+    case GhStatus{}:
+      Api.f(row, p ++ ".context")
+    case GhRun{}:
+      Api.f(row, p ++ ".name")
+
+def check.state(+row: Map<&2, String>, +p: String, s: Source) -> String:
+  match s:
+    case Gitea{}:
+      Api.f(row, p ++ ".status")
+    case GhStatus{}:
+      Api.f(row, p ++ ".state")
+    case GhRun{}:
+      Ctx.or(Api.f(row, p ++ ".conclusion"), Api.f(row, p ++ ".status"))
+
+def check.url(+row: Map<&2, String>, +p: String, +host: String, s: Source) -> String:
+  match s:
+    case Gitea{}:
+      abs.url(host, Api.f(row, p ++ ".target_url"))
+    case GhStatus{}:
+      abs.url(host, Api.f(row, p ++ ".target_url"))
+    case GhRun{}:
+      Ctx.or(Api.f(row, p ++ ".html_url"), Api.f(row, p ++ ".details_url"))
+
+def check.p(+list: String, +i: U32) -> String:
+  list ++ "." ++ U32.show(i)
+
+# the i-th entry of a flattened list field, as one row
+def check.row.at(+row: Map<&2, String>, +list: String, +host: String, +s: Source, +i: U32) -> Map<&2, String>:
+  +p = check.p(list, i)
+  check.row(check.name(row, p, s), check.state(row, p, s), check.url(row, p, host, s))
+
+def check.one(+x: Map<&2, String>) -> List<&2, Map<&2, String>>:
+  Con{x, Nil{}}
+
+def check.walk(n: Nat, +row: Map<&2, String>, +list: String, +host: String, +s: Source, +i: U32, acc: List<&2, Map<&2, String>>) -> List<&2, Map<&2, String>>:
+  match n:
+    case 0n:
+      acc
+    case 1n+k:
+      check.walk(k, row, list, host, s, (i + 1 : U32), List.append(&2, Map<&2, String>, acc, check.one(check.row.at(row, list, host, s, i))))
+
+# Gitea answers a combined state plus its statuses
+# (target_url is usually a path there, so it needs the host)
+def checks.gitea.rows(+env: Cli.Env, +host: String, +row: Map<&2, String>) -> IO(Unit):
+  checks.print(env, check.walk(Api.count(row, "statuses"), row, "statuses", host, Gitea{}, 0, Nil{}))
 
 def checks.gitea.if(+env: Cli.Env, +host: String, body: Bytes.Bytes, +status: U32, good: Bool) -> IO(Unit):
   match good:
     case True{}:
-      checks.print(env, checks.rows.gitea(Api.rows(body), host))
+      checks.gitea.rows(env, host, Api.obj(body))
     case False{}:
       Cli.fail(Unit, env, Api.message(status, body))
 
@@ -513,40 +571,17 @@ def checks.gitea(+env: Cli.Env, +repo: Ctx.Repo, +tok: String, +sha: String) -> 
     r : Api.Reply <- Api.get(repo, tok, Api.path(repo, "commits/" ++ sha ++ "/status"))
     checks.gitea.got(env, host.of(repo), r)
 
+def checks.github.rows(+env: Cli.Env, +host: String, +runs: Map<&2, String>, +sts: Map<&2, String>) -> IO(Unit):
+  checks.print(env, List.append(&2, Map<&2, String>, check.walk(Api.count(runs, "check_runs"), runs, "check_runs", host, GhRun{}, 0, Nil{}), check.walk(Api.count(sts, "statuses"), sts, "statuses", host, GhStatus{}, 0, Nil{})))
+
 # GitHub answers check runs and, separately, commit statuses
-def checks.row.runs(+x: Map<&2, String>) -> Map<&2, String>:
-  name = Ctx.or(Api.f(x, "name"), Api.f(x, "output.title"))
-  st = Ctx.or(Api.f(x, "conclusion"), Api.f(x, "status"))
-  url = Ctx.or(Api.f(x, "html_url"), Api.f(x, "details_url"))
-  Map.set(&2, String, Map.set(&2, String, Map.set(&2, String, x, "name", name), "state", st), "url", url)
-
-def checks.rows.runs(xs: List<&2, Map<&2, String>>) -> List<&2, Map<&2, String>>:
-  match xs:
-    case Nil{}:
-      Nil{}
-    case Con{+x, rest}:
-      Con{checks.row.runs(x), checks.rows.runs(rest)}
-
-def checks.row.status(+x: Map<&2, String>) -> Map<&2, String>:
-  name = Api.f(x, "context")
-  st = Api.f(x, "state")
-  url = Api.f(x, "target_url")
-  Map.set(&2, String, Map.set(&2, String, Map.set(&2, String, x, "name", name), "state", st), "url", url)
-
-def checks.rows.status(xs: List<&2, Map<&2, String>>) -> List<&2, Map<&2, String>>:
-  match xs:
-    case Nil{}:
-      Nil{}
-    case Con{+x, rest}:
-      Con{checks.row.status(x), checks.rows.status(rest)}
-
 def checks.github(+env: Cli.Env, +repo: Ctx.Repo, +tok: String, +sha: String) -> IO(Unit):
   do IO<Unit>:
     a : Api.Reply <- Api.get(repo, tok, Api.path(repo, "commits/" ++ sha ++ "/check-runs?per_page=100"))
     ra : Bytes.Bytes <- checks.bytes(env, a)
     b : Api.Reply <- Api.get(repo, tok, Api.path(repo, "commits/" ++ sha ++ "/status"))
     rb : Bytes.Bytes <- checks.bytes(env, b)
-    checks.print(env, List.append(&2, Map<&2, String>, checks.rows.runs(Api.rows(ra)), checks.rows.status(Api.rows(rb))))
+    checks.github.rows(env, host.of(repo), Api.obj(ra), Api.obj(rb))
 
 def checks.sha(f: Ctx.Forge, +env: Cli.Env, +repo: Ctx.Repo, +tok: String, +sha: String) -> IO(Unit):
   match f:
