@@ -87,12 +87,14 @@ def start(+on: Bool, +args: List<&2, String>, +w: String, simple: Nat) -> IO(Uni
         go(on, args, m, tok, w)
     case 1n:
       Help.run(on, List.drop(&2, String, args, 1n))
-    case 2n+k:
+    case 2n:
       IO.print(version())
+    case 3n+k:
+      Help.completions(on, List.drop(&2, String, args, 1n))
 
-# 0: a command that needs a repo; 1: help; 2: version
+# 0: a command that needs a repo; 1: help; 2: version; 3: completions
 def simple(+w: String) -> Nat:
-  index.at(String.is_empty(w) || String.eq(w, "help") || String.eq(w, "--help") || String.eq(w, "-h"), 1n, index.at(String.eq(w, "version") || String.eq(w, "--version"), 2n, 0n))
+  index.at(String.is_empty(w) || String.eq(w, "help") || String.eq(w, "--help") || String.eq(w, "-h"), 1n, index.at(String.eq(w, "version") || String.eq(w, "--version"), 2n, index.at(String.eq(w, "completions"), 3n, 0n)))
 
 # IO.args gives a use-once list; strings are Data, so it can be rebuilt reusable
 def share(xs: List<&1, String>) -> List<&2, String>:

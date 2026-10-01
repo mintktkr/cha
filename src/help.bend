@@ -10,3 +10,7 @@ def usage(+on: Bool) -> String:
 # cha help [command]
 def run(+on: Bool, args: List<&2, String>) -> IO(Unit):
   IO.write(usage(on))
+
+# cha completions fish
+def completions(+on: Bool, args: List<&2, String>) -> IO(Unit):
+  IO.print("# cha: completions are not written yet")
