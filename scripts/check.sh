@@ -11,5 +11,14 @@ check() {
 }
 check main.bend
 for t in test/*_check.bend; do check "$t"; done
-if [ -f PROOF.bend ]; then "$bend" PROOF.bend 2>&1 | tail -3; fi
+# bend PROOF.bend exits 1 because the effects ui and api pull in (tty, http) are listed
+# as unsafe or foreign. That is expected, so fail only on a law error, a TODO, or a proof
+# that itself appears in that list.
+if [ -f PROOF.bend ]; then
+  out=$("$bend" PROOF.bend 2>&1 || true)
+  if grep -qE 'Location|TODO' <<<"$out" || grep -qE '^- (LAWS|PROOF|Laws)\.' <<<"$out"; then
+    echo "$out" | head -20; echo "✗ PROOF.bend"; exit 1
+  fi
+  echo "✓ PROOF.bend ($(grep -c '^law ' LAWS.bend) laws)"
+fi
 "$bend" test/ctx_check.bend
