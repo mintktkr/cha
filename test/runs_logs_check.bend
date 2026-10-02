@@ -76,3 +76,8 @@ def main() -> IO(Unit):
     expect("Gitea timing uses parsed offsets and includes final second", Maybe.default(&2, String, Runlogs.window(body(), "2026-01-01T00:00:00-03:00", "2026-01-01T00:00:01-03:00"), "missing"), "2026-01-01T03:00:00.0000000Z ##[group]a command unrelated to the step name\n2026-01-01T03:00:01.9999999Z last selected line\n")
     expect("missing timing does not return entire log", Maybe.default(&2, String, Runlogs.window(body(), "", ""), "missing"), "missing")
     expect("invalid interval", Maybe.default(&2, String, Runlogs.window(body(), "2026-01-01T00:00:02Z", "2026-01-01T00:00:01Z"), "missing"), "missing")
+    +one : List<&2, Map<&2, String>> = [Map.new(&2, String)]
+    expect("no failed job is not a missing step", Bool.show(Runs.logs.no.step(Nil{}, "Test", 0)), "False")
+    expect("a selected job without the step is", Bool.show(Runs.logs.no.step(one, "Test", 0)), "True")
+    expect("a matched step is not missing", Bool.show(Runs.logs.no.step(one, "Test", 1)), "False")
+    expect("no --step is never missing", Bool.show(Runs.logs.no.step(one, "", 0)), "False")

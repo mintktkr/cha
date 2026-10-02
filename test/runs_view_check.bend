@@ -94,9 +94,23 @@ def jobs.next(page: Runs.JobPages) -> IO(Unit):
     case Runs.NextJobs{False{}, +next, +rows}:
       do IO<Unit>:
         expect(next, "page-2")
-        jobs.last(Runs.jobs.page("", Bytes.from_string("{\"jobs\":[{\"id\":103,\"name\":\"late job\"}]}"), rows))
+        jobs.last(Runs.jobs.page("", "", Bytes.from_string("{\"jobs\":[{\"id\":103,\"name\":\"late job\"}]}"), rows))
     case _:
       IO.die(Unit, 1, "job pages must follow the next link")
+
+def gitea.jobs(page: Runs.JobPages) -> IO(Unit):
+  match page:
+    case Runs.NextJobs{False{}, +next, rows}:
+      expect(next, "fallback-2")
+    case _:
+      IO.die(Unit, 1, "Gitea job pages short of total_count must continue")
+
+def gitea.jobs.done(page: Runs.JobPages) -> IO(Unit):
+  match page:
+    case Runs.NextJobs{True{}, next, rows}:
+      expect("stopped", "stopped")
+    case _:
+      IO.die(Unit, 1, "Gitea job pages must stop at total_count or an empty page")
 
 def main() -> IO(Unit):
   do IO<Unit>:
@@ -109,7 +123,10 @@ def main() -> IO(Unit):
     expect(Runs.job.duration("2026-01-02T13:00:00Z", ""), "")
     +src : Map<&2, String> = Api.obj(Bytes.from_string(jobs.body()))
     +jobs : List<&2, Map<&2, String>> = Runs.jrows.of(src)
-    jobs.next(Runs.jobs.page("page-2", Bytes.from_string(jobs.body()), Nil{}))
+    jobs.next(Runs.jobs.page("page-2", "", Bytes.from_string(jobs.body()), Nil{}))
+    gitea.jobs(Runs.jobs.page("", "fallback-2", Bytes.from_string("{\"total_count\":3,\"jobs\":[{\"id\":1},{\"id\":2}]}"), Nil{}))
+    gitea.jobs.done(Runs.jobs.page("", "fallback-2", Bytes.from_string("{\"total_count\":2,\"jobs\":[{\"id\":1},{\"id\":2}]}"), Nil{}))
+    gitea.jobs.done(Runs.jobs.page("", "fallback-2", Bytes.from_string("{\"total_count\":9,\"jobs\":[]}"), Nil{}))
     expect(Nat.show(List.length(&2, Runlogs.Step, Runlogs.steps.of(Runs.job.row(src, "jobs.0"), "steps", "UPLOAD"))), "1")
     +json : String = Runs.view.json.text(fake.run(), jobs)
     yes(flat.json(Json.parse.bytes(Bytes.from_string(json))))

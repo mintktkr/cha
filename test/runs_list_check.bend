@@ -30,7 +30,7 @@ def page.two() -> String:
 
 def page.done(st: Runs.RunPages) -> IO(Unit):
   match st:
-    case Runs.NextRuns{True{}, next, Con{+a, Con{+b, Nil{}}}}:
+    case Runs.NextRuns{True{}, next, n, Con{+a, Con{+b, Nil{}}}}:
       do IO<Unit>:
         expect(Api.f(a, "id"), "2")
         expect(Api.f(b, "id"), "1")
@@ -39,13 +39,33 @@ def page.done(st: Runs.RunPages) -> IO(Unit):
 
 def page.continue(st: Runs.RunPages, +now: Time.Instant) -> IO(Unit):
   match st:
-    case Runs.NextRuns{False{}, +next, +acc}:
+    case Runs.NextRuns{False{}, +next, n, +acc}:
       do IO<Unit>:
         expect(next, "page-2")
         expect(Nat.show(List.length(&2, Map<&2, String>, acc)), "1")
-        page.done(Runs.list.page(env(), Ctx.Gitea{}, now, ["ci.yml"], 2n, "page-3", Bytes.from_string(page.two()), acc))
+        page.done(Runs.list.page(env(), Ctx.Gitea{}, now, ["ci.yml"], 2n, "page-3", "", n, Bytes.from_string(page.two()), acc))
     case _:
       IO.die(Unit, 1, "nonmatching runs must not consume the limit")
+
+# Gitea sends total_count and no Link header.
+def page.counted(+total: String) -> String:
+  "{\"total_count\":" ++ total ++ ",\"workflow_runs\":[{\"id\":\"3\"},{\"id\":\"2\"}]}"
+
+def gitea.more(st: Runs.RunPages) -> IO(Unit):
+  match st:
+    case Runs.NextRuns{False{}, +next, n, acc}:
+      do IO<Unit>:
+        expect(next, "fallback-2")
+        expect(Nat.show(n), "2")
+    case _:
+      IO.die(Unit, 1, "short of total_count, a page without a Link must ask for the next page")
+
+def gitea.last(st: Runs.RunPages) -> IO(Unit):
+  match st:
+    case Runs.NextRuns{True{}, next, n, acc}:
+      expect(Nat.show(n), "5")
+    case _:
+      IO.die(Unit, 1, "at total_count the walk must stop")
 
 def named.check(xs: List<&2, String>) -> IO(Unit):
   match xs:
@@ -82,7 +102,10 @@ def main() -> IO(Unit):
     expect(Api.f(missing, "duration"), "")
     +active : Map<&2, String> = Runs.run.row(Api.obj(Bytes.from_string("{\"status\":\"in_progress\",\"completed_at\":\"2026-01-02T13:10:00Z\"}")), "", Ctx.Gitea{}, now)
     expect(Api.f(active, "completed_at"), "")
-    page.continue(Runs.list.page(env(), Ctx.Gitea{}, now, ["ci.yml"], 2n, "page-2", Bytes.from_string(page.one()), Nil{}), now)
+    page.continue(Runs.list.page(env(), Ctx.Gitea{}, now, ["ci.yml"], 2n, "page-2", "", 0n, Bytes.from_string(page.one()), Nil{}), now)
+    gitea.more(Runs.list.page(env(), Ctx.Gitea{}, now, Nil{}, 20n, "", "fallback-2", 0n, Bytes.from_string(page.counted("5")), Nil{}))
+    gitea.last(Runs.list.page(env(), Ctx.Gitea{}, now, Nil{}, 20n, "", "fallback-3", 3n, Bytes.from_string(page.counted("5")), Nil{}))
+    expect(Runs.runs.at("&limit=50", 2), "actions/runs?page=2&limit=50")
     +workflows : Map<&2, String> = Api.obj(Bytes.from_string("{\"workflows\":[{\"id\":\"ci.yml\",\"name\":\"CI\",\"path\":\".gitea/workflows/ci.yml\"},{\"id\":\"ci-two.yml\",\"name\":\"CI\",\"path\":\".gitea/workflows/ci-two.yml\"},{\"id\":\"other.yml\",\"name\":\"Other\"}]}"))
     named.check(Runs.workflow.named(Api.count(workflows, "workflows"), 0, workflows, "CI", Nil{}))
     expect(Runs.rerun.path("7", "", False{}, False{}), "actions/runs/7/rerun")
