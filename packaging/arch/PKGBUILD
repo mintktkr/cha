@@ -1,6 +1,6 @@
 # Maintainer: Marco <mint@muu.space>
 pkgname=cha
-pkgver=0.0.1
+pkgver=0.1.0
 pkgrel=1
 pkgdesc='A forge CLI for Gitea, Forgejo and GitHub'
 arch=('x86_64' 'aarch64')

@@ -14,7 +14,7 @@ import ./src/cmd/auth.bend as Auth
 import ./src/cmd/runners.bend as Runners
 
 def version() -> String:
-  "0.0.1"
+  "0.1.0"
 
 # the command word's index in this list, or its length when unknown
 def names() -> List<&2, String>:
