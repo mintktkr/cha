@@ -20,11 +20,11 @@ One binary. No <code>gh</code>, no <code>tea</code>, not even <code>git</code>.<
 $ cha issue list
 $ cha pr view 42 --comments
 $ cha runs logs 1337 --failed
-$ cha runs watch
+$ cha runs watch 1337
 $ cha moved --since 1d
 ```
 
-> 🫖 **Early days.** These commands are the plan. The [issues](https://github.com/mintktkr/cha/issues) show what works so far.
+> 🫖 **Early days.** The commands above work today. See the [agent skill](skills/cha/SKILL.md) for supported flags and the [roadmap](docs/roadmap.md) for the next priorities.
 
 ## 📦 Install
 
