@@ -354,3 +354,27 @@ def token(+repo: Repo) -> IO(String):
         +home : String <- env("HOME")
         +t3 : String <- token.creds(h, user, home)
         return or(t1, or(t2, t3))
+
+# where token() found its token, named for auth status: the first non-empty of the
+# same chain. Never the token itself.
+def source.of(+cha: String, +gh: String, +ghb: String, +creds: String, +user: String) -> String:
+  or.if("CHA_TOKEN", or.if("GITHUB_TOKEN", or.if("GH_TOKEN", or.if(or.if("~/.git-credentials (user " ++ user ++ ")", "~/.git-credentials", String.is_empty(user)), "none", String.is_empty(creds)), String.is_empty(ghb)), String.is_empty(gh)), String.is_empty(cha))
+
+def gh.env(f: Forge, +name: String) -> IO(String):
+  match f:
+    case GitHub{}:
+      env(name)
+    case Gitea{}:
+      IO.pure(String, "")
+
+def token.source(+repo: Repo) -> IO(String):
+  match repo:
+    case Repo{+f, +h, o, n}:
+      do IO<String>:
+        +t1 : String <- env("CHA_TOKEN")
+        +a : String <- gh.env(f, "GITHUB_TOKEN")
+        +b : String <- gh.env(f, "GH_TOKEN")
+        +user : String <- env("CHA_USER")
+        +home : String <- env("HOME")
+        +t3 : String <- token.creds(h, user, home)
+        return source.of(t1, a, b, t3, user)

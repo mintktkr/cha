@@ -10,13 +10,14 @@ import ./src/cmd/runs.bend as Runs
 import ./src/cmd/repo.bend as RepoCmd
 import ./src/cmd/release.bend as Release
 import ./src/cmd/moved.bend as Moved
+import ./src/cmd/auth.bend as Auth
 
 def version() -> String:
   "0.0.1"
 
 # the command word's index in this list, or its length when unknown
 def names() -> List<&2, String>:
-  ["issue", "pr", "runs", "repo", "release", "moved", "help", "version"]
+  ["issue", "pr", "runs", "repo", "release", "moved", "auth", "help", "version"]
 
 def index.at(eq: Bool, +i: Nat, +later: Nat) -> Nat:
   match eq:
@@ -46,7 +47,9 @@ def dispatch(+env: Cli.Env, n: Nat) -> IO(Unit):
       Release.run(env)
     case 5n:
       Moved.run(env)
-    case 6n+k:
+    case 6n:
+      Auth.run(env)
+    case 7n+k:
       Cli.fail(Unit, env, "unknown command, try cha help")
 
 # the command's arguments: everything after the command word

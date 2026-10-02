@@ -63,6 +63,7 @@ cha release list  /  cha release latest  /  cha release view TAG|latest
 cha release create TAG [--title T] [--notes N | --notes-file F] [--draft] [--prerelease] [--target BRANCH]
 
 cha moved [--since 1d|6h|30m|ISO8601] [--json]   # issues/PRs, comments, commits, runs since then
+cha auth status [--json]               # host, forge, login, token source; exit 1 without a working token
 
 cha help [command]
 cha completions fish
@@ -80,6 +81,7 @@ cha completions fish
 
 ## Recipes
 
+- Before a write, or when a request 401s: `cha auth status` shows which login and token source cha will use. It never prints the token.
 - Why did CI fail: `cha runs list --limit 5`, then `cha runs logs ID --failed`.
 - Failing run ids for a script: `cha runs list --status failure --json=id,workflow`.
 - Catch up on a repo: `cha moved --since 1d`.

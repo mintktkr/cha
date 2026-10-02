@@ -177,6 +177,7 @@ def groups() -> List<&2, Row>:
    Row{"repo", "repo: view, labels, label-create, branches, file, tree", "cha repo labels"},
    Row{"release", "releases: list, view, latest, create", "cha release latest"},
    Row{"moved", "what changed in the repo since a time", "cha moved --since 1d"},
+   Row{"auth", "which login and token source a host uses", "cha auth status"},
    Row{"help", "this page, or one command's usage", "cha help issue"},
    Row{"version", "print the version", "cha version"},
    Row{"completions", "a fish completion script", "cha completions fish"}]
@@ -386,6 +387,12 @@ def moved.examples() -> List<&2, String>:
 def moved.page() -> Page:
   Page{"cha moved", "cha moved [--since ...]", moved.rows(), moved.flags(), moved.examples()}
 
+# cha help auth
+# -------------
+
+def auth.page() -> Page:
+  Page{"cha auth", "cha auth [status]", [Row{"status", "host, forge, login and where the token came from; exit 1 without a working token", "cha auth status"}], [Row{"--json [FIELDS]", "host, forge, login, token_source", ""}], ["cha auth status", "cha -R github.com/owner/repo auth status --json"]}
+
 # cha help help, version and completions
 # --------------------------------------
 
@@ -442,7 +449,8 @@ def group(+sub: String) -> Nat:
   pick(String.eq(sub, "moved"), 6n,
   pick(String.eq(sub, "help"), 7n,
   pick(String.eq(sub, "version"), 8n,
-  pick(String.eq(sub, "completions"), 9n, 0n)))))))))
+  pick(String.eq(sub, "completions"), 9n,
+  pick(String.eq(sub, "auth"), 10n, 0n))))))))))
 
 # the word's index in args, or the length when it isn't there
 def idx.at(eq: Bool, i: Nat, later: Nat) -> Nat:
@@ -501,8 +509,10 @@ def show(+on: Bool, +sub: String, k: Nat) -> IO(Unit):
       page.show(on, help.page())
     case 8n:
       page.show(on, version.page())
-    case 9n+_:
+    case 9n:
       page.show(on, completions.page())
+    case 10n+_:
+      page.show(on, auth.page())
 
 # cha, cha help, cha help <command>
 def run(+on: Bool, +args: List<&2, String>) -> IO(Unit):
@@ -554,6 +564,8 @@ def comp.groups() -> List<&2, String>:
    "complete -c cha -n '__cha_needs_command' -a repo -d 'repo: view, labels, label-create, branches, file, tree'",
    "complete -c cha -n '__cha_needs_command' -a release -d 'releases: list, view, latest, create'",
    "complete -c cha -n '__cha_needs_command' -a moved -d 'what changed since a time'",
+   "complete -c cha -n '__cha_needs_command' -a auth -d 'login and token source'",
+   "complete -c cha -n '__cha_in_group auth' -a status -d 'login and token source'",
    "complete -c cha -n '__cha_needs_command' -a help -d 'help'",
    "complete -c cha -n '__cha_needs_command' -a version -d 'print the version'",
    "complete -c cha -n '__cha_needs_command' -a completions -d 'shell completions'",
