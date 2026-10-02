@@ -6,6 +6,7 @@ import ../ctx.bend as Ctx
 import ../api.bend as Api
 import ../ui.bend as Ui
 import ../cli.bend as Cli
+import ../since.bend as Since
 
 # one section of the sweep: its heading, its rows, and the error when it couldn't be fetched
 type Section is Data:
@@ -25,15 +26,6 @@ type Part is Data:
 # Windows
 # -------
 
-def whole(i: Time.Instant) -> Time.Instant:
-  match i:
-    case Time.Instant{s, n}:
-      Time.Instant{s, 0}
-
-# an instant as RFC 3339 in UTC, without a fraction, "" when it is out of range
-def rfc(i: Time.Instant) -> String:
-  Maybe.default(&2, String, Time.rfc3339(whole(i)), "")
-
 def cmp.at.least(c: Cmp) -> Bool:
   match c:
     case LT{}:
@@ -51,41 +43,6 @@ def at.least(m: Maybe<&2, Time.Instant>, bound: Time.Instant) -> Bool:
 
 def at.least.text(+text: String, bound: Time.Instant) -> Bool:
   at.least(Time.rfc3339.parse(text), bound)
-
-# the seconds one unit of --since is worth: d, h, m; 0 when it is none of them
-def unit.secs(+u: String) -> U32:
-  Bool.pick(U32, String.eq(u, "d"), 86400, Bool.pick(U32, String.eq(u, "h"), 3600, Bool.pick(U32, String.eq(u, "m"), 60, 0)))
-
-def without.last(+s: String) -> String:
-  String.take(s, Nat.sub(String.length(s), 1n))
-
-def last(+s: String) -> String:
-  String.drop(s, Nat.sub(String.length(s), 1n))
-
-def span.mul.at(n: Maybe<&2, U32>, +secs: U32) -> Maybe<&2, Time.Duration>:
-  match n:
-    case Some{k}:
-      Some{Time.Duration.of_secs(Time.i64((k * secs : U32)))}
-    case None{}:
-      None{}
-
-# a span like 1d, 6h or 30m, as the duration it covers
-def span.mul(n: Maybe<&2, U32>, +secs: U32) -> Maybe<&2, Time.Duration>:
-  Bool.pick(Maybe<&2, Time.Duration>, U32.is_eq(secs, 0), None{}, span.mul.at(n, secs))
-
-def span(+arg: String) -> Maybe<&2, Time.Duration>:
-  span.mul(U32.read(without.last(arg)), unit.secs(last(arg)))
-
-def since.pick(back: Maybe<&2, Time.Duration>, +now: Time.Instant, +arg: String) -> Maybe<&2, Time.Instant>:
-  match back:
-    case Some{d}:
-      Some{Time.Instant.add(now, Time.Duration.neg(d))}
-    case None{}:
-      Time.rfc3339.parse(arg)
-
-# the window --since names: a span back from now, or an explicit RFC 3339 date-time
-def since.of(now: Time.Instant, +arg: String) -> Maybe<&2, Time.Instant>:
-  since.pick(span(arg), now, arg)
 
 # Sections
 # --------
@@ -461,7 +418,7 @@ def sweep(+env: Cli.Env, +bound: Time.Instant, +label: String) -> IO(Unit):
 def start(+env: Cli.Env, +since: Maybe<&2, Time.Instant>) -> IO(Unit):
   match since:
     case Some{bound}:
-      sweep(env, bound, rfc(bound))
+      sweep(env, bound, Since.rfc(bound))
     case None{}:
       Cli.fail(Unit, env, "moved --since: expected 1d, 6h, 30m or an RFC 3339 date-time")
 
@@ -470,5 +427,5 @@ def run(+env: Cli.Env) -> IO(Unit):
     case Cli.Env{repo, tok, on, json, +args}:
       do IO<Unit>:
         now : Time.Instant <- Time.now()
-        +m : Maybe<&2, Time.Instant> = since.of(now, Cli.flag(args, "--since", "1d"))
+        +m : Maybe<&2, Time.Instant> = Since.of(now, Cli.flag(args, "--since", "1d"))
         start(env, m)

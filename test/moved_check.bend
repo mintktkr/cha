@@ -1,6 +1,7 @@
 import Base
 import 0x3bfb4ae4d3b87b90f01bfcd298211455/time.bend as Time
 import ../src/cmd/moved.bend as Moved
+import ../src/since.bend as Since
 
 # 2026-09-30T12:00:00Z, so every window below is fixed text
 def NOW() -> Time.Instant:
@@ -13,12 +14,12 @@ type KV is Data:
 def window.of(m: Maybe<&2, Time.Instant>, +none: String) -> String:
   match m:
     case Some{i}:
-      Moved.rfc(i)
+      Since.rfc(i)
     case None{}:
       none
 
 def window(+arg: String) -> String:
-  window.of(Moved.since.of(NOW(), arg), "none")
+  window.of(Since.of(NOW(), arg), "none")
 
 def put.all(kvs: List<&2, KV>, m: Map<&2, String>) -> Map<&2, String>:
   match kvs:
