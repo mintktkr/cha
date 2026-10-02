@@ -178,6 +178,7 @@ def groups() -> List<&2, Row>:
    Row{"release", "releases: list, view, latest, create", "cha release latest"},
    Row{"moved", "what changed in the repo since a time", "cha moved --since 1d"},
    Row{"auth", "which login and token source a host uses", "cha auth status"},
+   Row{"runners", "a repo's or an org's self-hosted runners", "cha runners"},
    Row{"help", "this page, or one command's usage", "cha help issue"},
    Row{"version", "print the version", "cha version"},
    Row{"completions", "a fish completion script", "cha completions fish"}]
@@ -393,6 +394,12 @@ def moved.page() -> Page:
 def auth.page() -> Page:
   Page{"cha auth", "cha auth [status]", [Row{"status", "host, forge, login and where the token came from; exit 1 without a working token", "cha auth status"}], [Row{"--json [FIELDS]", "host, forge, login, token_source", ""}], ["cha auth status", "cha -R github.com/owner/repo auth status --json"]}
 
+# cha help runners
+# ----------------
+
+def runners.page() -> Page:
+  Page{"cha runners", "cha runners [--org O] [--json]", [Row{"runners [--org O] [--json]", "a repo's or an org's self-hosted runners", "cha runners"}], [Row{"--org O", "the org whose runners to list, instead of the repo's", ""}, Row{"--json [FIELDS]", "id, name, status, busy, labels, os", ""}], ["cha runners", "cha runners --org sample-org --json"]}
+
 # cha help help, version and completions
 # --------------------------------------
 
@@ -450,7 +457,8 @@ def group(+sub: String) -> Nat:
   pick(String.eq(sub, "help"), 7n,
   pick(String.eq(sub, "version"), 8n,
   pick(String.eq(sub, "completions"), 9n,
-  pick(String.eq(sub, "auth"), 10n, 0n))))))))))
+  pick(String.eq(sub, "auth"), 10n,
+  pick(String.eq(sub, "runners"), 11n, 0n)))))))))))
 
 # the word's index in args, or the length when it isn't there
 def idx.at(eq: Bool, i: Nat, later: Nat) -> Nat:
@@ -511,8 +519,10 @@ def show(+on: Bool, +sub: String, k: Nat) -> IO(Unit):
       page.show(on, version.page())
     case 9n:
       page.show(on, completions.page())
-    case 10n+_:
+    case 10n:
       page.show(on, auth.page())
+    case 11n+_:
+      page.show(on, runners.page())
 
 # cha, cha help, cha help <command>
 def run(+on: Bool, +args: List<&2, String>) -> IO(Unit):
@@ -566,6 +576,7 @@ def comp.groups() -> List<&2, String>:
    "complete -c cha -n '__cha_needs_command' -a moved -d 'what changed since a time'",
    "complete -c cha -n '__cha_needs_command' -a auth -d 'login and token source'",
    "complete -c cha -n '__cha_in_group auth' -a status -d 'login and token source'",
+   "complete -c cha -n '__cha_needs_command' -a runners -d \"a repo's or an org's self-hosted runners\"",
    "complete -c cha -n '__cha_needs_command' -a help -d 'help'",
    "complete -c cha -n '__cha_needs_command' -a version -d 'print the version'",
    "complete -c cha -n '__cha_needs_command' -a completions -d 'shell completions'",
@@ -670,8 +681,12 @@ def comp.moved() -> List<&2, String>:
   ["complete -c cha -n '__cha_in_group moved' -l since -x -a '1d 6h 30m' -d 'how far back to look'",
    ""]
 
+def comp.runners() -> List<&2, String>:
+  ["complete -c cha -n '__cha_in_group runners' -l org -x -d \"the org whose runners to list\"",
+   ""]
+
 def comp.all() -> List<&2, String>:
-  List.concat(&2, String, [comp.head(), comp.global(), comp.groups(), comp.issue(), comp.pr(), comp.runs(), comp.repo(), comp.release(), comp.moved()])
+  List.concat(&2, String, [comp.head(), comp.global(), comp.groups(), comp.issue(), comp.pr(), comp.runs(), comp.repo(), comp.release(), comp.moved(), comp.runners()])
 
 def comp.body() -> String:
   String.join(comp.all(), "\n") ++ "\n"

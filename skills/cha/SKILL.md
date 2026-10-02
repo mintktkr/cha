@@ -64,6 +64,7 @@ cha release create TAG [--title T] [--notes N | --notes-file F] [--draft] [--pre
 
 cha moved [--since 1d|6h|30m|ISO8601] [--json]   # issues/PRs, comments, commits, runs since then
 cha auth status [--json]               # host, forge, login, token source; exit 1 without a working token
+cha runners [--org O] [--json]         # a repo's or an org's self-hosted runners
 
 cha help [command]
 cha completions fish
@@ -98,4 +99,4 @@ cha completions fish
 
 ## When cha isn't enough
 
-cha doesn't cover secrets, runners, packages, webhooks, mirrors, branch protection or tokens yet. Call the forge's REST API directly for those (Gitea: `https://<host>/api/v1/`, GitHub: `https://api.github.com/`). If a missing command keeps coming up, that's worth an issue on cha.
+cha doesn't cover secrets, packages, webhooks, mirrors, branch protection or tokens yet. Call the forge's REST API directly for those (Gitea: `https://<host>/api/v1/`, GitHub: `https://api.github.com/`). If a missing command keeps coming up, that's worth an issue on cha.
