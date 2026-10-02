@@ -126,6 +126,151 @@ def json.rows.go(xs: List<&2, Map<&2, String>>, +fields: List<&2, String>) -> Li
 def json.rows(xs: List<&2, Map<&2, String>>, +fields: List<&2, String>) -> String:
   "[" ++ String.join(json.rows.go(xs, fields), ",\n") ++ "]"
 
+# --json field selection
+# ----------------------
+
+# which fields --json asked for: none, every field, or a named list
+type Json is Data:
+  Off{}
+  All{}
+  Only{fields: List<&2, String>}
+
+# x is one of xs
+def list.has(+x: String, xs: List<&2, String>) -> Bool:
+  match xs:
+    case Nil{}:
+      False{}
+    case Con{a, rest}:
+      String.eq(a, x) || list.has(x, rest)
+
+def split.fields.trim(xs: List<&2, String>) -> List<&2, String>:
+  match xs:
+    case Nil{}:
+      Nil{}
+    case Con{+x, rest}:
+      String.trim(x) <> split.fields.trim(rest)
+
+def split.fields.keep.if(+x: String, later: List<&2, String>, blank: Bool) -> List<&2, String>:
+  match blank:
+    case True{}:
+      later
+    case False{}:
+      Con{x, later}
+
+def split.fields.keep(xs: List<&2, String>) -> List<&2, String>:
+  match xs:
+    case Nil{}:
+      Nil{}
+    case Con{+x, rest}:
+      split.fields.keep.if(x, split.fields.keep(rest), String.is_empty(x))
+
+# "a, b," as ["a", "b"]
+def split.fields(+s: String) -> List<&2, String>:
+  split.fields.keep(split.fields.trim(String.split(s, ',')))
+
+# an empty field list means every field
+def json.only.if(+fs: List<&2, String>, none: Bool) -> Json:
+  match none:
+    case True{}:
+      All{}
+    case False{}:
+      Only{fs}
+
+def json.only(+fs: List<&2, String>) -> Json:
+  json.only.if(fs, List.is_empty(&2, String, fs))
+
+# the word after a bare --json is its field list, unless it is a flag or a command name
+def json.takes.field.if(+w: String, +cmds: List<&2, String>, dash: Bool) -> Bool:
+  match dash:
+    case True{}:
+      False{}
+    case False{}:
+      Bool.not(list.has(w, cmds))
+
+def json.takes.field(+w: String, +cmds: List<&2, String>) -> Bool:
+  json.takes.field.if(w, cmds, String.starts_with(w, "-"))
+
+def json.of.word.if(+fs: List<&2, String>, take: Bool) -> Json:
+  match take:
+    case True{}:
+      json.only(fs)
+    case False{}:
+      All{}
+
+def json.of.word(+w: String, +cmds: List<&2, String>) -> Json:
+  json.of.word.if(split.fields(w), json.takes.field(w, cmds))
+
+def json.of.mark(ms: List<&2, Arg>, +cmds: List<&2, String>) -> Json:
+  match ms:
+    case Nil{}:
+      Off{}
+    case Con{Inline{v}, t}:
+      json.only(split.fields(v))
+    case Con{Exact{}, Con{Plain{+v}, t}}:
+      json.of.word(v, cmds)
+    case Con{Exact{}, t}:
+      All{}
+    case Con{x, t}:
+      json.of.mark(t, cmds)
+
+# which fields --json asked for in args; cmds are the command names that aren't a field list
+def json.of(args: List<&2, String>, cmds: List<&2, String>) -> Json:
+  json.of.mark(mark(args, "--json"), cmds)
+
+def json.strip.keep(+v: String, later: List<&2, String>, take: Bool) -> List<&2, String>:
+  match take:
+    case True{}:
+      later
+    case False{}:
+      Con{v, later}
+
+def json.strip.mark(ms: List<&2, Arg>, +cmds: List<&2, String>) -> List<&2, String>:
+  match ms:
+    case Nil{}:
+      Nil{}
+    case Con{Inline{v}, t}:
+      json.strip.mark(t, cmds)
+    case Con{Exact{}, Con{Plain{+v}, t}}:
+      json.strip.keep(v, json.strip.mark(t, cmds), json.takes.field(v, cmds))
+    case Con{Exact{}, t}:
+      json.strip.mark(t, cmds)
+    case Con{Plain{+s}, t}:
+      Con{s, json.strip.mark(t, cmds)}
+
+# args with --json and the value word it consumed removed
+def json.strip(args: List<&2, String>, cmds: List<&2, String>) -> List<&2, String>:
+  json.strip.mark(mark(args, "--json"), cmds)
+
+def json.unknown.one(+f: String, later: String, known: Bool) -> String:
+  match known:
+    case True{}:
+      later
+    case False{}:
+      f
+
+def json.unknown.go(sel: List<&2, String>, +valid: List<&2, String>) -> String:
+  match sel:
+    case Nil{}:
+      ""
+    case Con{+f, rest}:
+      json.unknown.one(f, json.unknown.go(rest, valid), list.has(f, valid))
+
+# the first selected field that isn't valid, "" when they all are
+def json.unknown(sel: List<&2, String>, +valid: List<&2, String>) -> String:
+  json.unknown.go(sel, valid)
+
+# the defaults when nothing was selected
+def json.pick(sel: List<&2, String>, +defaults: List<&2, String>) -> List<&2, String>:
+  match sel:
+    case Nil{}:
+      defaults
+    case Con{+x, +rest}:
+      Con{x, rest}
+
+# the error for a field the command doesn't print
+def json.bad(+field: String, +valid: List<&2, String>) -> String:
+  "unknown JSON field " ++ field ++ "; valid fields: " ++ String.join(valid, ", ")
+
 # print the error and exit 1
 def fail(-A: Type, +env: Env, msg: String) -> IO(A):
   match env:
