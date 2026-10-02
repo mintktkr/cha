@@ -5,13 +5,15 @@ import ../ctx.bend as Ctx
 import ../api.bend as Api
 import ../ui.bend as Ui
 import ../cli.bend as Cli
+import ../url.bend as Url
 
 # Endpoints
 # ---------
 
-# the path a runner list lives at: an org's when --org named one, else the repo's
+# the path a runner list lives at: an org's when --org named one, else the repo's.
+# --org is encoded, so "a/../b" can't climb to another endpoint.
 def endpoint(+org: String, +owner: String, +name: String) -> String:
-  Ctx.or.if("orgs/" ++ org ++ "/actions/runners", "repos/" ++ owner ++ "/" ++ name ++ "/actions/runners", String.is_empty(org))
+  Ctx.or.if("orgs/" ++ Url.encode(org) ++ "/actions/runners", "repos/" ++ owner ++ "/" ++ name ++ "/actions/runners", String.is_empty(org))
 
 # one page's query. GitHub pages with per_page and links the next page itself.
 # Gitea 1.25 ignores limit unless page is sent, and counts the rest in total_count.

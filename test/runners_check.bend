@@ -1,5 +1,6 @@
 import Base
 import ../src/ctx.bend as Ctx
+import ../src/cli.bend as Cli
 import ../src/cmd/runners.bend as Runners
 import ../src/api.bend as Api
 import 0x49814d83de8f70993a43e1002be29ecd/bytes.bend as Bytes
@@ -76,6 +77,8 @@ def main() -> IO(Unit):
     +gitea : Map<&2, String> = gitea.row()
     gitea.check(gitea)
     expect(Runners.line(False{}, gitea), "#7  local  online  ubuntu-latest")
+    expect(Cli.json.rows(xs, Runners.fields()), "[{\"id\":\"23\",\"name\":\"gpu-runner\",\"status\":\"online\",\"busy\":\"true\",\"labels\":\"self-hosted,linux,x64\",\"os\":\"linux\"},\n{\"id\":\"24\",\"name\":\"spare\",\"status\":\"offline\",\"busy\":\"false\",\"labels\":\"\",\"os\":\"windows\"}]")
+    expect(Runners.endpoint("a/../b", "o", "r"), "orgs/a%2F..%2Fb/actions/runners")
     expect(Runners.status(False{}, "online"), "online")
     expect(Runners.status(False{}, "offline"), "offline")
     expect(Runners.status(True{}, "online"), "\u{1b}[38;2;110;242;184monline\u{1b}[39m")
