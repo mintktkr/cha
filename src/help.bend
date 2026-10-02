@@ -229,7 +229,7 @@ def top.at(+on: Bool, anim: Bool) -> IO(Unit):
 # --------------
 
 def issue.rows() -> List<&2, Row>:
-  [Row{"list [--state open|closed|all] [--label L] [--all] [--json]", "list issues", "cha issue list --state open"},
+  [Row{"list [--state S] [--label L] [--assignee U] [--since 1d] [--with-prs] [--all] [--json]", "list issues", "cha issue list --since 1d"},
    Row{"view N [--comments]", "one issue", "cha issue view 42 --comments"},
    Row{"create --title T [--body B|--body-file F] [--label a,b] [--assignee u]", "open an issue", "cha issue create --title \"kettle is empty\" --label bug"},
    Row{"comment N --body B|--body-file F", "comment on an issue", "cha issue comment 42 --body \"still empty\""},
@@ -241,6 +241,9 @@ def issue.rows() -> List<&2, Row>:
 def issue.flags() -> List<&2, Row>:
   [Row{"--state open|closed|all", "which issues (default open)", ""},
    Row{"--label L", "only issues with this label", ""},
+   Row{"--assignee U", "list: only issues assigned to U (GitHub: none, *)", ""},
+   Row{"--since 1d|6h|ISO", "list: only issues updated since then", ""},
+   Row{"--with-prs", "list: keep pull requests in the list", ""},
    Row{"--all", "every page, not just the first", ""},
    Row{"--json [FIELDS]", "machine-readable rows, optionally only FIELDS", ""},
    Row{"--comments", "include comments (view)", ""},
@@ -248,12 +251,13 @@ def issue.flags() -> List<&2, Row>:
    Row{"--body B", "the body text", ""},
    Row{"--body-file F", "the body from a file; - is stdin", ""},
    Row{"--label a,b", "comma-separated labels (create)", ""},
-   Row{"--assignee u", "assign to this user", ""},
+   Row{"--assignee u", "create: assign to this user", ""},
    Row{"--comment C", "a comment with the close", ""}]
 
 def issue.examples() -> List<&2, String>:
   ["cha issue list --state all --json",
    "cha issue list --json number,title",
+   "cha issue list --assignee mintktkr --since 7d",
    "cha issue view 42 --comments",
    "cha issue create --title \"kettle is empty\" --body-file - --label bug"]
 
@@ -594,6 +598,9 @@ def comp.issue() -> List<&2, String>:
    "complete -c cha -n '__cha_using_sub issue list' -l state -x -a 'open closed all' -d 'which issues'",
    "complete -c cha -n '__cha_using_sub issue list' -l label -x -d 'only issues with this label'",
    "complete -c cha -n '__cha_using_sub issue list' -l all -d 'every page'",
+   "complete -c cha -n '__cha_using_sub issue list' -l assignee -x -d 'only issues assigned to this user'",
+   "complete -c cha -n '__cha_using_sub issue list' -l since -x -a '1d 6h 30m' -d 'only issues updated since then'",
+   "complete -c cha -n '__cha_using_sub issue list' -l with-prs -d 'keep pull requests'",
    "complete -c cha -n '__cha_using_sub issue list' -l json -d 'machine-readable rows, optionally only FIELDS'",
    "complete -c cha -n '__cha_using_sub issue view' -l comments -d 'include comments'",
    "complete -c cha -n '__cha_using_sub issue create' -l title -x -d 'the title'",

@@ -29,7 +29,7 @@ description: Use cha for Gitea, Forgejo and GitHub work from the terminal - issu
 ## Commands
 
 ```bash
-cha issue list [--state open|closed|all] [--label L] [--all] [--json]
+cha issue list [--state open|closed|all] [--label L] [--assignee U] [--since 1d|6h|ISO8601] [--with-prs] [--all] [--json]
 cha issue view N [--comments]
 cha issue create --title T [--body B | --body-file F] [--label a,b] [--assignee u]
 cha issue comment N --body B          # or --body-file -
@@ -82,6 +82,7 @@ cha completions fish
 
 ## Recipes
 
+- What changed for me this week: `cha issue list --assignee LOGIN --since 7d`. `--assignee none` (unassigned) works on GitHub only.
 - Before a write, or when a request 401s: `cha auth status` shows which login and token source cha will use. It never prints the token.
 - Why did CI fail: `cha runs list --limit 5`, then `cha runs logs ID --failed`.
 - Failing run ids for a script: `cha runs list --status failure --json=id,workflow`.
