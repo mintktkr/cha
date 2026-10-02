@@ -216,12 +216,12 @@ def view.text(+on: Bool, +x: Map<&2, String>) -> String:
   "stars  " ++ Api.f(x, "stars") ++ "  forks  " ++ Api.f(x, "forks") ++ "  open issues  " ++ Api.f(x, "open_issues") ++ "\n" ++
   Ui.fg(on, Ui.aqua(), Api.f(x, "html_url")) ++ "\n"
 
-def view.out(+on: Bool, json: Bool, +x: Map<&2, String>) -> IO(Unit):
+def view.out(+on: Bool, json: Cli.Json, +x: Map<&2, String>) -> IO(Unit):
   match json:
-    case True{}:
-      IO.print(Cli.json.rows([x], ["full_name", "forge", "description", "default_branch", "visibility", "stars", "forks", "open_issues", "html_url"]))
-    case False{}:
+    case Cli.Off{}:
       IO.write(view.text(on, x))
+    case j:
+      Cli.json.emit(on, j, [x], ["full_name", "forge", "description", "default_branch", "visibility", "stars", "forks", "open_issues", "html_url"])
 
 def view.url(+repo: Ctx.Repo) -> String:
   match repo:
@@ -260,12 +260,12 @@ def label.lines(+on: Bool, xs: List<&2, Map<&2, String>>) -> String:
     case Con{+x, rest}:
       label.line(on, x) ++ "\n" ++ label.lines(on, rest)
 
-def label.print(+on: Bool, json: Bool, +xs: List<&2, Map<&2, String>>) -> IO(Unit):
+def label.print(+on: Bool, json: Cli.Json, +xs: List<&2, Map<&2, String>>) -> IO(Unit):
   match json:
-    case True{}:
-      IO.print(Cli.json.rows(xs, ["name", "color", "description"]))
-    case False{}:
+    case Cli.Off{}:
       IO.write(label.lines(on, xs))
+    case j:
+      Cli.json.emit(on, j, xs, ["name", "color", "description"])
 
 # the labels of a repo, across pages where the forge pages them
 def label.show(+env: Cli.Env, r: Result<&1, &1, String, List<&2, Map<&2, String>>>) -> IO(Unit):
@@ -339,12 +339,12 @@ def branch.lines(+on: Bool, xs: List<&2, Map<&2, String>>) -> String:
     case Con{+x, rest}:
       branch.line(on, x) ++ "\n" ++ branch.lines(on, rest)
 
-def branch.print(+on: Bool, json: Bool, +xs: List<&2, Map<&2, String>>) -> IO(Unit):
+def branch.print(+on: Bool, json: Cli.Json, +xs: List<&2, Map<&2, String>>) -> IO(Unit):
   match json:
-    case True{}:
-      IO.print(Cli.json.rows(xs, ["name", "sha", "protected"]))
-    case False{}:
+    case Cli.Off{}:
       IO.write(branch.lines(on, xs))
+    case j:
+      Cli.json.emit(on, j, xs, ["name", "sha", "protected"])
 
 def branch.show(+env: Cli.Env, r: Result<&1, &1, String, List<&2, Map<&2, String>>>) -> IO(Unit):
   match env r:
@@ -471,12 +471,12 @@ def tree.note(+on: Bool, truncated: Bool) -> IO(Unit):
     case False{}:
       IO.pure(Unit, Unit{})
 
-def tree.print(+on: Bool, json: Bool, +x: Map<&2, String>) -> IO(Unit):
+def tree.print(+on: Bool, json: Cli.Json, +x: Map<&2, String>) -> IO(Unit):
   match json:
-    case True{}:
-      IO.print(Cli.json.rows(tree.rows(Api.count(x, "tree"), x, 0), ["path", "type", "sha"]))
-    case False{}:
+    case Cli.Off{}:
       IO.write(tree.lines(Api.count(x, "tree"), x, 0))
+    case j:
+      Cli.json.emit(on, j, tree.rows(Api.count(x, "tree"), x, 0), ["path", "type", "sha"])
 
 def tree.out(+env: Cli.Env, b: Bytes.Bytes) -> IO(Unit):
   match env:

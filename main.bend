@@ -53,10 +53,10 @@ def dispatch(+env: Cli.Env, n: Nat) -> IO(Unit):
 def after(+args: List<&2, String>, +w: String) -> List<&2, String>:
   List.drop(&2, String, args, 1n+index(args, w, 0n))
 
-def go(+on: Bool, +args: List<&2, String>, m: Maybe<&2, Ctx.Repo>, +tok: String, +w: String) -> IO(Unit):
+def go(+on: Bool, sel: Cli.Json, +args: List<&2, String>, m: Maybe<&2, Ctx.Repo>, +tok: String, +w: String) -> IO(Unit):
   match m:
     case Some{+repo}:
-      dispatch(Cli.Env{repo, tok, on, Cli.has(args, "--json"), after(args, w)}, index(names(), w, 0n))
+      dispatch(Cli.Env{repo, tok, on, sel, after(args, w)}, index(names(), w, 0n))
     case None{}:
       do IO<Unit>:
         Ui.error(on, "no repo here: run inside a checkout, or pass -R owner/repo or -R host/owner/repo")
@@ -76,7 +76,7 @@ def repo.pick(+flag: String, +cur: Maybe<&2, Ctx.Repo>, none: Bool) -> Maybe<&2,
     case False{}:
       Ctx.flag.repo(flag, cur)
 
-def start(+on: Bool, +args: List<&2, String>, +w: String, simple: Nat) -> IO(Unit):
+def start(+on: Bool, sel: Cli.Json, +args: List<&2, String>, +w: String, simple: Nat) -> IO(Unit):
   match simple:
     case 0n:
       do IO<Unit>:
@@ -84,7 +84,7 @@ def start(+on: Bool, +args: List<&2, String>, +w: String, simple: Nat) -> IO(Uni
         +flag : String = Cli.flag(args, "-R", "")
         +m : Maybe<&2, Ctx.Repo> = repo.pick(flag, Ctx.parse_remote(Ctx.origin_url(cfg)), String.is_empty(flag))
         +tok : String <- token.of(m)
-        go(on, args, m, tok, w)
+        go(on, sel, args, m, tok, w)
     case 1n:
       Help.run(on, List.drop(&2, String, Cli.positional(args), 1n))
     case 2n:
@@ -107,7 +107,8 @@ def share(xs: List<&1, String>) -> List<&2, String>:
 def main() -> IO(Unit):
   do IO<Unit>:
     argv : List<String> <- IO.args()
-    +args : List<&2, String> = List.tail(&2, String, share(argv))
+    +raw : List<&2, String> = List.tail(&2, String, share(argv))
+    +args : List<&2, String> = Cli.json.strip(raw, names())
     +on : Bool <- Ui.color()
     +w : String = Ctx.first(Cli.positional(args))
-    start(on, args, w, simple(w))
+    start(on, Cli.json.of(raw, names()), args, w, simple(w))

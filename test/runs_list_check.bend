@@ -20,7 +20,7 @@ def expect(+got: String, +want: String) -> IO(Unit):
   expect.if(got, want, String.eq(got, want))
 
 def env() -> Cli.Env:
-  Cli.Env{Ctx.Repo{Ctx.Gitea{}, "example.org", "sample", "repo"}, "", False{}, True{}, Nil{}}
+  Cli.Env{Ctx.Repo{Ctx.Gitea{}, "example.org", "sample", "repo"}, "", False{}, Cli.All{}, Nil{}}
 
 def page.one() -> String:
   "{\"workflow_runs\":[{\"id\":\"3\",\"path\":\"other.yml@refs/heads/main\"},{\"id\":\"2\",\"path\":\"ci.yml@refs/heads/main\"}]}"

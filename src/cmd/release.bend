@@ -82,12 +82,12 @@ def release.lines(+on: Bool, xs: List<&2, Map<&2, String>>) -> String:
     case Con{+x, rest}:
       release.line(on, x) ++ "\n" ++ release.lines(on, rest)
 
-def release.print(+on: Bool, json: Bool, +xs: List<&2, Map<&2, String>>) -> IO(Unit):
+def release.print(+on: Bool, json: Cli.Json, +xs: List<&2, Map<&2, String>>) -> IO(Unit):
   match json:
-    case True{}:
-      IO.print(Cli.json.rows(xs, ["tag_name", "name", "published", "draft", "prerelease", "html_url"]))
-    case False{}:
+    case Cli.Off{}:
       IO.write(release.lines(on, xs))
+    case j:
+      Cli.json.emit(on, j, xs, ["tag_name", "name", "published", "draft", "prerelease", "html_url"])
 
 def release.show(+env: Cli.Env, r: Result<&1, &1, String, List<&2, Map<&2, String>>>) -> IO(Unit):
   match env r:
@@ -125,12 +125,12 @@ def view.text(+on: Bool, +x: Map<&2, String>) -> String:
   Ui.fg(on, Ui.aqua(), Api.f(x, "html_url")) ++ "\n" ++
   Ctx.or.if("\n" ++ body ++ "\n", "", String.is_empty(body))
 
-def view.out(+on: Bool, json: Bool, +x: Map<&2, String>) -> IO(Unit):
+def view.out(+on: Bool, json: Cli.Json, +x: Map<&2, String>) -> IO(Unit):
   match json:
-    case True{}:
-      IO.print(Cli.json.rows([x], ["tag_name", "name", "published", "draft", "prerelease", "body", "html_url"]))
-    case False{}:
+    case Cli.Off{}:
       IO.write(view.text(on, x))
+    case j:
+      Cli.json.emit(on, j, [x], ["tag_name", "name", "published", "draft", "prerelease", "body", "html_url"])
 
 # which endpoint answers a tag: latest, or releases/tags/<tag>
 def latest.of(+tag: String) -> Bool:
@@ -158,12 +158,12 @@ def view(+env: Cli.Env) -> IO(Unit):
 def latest.line(+on: Bool, +x: Map<&2, String>) -> String:
   Ui.bold(on, Ui.fg(on, Ui.aqua(), Api.f(x, "tag_name"))) ++ "  " ++ Api.f(x, "name") ++ "  " ++ Ui.dim(on, String.take(Api.f(x, "published"), 10n)) ++ "  " ++ Api.f(x, "html_url") ++ "\n"
 
-def latest.out(+on: Bool, json: Bool, +x: Map<&2, String>) -> IO(Unit):
+def latest.out(+on: Bool, json: Cli.Json, +x: Map<&2, String>) -> IO(Unit):
   match json:
-    case True{}:
-      IO.print(Cli.json.rows([x], ["tag_name", "name", "published", "draft", "prerelease", "html_url"]))
-    case False{}:
+    case Cli.Off{}:
       IO.write(latest.line(on, x))
+    case j:
+      Cli.json.emit(on, j, [x], ["tag_name", "name", "published", "draft", "prerelease", "html_url"])
 
 def latest(+env: Cli.Env) -> IO(Unit):
   match env:

@@ -325,21 +325,21 @@ def view.row(+env: Cli.Env, +n: String, +row: Map<&2, String>) -> IO(Unit):
         IO.write(view.text(on, row, t))
         view.comments(env, repo, tok, n, on, Cli.has(args, "--comments"))
 
-def view.pick(+env: Cli.Env, +n: String, json: Bool, +row: Map<&2, String>) -> IO(Unit):
-  match json:
-    case True{}:
-      IO.print(Cli.json.rows(Con{row, Nil{}}, ["number", "title", "state", "head.ref", "base.ref", "user.login", "mergeable", "html_url", "body"]))
-    case False{}:
+def view.pick(+env: Cli.Env, +n: String, json: Cli.Json, +row: Map<&2, String>) -> IO(Unit):
+  match env json:
+    case Cli.Env{r, t, c, k, a} Cli.Off{}:
       view.row(env, n, row)
+    case Cli.Env{r, t, +on, k, a} j:
+      Cli.json.emit(on, j, Con{row, Nil{}}, ["number", "title", "state", "head.ref", "base.ref", "user.login", "mergeable", "html_url", "body"])
 
-def view.good(+env: Cli.Env, +n: String, json: Bool, body: Bytes.Bytes, +status: U32, good: Bool) -> IO(Unit):
+def view.good(+env: Cli.Env, +n: String, json: Cli.Json, body: Bytes.Bytes, +status: U32, good: Bool) -> IO(Unit):
   match good:
     case True{}:
       view.pick(env, n, json, Api.obj(body))
     case False{}:
       Cli.fail(Unit, env, Api.message(status, body))
 
-def view.reply(+env: Cli.Env, +n: String, json: Bool, r: Api.Reply) -> IO(Unit):
+def view.reply(+env: Cli.Env, +n: String, json: Cli.Json, r: Api.Reply) -> IO(Unit):
   match r:
     case Api.Broke{w}:
       Cli.fail(Unit, env, w)
@@ -386,12 +386,12 @@ def list.lines(+on: Bool, xs: List<&2, Map<&2, String>>) -> String:
     case Con{+x, rest}:
       list.line(on, x) ++ "\n" ++ list.lines(on, rest)
 
-def list.print(+on: Bool, json: Bool, +xs: List<&2, Map<&2, String>>) -> IO(Unit):
+def list.print(+on: Bool, json: Cli.Json, +xs: List<&2, Map<&2, String>>) -> IO(Unit):
   match json:
-    case True{}:
-      IO.print(Cli.json.rows(xs, ["number", "title", "state", "user.login", "html_url"]))
-    case False{}:
+    case Cli.Off{}:
       IO.write(list.lines(on, xs))
+    case j:
+      Cli.json.emit(on, j, xs, ["number", "title", "state", "user.login", "html_url"])
 
 def list.show(+env: Cli.Env, r: Result<&1, &1, String, List<&2, Map<&2, String>>>) -> IO(Unit):
   match env r:
@@ -448,12 +448,12 @@ def checks.lines(+on: Bool, xs: List<&2, Map<&2, String>>) -> String:
     case Con{+x, rest}:
       checks.line(on, x) ++ "\n" ++ checks.lines(on, rest)
 
-def checks.emit.if(+on: Bool, json: Bool, +rows: List<&2, Map<&2, String>>) -> IO(Unit):
+def checks.emit.if(+on: Bool, json: Cli.Json, +rows: List<&2, Map<&2, String>>) -> IO(Unit):
   match json:
-    case True{}:
-      IO.print(Cli.json.rows(rows, ["name", "state", "url"]))
-    case False{}:
+    case Cli.Off{}:
       IO.write(checks.lines(on, rows))
+    case j:
+      Cli.json.emit(on, j, rows, ["name", "state", "url"])
 
 def checks.emit(+env: Cli.Env, +rows: List<&2, Map<&2, String>>) -> IO(Unit):
   match env:

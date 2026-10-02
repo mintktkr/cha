@@ -421,12 +421,14 @@ def sections.error(+s: Sections) -> String:
     case Sections{i, c, m, r}:
       Ctx.or(section.error(i), Ctx.or(section.error(c), Ctx.or(section.error(m), section.error(r))))
 
-def show(+on: Bool, json: Bool, +label: String, +s: Sections) -> IO(Unit):
+def show(+on: Bool, json: Cli.Json, +label: String, +s: Sections) -> IO(Unit):
   match json:
-    case True{}:
-      IO.print(json.text(label, s))
-    case False{}:
+    case Cli.Off{}:
       IO.write(text(on, label, s))
+    case j:
+      do IO<Unit>:
+        Cli.json.whole(on, j, "moved")
+        IO.print(json.text(label, s))
 
 def decide(empty: Bool, +env: Cli.Env, +label: String, +s: Sections) -> IO(Unit):
   match empty:

@@ -7,10 +7,16 @@ import ./ctx.bend as Ctx
 import ./api.bend as Api
 import ./ui.bend as Ui
 
+# which fields --json asked for: none, every field, or a named list
+type Json is Data:
+  Off{}
+  All{}
+  Only{fields: List<&2, String>}
+
 # repo: the resolved repo. tok: its token ("" for anonymous). color: the colour decision.
-# json: --json was given. args: the command's own arguments, global flags removed.
+# json: what --json asked for. args: the command's own arguments, global flags removed.
 type Env is Data:
-  Env{repo: Ctx.Repo, tok: String, color: Bool, json: Bool, args: List<&2, String>}
+  Env{repo: Ctx.Repo, tok: String, color: Bool, json: Json, args: List<&2, String>}
 
 # Arguments
 # ---------
@@ -129,12 +135,6 @@ def json.rows(xs: List<&2, Map<&2, String>>, +fields: List<&2, String>) -> Strin
 # --json field selection
 # ----------------------
 
-# which fields --json asked for: none, every field, or a named list
-type Json is Data:
-  Off{}
-  All{}
-  Only{fields: List<&2, String>}
-
 # x is one of xs
 def list.has(+x: String, xs: List<&2, String>) -> Bool:
   match xs:
@@ -187,8 +187,12 @@ def json.takes.field.if(+w: String, +cmds: List<&2, String>, dash: Bool) -> Bool
     case False{}:
       Bool.not(list.has(w, cmds))
 
+def digit.first(+w: String) -> Bool:
+  String.starts_with(w, "0") || String.starts_with(w, "1") || String.starts_with(w, "2") || String.starts_with(w, "3") || String.starts_with(w, "4") || String.starts_with(w, "5") || String.starts_with(w, "6") || String.starts_with(w, "7") || String.starts_with(w, "8") || String.starts_with(w, "9")
+
+# field names never start with a digit, so `pr view --json 7` keeps 7 as the number
 def json.takes.field(+w: String, +cmds: List<&2, String>) -> Bool:
-  json.takes.field.if(w, cmds, String.starts_with(w, "-"))
+  json.takes.field.if(w, cmds, String.starts_with(w, "-") || digit.first(w))
 
 def json.of.word.if(+fs: List<&2, String>, take: Bool) -> Json:
   match take:
@@ -270,6 +274,49 @@ def json.pick(sel: List<&2, String>, +defaults: List<&2, String>) -> List<&2, St
 # the error for a field the command doesn't print
 def json.bad(+field: String, +valid: List<&2, String>) -> String:
   "unknown JSON field " ++ field ++ "; valid fields: " ++ String.join(valid, ", ")
+
+# --json is on at all
+def json.on(j: Json) -> Bool:
+  match j:
+    case Off{}:
+      False{}
+    case x:
+      True{}
+
+def json.emit.if(+on: Bool, xs: List<&2, Map<&2, String>>, +sel: List<&2, String>, +valid: List<&2, String>, +bad: String, ok: Bool) -> IO(Unit):
+  match ok:
+    case True{}:
+      IO.print(json.rows(xs, json.pick(sel, valid)))
+    case False{}:
+      do IO<Unit>:
+        Ui.error(on, json.bad(bad, valid))
+        IO.die(Unit, 1, "")
+
+# rows as JSON: every field in valid, or only the fields --json named
+def json.emit(+on: Bool, j: Json, xs: List<&2, Map<&2, String>>, +valid: List<&2, String>) -> IO(Unit):
+  match j:
+    case Only{+fs}:
+      +bad = json.unknown(fs, valid)
+      json.emit.if(on, xs, fs, valid, bad, String.is_empty(bad))
+    case x:
+      IO.print(json.rows(xs, valid))
+
+def json.whole.if(+on: Bool, +what: String, ok: Bool) -> IO(Unit):
+  match ok:
+    case True{}:
+      IO.pure(Unit, Unit{})
+    case False{}:
+      do IO<Unit>:
+        Ui.error(on, what ++ " --json prints nested records and takes no field list; use bare --json")
+        IO.die(Unit, 1, "")
+
+# for outputs that aren't flat rows: refuse a field list instead of ignoring it
+def json.whole(+on: Bool, j: Json, +what: String) -> IO(Unit):
+  match j:
+    case Only{fs}:
+      json.whole.if(on, what, False{})
+    case x:
+      json.whole.if(on, what, True{})
 
 # print the error and exit 1
 def fail(-A: Type, +env: Env, msg: String) -> IO(A):

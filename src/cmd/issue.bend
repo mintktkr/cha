@@ -63,12 +63,12 @@ def query(f: Ctx.Forge, +state: String, +label: String) -> String:
     case Ctx.GitHub{}:
       "issues?per_page=100&state=" ++ state ++ Ctx.or.if("&labels=" ++ label, "", String.is_empty(label))
 
-def list.print(+on: Bool, json: Bool, +xs: List<&2, Map<&2, String>>) -> IO(Unit):
+def list.print(+on: Bool, json: Cli.Json, +xs: List<&2, Map<&2, String>>) -> IO(Unit):
   match json:
-    case True{}:
-      IO.print(Cli.json.rows(xs, ["number", "title", "state", "user.login", "labels", "html_url"]))
-    case False{}:
+    case Cli.Off{}:
       IO.write(lines(on, xs))
+    case j:
+      Cli.json.emit(on, j, xs, ["number", "title", "state", "user.login", "labels", "html_url"])
 
 def list.show(+env: Cli.Env, r: Result<&1, &1, String, List<&2, Map<&2, String>>>) -> IO(Unit):
   match env r:
@@ -449,12 +449,21 @@ def view.json.if(want: Bool, +x: Map<&2, String>, +cs: List<&2, Map<&2, String>>
 def view.json(+x: Map<&2, String>, +cs: List<&2, Map<&2, String>>, want: Bool) -> String:
   view.json.if(want, Map.set(&2, String, x, "labels", Api.join(x, "labels", "name", ", ")), cs)
 
-def view.print.if(json: Bool, +on: Bool, +x: Map<&2, String>, +cs: List<&2, Map<&2, String>>, want: Bool) -> IO(Unit):
-  match json:
+def view.json.out(+on: Bool, j: Cli.Json, +x: Map<&2, String>, +cs: List<&2, Map<&2, String>>, want: Bool) -> IO(Unit):
+  match want:
     case True{}:
-      IO.write(view.json(x, cs, want) ++ "\n")
+      do IO<Unit>:
+        Cli.json.whole(on, j, "issue view --comments")
+        IO.write(view.json(x, cs, True{}) ++ "\n")
     case False{}:
+      Cli.json.emit(on, j, [Map.set(&2, String, x, "labels", Api.join(x, "labels", "name", ", "))], issue.fields())
+
+def view.print.if(json: Cli.Json, +on: Bool, +x: Map<&2, String>, +cs: List<&2, Map<&2, String>>, want: Bool) -> IO(Unit):
+  match json:
+    case Cli.Off{}:
       IO.write(view.text(on, x) ++ comments.text(on, cs) ++ "\n")
+    case j:
+      view.json.out(on, j, x, cs, want)
 
 def view.print(+env: Cli.Env, +x: Map<&2, String>, +cs: List<&2, Map<&2, String>>, want: Bool) -> IO(Unit):
   match env:

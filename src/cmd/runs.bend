@@ -419,10 +419,12 @@ def view.print(+env: Cli.Env, +row: Map<&2, String>, +jobs: List<&2, Map<&2, Str
   match env:
     case Cli.Env{r, t, on, json, a}:
       match json:
-        case True{}:
-          view.json(row, jobs)
-        case False{}:
+        case Cli.Off{}:
           IO.write(view.text(on, row, jobs))
+        case j:
+          do IO<Unit>:
+            Cli.json.whole(on, j, "runs view")
+            view.json(row, jobs)
 
 # Arguments
 # ---------
@@ -950,12 +952,12 @@ def cancel(+env: Cli.Env) -> IO(Unit):
 # list
 # ----
 
-def list.print(+on: Bool, json: Bool, +xs: List<&2, Map<&2, String>>) -> IO(Unit):
+def list.print(+on: Bool, json: Cli.Json, +xs: List<&2, Map<&2, String>>) -> IO(Unit):
   match json:
-    case True{}:
-      IO.print(Cli.json.rows(xs, run.fields()))
-    case False{}:
+    case Cli.Off{}:
       IO.write(run.lines(on, xs))
+    case j:
+      Cli.json.emit(on, j, xs, run.fields())
 
 # Match the workflow's display name, full path, or file basename. A path can
 # include @ref on both forges; it is not part of the filename.
