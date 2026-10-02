@@ -18,7 +18,7 @@ description: Use cha for Gitea, Forgejo and GitHub work from the terminal - issu
 
 - Piped output is plain text: no colour, no animation, one line per item in lists.
 - `--json` gives an array of objects with flat string fields (`"user.login"`, `"labels"`), booleans as `"true"`/`"false"`.
-- Bare `--json` prints every field. `--json a,b` or `--json=a,b` prints only those fields, in that order. Spaces after commas are trimmed.
+- Bare `--json` prints every field. `--json a,b` or `--json=a,b` prints only those fields, in that order. Spaces after commas are trimmed when the list is quoted.
 - The word after a bare `--json` is the field list unless it starts with `-` or a digit, or is a command name. So `cha issue view --json 7` is issue 7, and `cha issue view --json title 7` selects the title. In scripts, use `--json=a,b`.
 - An unknown field exits 1 with `unknown JSON field X; valid fields: a, b, c`, so `--json nope` is a cheap way to list a command's fields.
 - `issue view --comments`, `runs view` and `moved` print nested records. They take no field list and exit 1 if given one; bare `--json` still works.
