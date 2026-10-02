@@ -68,7 +68,7 @@ def has(args: List<&2, String>, +name: String) -> Bool:
 
 # flags that stand alone; every other --flag takes the next word as its value
 def switch(+a: String) -> Bool:
-  String.eq(a, "--json") || String.eq(a, "--comments") || String.eq(a, "--all") || String.eq(a, "--failed") || String.eq(a, "--yes") || String.eq(a, "--web") || String.eq(a, "--help") || String.eq(a, "-h") || String.eq(a, "--draft") || String.eq(a, "--prerelease") || String.eq(a, "--squash") || String.eq(a, "--merge") || String.eq(a, "--rebase") || String.eq(a, "--delete-branch")
+  String.eq(a, "--json") || String.eq(a, "--comments") || String.eq(a, "--all") || String.eq(a, "--failed") || String.eq(a, "--yes") || String.eq(a, "--web") || String.eq(a, "--help") || String.eq(a, "-h") || String.eq(a, "--draft") || String.eq(a, "--prerelease") || String.eq(a, "--squash") || String.eq(a, "--merge") || String.eq(a, "--rebase") || String.eq(a, "--delete-branch") || String.eq(a, "--with-prs")
 
 type Tok is Data:
   Pos{s: String}

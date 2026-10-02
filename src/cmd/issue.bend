@@ -6,6 +6,9 @@ import ../ctx.bend as Ctx
 import ../api.bend as Api
 import ../ui.bend as Ui
 import ../cli.bend as Cli
+import ../url.bend as Url
+import ../since.bend as Since
+import 0x3bfb4ae4d3b87b90f01bfcd298211455/time.bend as Time
 
 # list
 # ----
@@ -24,6 +27,14 @@ def real(xs: List<&2, Map<&2, String>>) -> List<&2, Map<&2, String>>:
       Nil{}
     case Con{+x, rest}:
       real.at(x, real(rest), String.is_empty(Api.f(x, "pull_request.url")))
+
+# pull requests stay in the list only when --with-prs asked for them
+def prs.keep(xs: List<&2, Map<&2, String>>, keep: Bool) -> List<&2, Map<&2, String>>:
+  match keep:
+    case True{}:
+      xs
+    case False{}:
+      real(xs)
 
 # labels joined into one field, for display and --json
 def with_labels(xs: List<&2, Map<&2, String>>) -> List<&2, Map<&2, String>>:
@@ -56,12 +67,54 @@ def is.github(f: Ctx.Forge) -> Bool:
     case Ctx.Gitea{}:
       False{}
 
-def query(f: Ctx.Forge, +state: String, +label: String) -> String:
+# gitea's assigned_by names a login; only github takes none (unassigned) and * (anyone)
+def assignee.bad(f: Ctx.Forge, +a: String) -> Bool:
   match f:
     case Ctx.Gitea{}:
-      "issues?type=issues&limit=50&state=" ++ state ++ Ctx.or.if("&labels=" ++ label, "", String.is_empty(label))
+      String.eq(a, "none")
     case Ctx.GitHub{}:
-      "issues?per_page=100&state=" ++ state ++ Ctx.or.if("&labels=" ++ label, "", String.is_empty(label))
+      False{}
+
+def assignee.check(+env: Cli.Env, bad: Bool) -> IO(Unit):
+  match bad:
+    case True{}:
+      Cli.fail(Unit, env, "issue list: --assignee none is GitHub-only")
+    case False{}:
+      IO.pure(Unit, Unit{})
+
+# a query parameter, its value percent-encoded, "" when the value is empty
+def param.q(+pre: String, +v: String) -> String:
+  Ctx.or.if(pre ++ Url.encode(v), "", String.is_empty(v))
+
+# the list endpoint: the four filters, the since bound, and whether pull requests join in.
+# gitea drops them with type=issues; github lists them as issues and real() drops them after
+def query(f: Ctx.Forge, +state: String, +label: String, +assignee: String, +since: String, prs: Bool) -> String:
+  match f:
+    case Ctx.Gitea{}:
+      "issues?" ++ Ctx.or.if("type=issues&", "", prs) ++ "limit=50&state=" ++ Url.encode(state) ++ param.q("&labels=", label) ++ param.q("&assigned_by=", assignee) ++ param.q("&since=", since)
+    case Ctx.GitHub{}:
+      "issues?per_page=100&state=" ++ Url.encode(state) ++ param.q("&labels=", label) ++ param.q("&assignee=", assignee) ++ param.q("&since=", since)
+
+# --since as the RFC 3339 text a forge query takes, "" when the flag wasn't given
+def since.text(+env: Cli.Env, m: Maybe<&2, Time.Instant>) -> IO(String):
+  match m:
+    case Some{i}:
+      IO.pure(String, Since.rfc(i))
+    case None{}:
+      Cli.fail(String, env, "issue list: --since takes 1d, 6h, 30m or an ISO 8601 time")
+
+def since.empty.if(+env: Cli.Env, +arg: String, empty: Bool) -> IO(String):
+  match empty:
+    case True{}:
+      IO.pure(String, "")
+    case False{}:
+      do IO<String>:
+        now : Time.Instant <- Time.now()
+        v : String <- since.text(env, Since.of(now, arg))
+        return v
+
+def since.bound(+env: Cli.Env, +arg: String) -> IO(String):
+  since.empty.if(env, arg, String.is_empty(arg))
 
 def list.print(+on: Bool, json: Cli.Json, +xs: List<&2, Map<&2, String>>) -> IO(Unit):
   match json:
@@ -73,7 +126,7 @@ def list.print(+on: Bool, json: Cli.Json, +xs: List<&2, Map<&2, String>>) -> IO(
 def list.show(+env: Cli.Env, r: Result<&1, &1, String, List<&2, Map<&2, String>>>) -> IO(Unit):
   match env r:
     case Cli.Env{repo, tok, +on, json, args} Done{xs}:
-      list.print(on, json, with_labels(real(xs)))
+      list.print(on, json, with_labels(prs.keep(xs, Cli.has(args, "--with-prs"))))
     case e Fail{w}:
       Cli.fail(Unit, e, w)
 
@@ -88,7 +141,11 @@ def list(+env: Cli.Env) -> IO(Unit):
   match env:
     case Cli.Env{+repo, +tok, on, json, +args}:
       do IO<Unit>:
-        r : Result<&1, &1, String, List<&2, Map<&2, String>>> <- Api.all(list.pages(Cli.has(args, "--all")), repo, tok, Api.path(repo, query(forge.of(repo), Cli.flag(args, "--state", "open"), Cli.flag(args, "--label", ""))))
+        +f : Ctx.Forge = forge.of(repo)
+        +assignee : String = Cli.flag(args, "--assignee", "")
+        assignee.check(env, assignee.bad(f, assignee))
+        bound : String <- since.bound(env, Cli.flag(args, "--since", ""))
+        r : Result<&1, &1, String, List<&2, Map<&2, String>>> <- Api.all(list.pages(Cli.has(args, "--all")), repo, tok, Api.path(repo, query(f, Cli.flag(args, "--state", "open"), Cli.flag(args, "--label", ""), assignee, bound, Cli.has(args, "--with-prs"))))
         list.show(env, r)
 
 # replies
