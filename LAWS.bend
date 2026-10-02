@@ -84,6 +84,19 @@ law flag_empty:
 law parse_remote_scp:
   {Ctx.parse_remote("git@github.com:mintktkr/cha.git") == Some{Ctx.Repo{Ctx.GitHub{}, "github.com", "mintktkr", "cha"}} : Maybe<&2, Ctx.Repo>}
 
+# Secrets
+# -------
+# A token can sit in a remote URL (https://user:token@host/...). The repo parsed from it
+# must not carry it, since the host reaches URLs and error messages.
+
+# LAW: an https remote's user and token are dropped.
+law parse_remote_drops_credentials:
+  {Ctx.parse_remote("https://x:SECRET@github.com/o/r.git") == Some{Ctx.Repo{Ctx.GitHub{}, "github.com", "o", "r"}} : Maybe<&2, Ctx.Repo>}
+
+# LAW: a bare token before the host is dropped too.
+law parse_remote_drops_token:
+  {Ctx.parse_remote("https://SECRET@example.org/o/r") == Some{Ctx.Repo{Ctx.Gitea{}, "example.org", "o", "r"}} : Maybe<&2, Ctx.Repo>}
+
 # LAW: a Link header without rel="next" has no next page.
 law link_no_next:
   {Api.link.next("</issues?page=2>; rel=\"last\"") == "" : String}

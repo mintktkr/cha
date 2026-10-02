@@ -54,7 +54,8 @@ your shell
   is the identity, so no escape byte reaches a pipe.
 - **Secrets never reach output.** The token goes into the `authorization`
   header and nowhere else; a failed request reports why, never the token. That
-  is a hard rule for every change; a law for it in `LAWS.bend` is still to come.
+  is a hard rule for every change. `LAWS.bend` holds the part a parser could break: a
+  remote URL with `user:token@` in it parses to a repo without them.
 
 ## Forges differ
 

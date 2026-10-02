@@ -125,6 +125,12 @@ def Laws.flag_empty(name, dflt):
 def Laws.parse_remote_scp():
   {==}
 
+def Laws.parse_remote_drops_credentials():
+  {==}
+
+def Laws.parse_remote_drops_token():
+  {==}
+
 def Laws.link_no_next():
   {==}
 
