@@ -42,12 +42,12 @@ cha pr edit N [--title T] [--body B]
 cha pr comment N --body B
 cha pr checks N                       # statuses and check runs of the head commit
 
-cha runs list [--branch B] [--status S] [--limit N] [--json]
-cha runs view ID                      # the run and its jobs
-cha runs logs ID [--job JOB] [--failed]
+cha runs list [--branch B] [--status S] [--workflow FILE|NAME] [--limit N] [--json]
+cha runs view ID                      # run, jobs, runners and step timings
+cha runs logs ID [--job ID|NAME] [--failed] [--step NAME]
 cha runs watch ID                     # polls until done
 cha runs dispatch WORKFLOW_FILE [--ref main] [--input k=v]
-cha runs rerun ID  /  cha runs cancel ID
+cha runs rerun ID [--failed | --job ID]  /  cha runs cancel ID
 
 cha repo [view] [--json]
 cha repo labels  /  cha repo label-create NAME [--color HEX] [--description D]
@@ -63,6 +63,16 @@ cha moved [--since 1d|6h|30m|ISO8601] [--json]   # issues/PRs, comments, commits
 cha help [command]
 cha completions fish
 ```
+
+## Runs output and filters
+
+- `runs view --json` is one array: a `kind: "run"` row followed by `kind: "job"` rows. Job rows include `runner_name`, timestamps, `duration` in seconds, and `steps.#` / `steps.N.*` flat string fields. Missing timestamps and durations are empty strings.
+- Run rows include `updated_at`, `completed_at` and `duration`. A forge that supplies only `updated_at` leaves completion and duration empty; an update is not necessarily a completion.
+- `runs list --workflow` matches an exact filename, path or display name. Filtering follows pages until `--limit` matches (default 20, range 1–1000), with a 100-page safety cap. On Gitea, names resolve through current workflow metadata; use the filename for renamed or removed workflows.
+- When `head_branch` is absent, the branch column falls back to the workflow ref. Tags and pull-request refs retain their `refs/tags/` or `refs/pull/` prefix.
+- Logs accept a job id or case-insensitive exact job name. `--failed` selects failed jobs; it still prints each selected job's full log unless `--step` is also given.
+- On GitHub, unfinished jobs print a watch hint on stderr while completed jobs still print their logs; partial retrieval exits 1. `--step` uses the step log endpoint. On Gitea it needs step timestamps; its whole-second boundaries can overlap adjacent steps, and missing metadata produces an actionable error.
+- `runs rerun --job` requires a job id belonging to the supplied run. It cannot be combined with `--failed`.
 
 ## Recipes
 

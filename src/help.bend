@@ -253,20 +253,22 @@ def pr.page() -> Page:
 # -------------
 
 def runs.rows() -> List<&2, Row>:
-  [Row{"list [--branch B] [--status S] [--limit N]", "recent action runs", "cha runs list --branch main"},
-   Row{"view ID", "one run", "cha runs view 4142"},
-   Row{"logs ID [--job J] [--failed]", "a run's logs", "cha runs logs 4142 --failed"},
+  [Row{"list [--branch B] [--status S] [--workflow W] [--limit N]", "recent action runs", "cha runs list --branch main"},
+   Row{"view ID", "run, jobs, runners and step timings", "cha runs view 4142"},
+   Row{"logs ID [--job J] [--failed] [--step NAME]", "a run's logs", "cha runs logs 4142 --failed"},
    Row{"watch ID", "follow a run", "cha runs watch 4142"},
    Row{"dispatch FILE [--ref R] [--input k=v]", "start a workflow", "cha runs dispatch ci.yml --ref main"},
-   Row{"rerun ID", "rerun a run", "cha runs rerun 4142"},
+   Row{"rerun ID [--failed | --job ID]", "rerun a run or selected jobs", "cha runs rerun 4142"},
    Row{"cancel ID", "cancel a run", "cha runs cancel 4142"}]
 
 def runs.flags() -> List<&2, Row>:
   [Row{"--branch B", "only runs of this branch", ""},
    Row{"--status S", "only runs in this state", ""},
-   Row{"--limit N", "how many runs", ""},
-   Row{"--job J", "only this job's logs", ""},
-   Row{"--failed", "only the failed jobs' logs", ""},
+   Row{"--workflow W", "workflow file or exact display name", ""},
+   Row{"--limit N", "matching runs to return (1-1000)", ""},
+   Row{"--job J", "log job id or name; rerun requires an id", ""},
+   Row{"--step NAME", "only this step (case-insensitive name)", ""},
+   Row{"--failed", "log or rerun only failed jobs", ""},
    Row{"--ref R", "the ref to dispatch on", ""},
    Row{"--input k=v", "a workflow input", ""}]
 
@@ -575,8 +577,12 @@ def comp.runs() -> List<&2, String>:
    "complete -c cha -n '__cha_sub_command runs' -a cancel -d 'cancel a run'",
    "complete -c cha -n '__cha_using_sub runs list' -l branch -x -d 'only runs of this branch'",
    "complete -c cha -n '__cha_using_sub runs list' -l status -x -a 'success failure running queued cancelled' -d 'only runs in this state'",
+   "complete -c cha -n '__cha_using_sub runs list' -l workflow -x -d 'workflow file or display name'",
    "complete -c cha -n '__cha_using_sub runs list' -l limit -x -d 'how many runs'",
    "complete -c cha -n '__cha_using_sub runs logs' -l job -x -d \"only this job's logs\"",
+   "complete -c cha -n '__cha_using_sub runs logs' -l step -x -d 'step name'",
+   "complete -c cha -n '__cha_using_sub runs rerun' -l failed -d 'rerun failed jobs'",
+   "complete -c cha -n '__cha_using_sub runs rerun' -l job -x -d 'rerun job id'",
    "complete -c cha -n '__cha_using_sub runs logs' -l failed -d 'only the failed jobs'",
    "complete -c cha -n '__cha_using_sub runs dispatch' -l ref -x -d 'the ref to dispatch on'",
    "complete -c cha -n '__cha_using_sub runs dispatch' -l input -x -d 'a workflow input, k=v'",

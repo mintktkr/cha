@@ -4,6 +4,8 @@ import ../ctx.bend as Ctx
 import ../api.bend as Api
 import ../ui.bend as Ui
 import ../cli.bend as Cli
+import ../url.bend as Url
+import ../runlogs.bend as Runlogs
 import 0x584fc27920487ceab242392391418d7f/json.bend as Json
 import 0x49814d83de8f70993a43e1002be29ecd/bytes.bend as Bytes
 import 0x3bfb4ae4d3b87b90f01bfcd298211455/time.bend as Time
@@ -84,7 +86,7 @@ def forge.of(r: Ctx.Repo) -> Ctx.Forge:
       f
 
 def param.q(+pre: String, +v: String) -> String:
-  Ctx.or.if(pre ++ v, "", String.is_empty(v))
+  Ctx.or.if(pre ++ Url.encode(v), "", String.is_empty(v))
 
 # the list endpoint of a forge's action runs, newest first. Gitea reads limit only
 # when a page is asked for, so page=1 is always part of the query.
@@ -125,20 +127,66 @@ def wf.of(+src: Map<&2, String>, +prefix: String, +forge: Ctx.Forge) -> String:
 def age.at(+src: Map<&2, String>, +prefix: String, +forge: Ctx.Forge, +now: Time.Instant) -> String:
   age.of.parse(Time.rfc3339.parse(started.at(src, prefix, forge)), now)
 
+# updated_at can change after completion; only expose a real completion timestamp.
+def completed.at(+src: Map<&2, String>, +prefix: String, done: Bool) -> String:
+  match done:
+    case True{}:
+      g(src, prefix, "completed_at")
+    case False{}:
+      ""
+
+def elapsed.valid(+ms: Int.I64, bad: Bool) -> String:
+  match bad:
+    case True{}:
+      ""
+    case False{}:
+      Int.I64.show(Int.I64.div(ms, Int.I64.from_u32(1000)))
+
+def elapsed.of(start: Maybe<&2, Time.Instant>, end: Maybe<&2, Time.Instant>) -> String:
+  match start end:
+    case Some{s} Some{e}:
+      +ms = Time.Duration.to_ms(Time.Instant.since(e, s))
+      elapsed.valid(ms, Int.I64.is_neg(ms))
+    case a b:
+      ""
+
+# elapsed seconds; absent/invalid timestamps do not imply a zero-length run.
+def elapsed(+start: String, +end: String) -> String:
+  elapsed.of(Time.rfc3339.parse(start), Time.rfc3339.parse(end))
+
+# Gitea leaves head_branch empty for tags and PR refs. Keep those full refs
+# recognizable instead of presenting a tag or pull request as a branch.
+def branch.ref(+ref: String, branch: Bool) -> String:
+  match branch:
+    case True{}:
+      String.drop(ref, 11n)
+    case False{}:
+      ref
+
+def branch.of(+src: Map<&2, String>, +prefix: String) -> String:
+  +ref = Ctx.or(g(src, prefix, "ref"), Ctx.rest(String.split(g(src, prefix, "path"), '@'), "@"))
+  Ctx.or(g(src, prefix, "head_branch"), branch.ref(ref, String.starts_with(ref, "refs/heads/")))
+
 # one run, as the flat row every run command reads
 def run.row(+src: Map<&2, String>, +prefix: String, +forge: Ctx.Forge, +now: Time.Instant) -> Map<&2, String>:
   m = Map.new(&2, String)
   m = Map.set(&2, String, m, "id", g(src, prefix, "id"))
+  m = Map.set(&2, String, m, "kind", "run")
+  m = Map.set(&2, String, m, "path", g(src, prefix, "path"))
+  m = Map.set(&2, String, m, "name", g(src, prefix, "name"))
   m = Map.set(&2, String, m, "run_number", g(src, prefix, "run_number"))
   m = Map.set(&2, String, m, "status", g(src, prefix, "status"))
   m = Map.set(&2, String, m, "conclusion", g(src, prefix, "conclusion"))
   m = Map.set(&2, String, m, "state", state(src, prefix))
   m = Map.set(&2, String, m, "workflow", wf.of(src, prefix, forge))
-  m = Map.set(&2, String, m, "branch", g(src, prefix, "head_branch"))
+  m = Map.set(&2, String, m, "branch", branch.of(src, prefix))
   m = Map.set(&2, String, m, "sha", g(src, prefix, "head_sha"))
   m = Map.set(&2, String, m, "title", Ctx.or(g(src, prefix, "display_title"), wf.of(src, prefix, forge)))
   m = Map.set(&2, String, m, "event", g(src, prefix, "event"))
   m = Map.set(&2, String, m, "started_at", started.at(src, prefix, forge))
+  m = Map.set(&2, String, m, "updated_at", g(src, prefix, "updated_at"))
+  m = Map.set(&2, String, m, "completed_at", completed.at(src, prefix, String.eq(g(src, prefix, "status"), "completed")))
+  m = Map.set(&2, String, m, "duration", elapsed(started.at(src, prefix, forge), completed.at(src, prefix, String.eq(g(src, prefix, "status"), "completed"))))
   m = Map.set(&2, String, m, "age", age.at(src, prefix, forge, now))
   m = Map.set(&2, String, m, "html_url", g(src, prefix, "html_url"))
   m
@@ -160,7 +208,7 @@ def run.lines(+on: Bool, xs: List<&2, Map<&2, String>>) -> String:
       run.line(on, x) ++ "\n" ++ run.lines(on, rest)
 
 def run.fields() -> List<&2, String>:
-  ["id", "run_number", "state", "status", "conclusion", "workflow", "branch", "sha", "title", "event", "age", "started_at", "html_url"]
+  ["kind", "id", "run_number", "state", "status", "conclusion", "workflow", "branch", "sha", "title", "event", "age", "started_at", "updated_at", "completed_at", "duration", "html_url"]
 
 # the runs of a list body, as rows
 def prefix.of(+root: String, i: U32) -> String:
@@ -212,15 +260,48 @@ def check.ok(+env: Cli.Env, r: Api.Reply) -> IO(Unit):
 # Jobs
 # ----
 
+# Run, job and step durations share the same timestamp semantics.
+def job.duration(+start: String, +end: String) -> String:
+  elapsed(start, end)
+
+def job.duration.text(+seconds: String) -> String:
+  Ctx.or.if(seconds ++ "s", "", String.is_empty(seconds))
+
+# Copy each step to the normalized job row, retaining the flat array convention.
+def step.copy(+src: Map<&2, String>, +source: String, +target: String, m: Map<&2, String>) -> Map<&2, String>:
+  m = Map.set(&2, String, m, Api.key(target, "number"), g(src, source, "number"))
+  m = Map.set(&2, String, m, Api.key(target, "name"), g(src, source, "name"))
+  m = Map.set(&2, String, m, Api.key(target, "status"), g(src, source, "status"))
+  m = Map.set(&2, String, m, Api.key(target, "conclusion"), g(src, source, "conclusion"))
+  m = Map.set(&2, String, m, Api.key(target, "state"), state(src, source))
+  m = Map.set(&2, String, m, Api.key(target, "started_at"), g(src, source, "started_at"))
+  m = Map.set(&2, String, m, Api.key(target, "completed_at"), g(src, source, "completed_at"))
+  Map.set(&2, String, m, Api.key(target, "duration"), job.duration(g(src, source, "started_at"), g(src, source, "completed_at")))
+
+def steps.copy(n: Nat, +i: U32, +src: Map<&2, String>, +prefix: String, m: Map<&2, String>) -> Map<&2, String>:
+  match n:
+    case 0n:
+      m
+    case 1n+p:
+      +target = prefix.of("steps", i)
+      steps.copy(p, (i + 1 : U32), src, prefix, step.copy(src, Api.key(prefix, target), target, m))
+
 def job.row(+src: Map<&2, String>, +prefix: String) -> Map<&2, String>:
   m = Map.new(&2, String)
+  m = Map.set(&2, String, m, "kind", "job")
   m = Map.set(&2, String, m, "id", g(src, prefix, "id"))
   m = Map.set(&2, String, m, "name", g(src, prefix, "name"))
   m = Map.set(&2, String, m, "status", g(src, prefix, "status"))
   m = Map.set(&2, String, m, "conclusion", g(src, prefix, "conclusion"))
   m = Map.set(&2, String, m, "state", state(src, prefix))
+  m = Map.set(&2, String, m, "runner_name", g(src, prefix, "runner_name"))
+  m = Map.set(&2, String, m, "started_at", g(src, prefix, "started_at"))
+  m = Map.set(&2, String, m, "completed_at", g(src, prefix, "completed_at"))
+  m = Map.set(&2, String, m, "duration", job.duration(g(src, prefix, "started_at"), g(src, prefix, "completed_at")))
   m = Map.set(&2, String, m, "html_url", g(src, prefix, "html_url"))
-  m
+  +count = Api.count(src, Api.key(prefix, "steps"))
+  m = Map.set(&2, String, m, "steps.#", Nat.show(count))
+  steps.copy(count, 0, src, prefix, m)
 
 def jrows.go(n: Nat, +i: U32, +src: Map<&2, String>) -> List<&2, Map<&2, String>>:
   match n:
@@ -232,8 +313,24 @@ def jrows.go(n: Nat, +i: U32, +src: Map<&2, String>) -> List<&2, Map<&2, String>
 def jrows.of(+src: Map<&2, String>) -> List<&2, Map<&2, String>>:
   jrows.go(Api.count(src, "jobs"), 0, src)
 
+def step.text(+on: Bool, +label: String, +name: String, +seconds: String, skipped: Bool) -> String:
+  match skipped:
+    case True{}:
+      Ui.dim(on, "    " ++ label ++ "  " ++ name ++ "  " ++ job.duration.text(seconds))
+    case False{}:
+      "    " ++ Ui.state(on, label) ++ "  " ++ name ++ "  " ++ job.duration.text(seconds)
+
+def steps.lines(n: Nat, +i: U32, +on: Bool, +row: Map<&2, String>) -> String:
+  match n:
+    case 0n:
+      ""
+    case 1n+p:
+      +prefix = prefix.of("steps", i)
+      step.text(on, g(row, prefix, "state"), g(row, prefix, "name"), g(row, prefix, "duration"), String.eq(g(row, prefix, "state"), "skipped")) ++ "\n" ++ steps.lines(p, (i + 1 : U32), on, row)
+
 def job.line(+on: Bool, +row: Map<&2, String>) -> String:
-  "  " ++ Api.f(row, "name") ++ "  " ++ Ui.state(on, Api.f(row, "state")) ++ "  " ++ Ui.dim(on, "#" ++ Api.f(row, "id")) ++ "\n"
+  "  " ++ Api.f(row, "name") ++ "  " ++ Ui.state(on, Api.f(row, "state")) ++ "  " ++ Ui.dim(on, "#" ++ Api.f(row, "id")) ++ "  " ++ Api.f(row, "runner_name") ++ "  " ++ job.duration.text(Api.f(row, "duration")) ++ "\n" ++
+  steps.lines(Api.count(row, "steps"), 0, on, row)
 
 def job.lines(+on: Bool, xs: List<&2, Map<&2, String>>) -> String:
   match xs:
@@ -243,11 +340,27 @@ def job.lines(+on: Bool, xs: List<&2, Map<&2, String>>) -> String:
       job.line(on, x) ++ job.lines(on, rest)
 
 def job.fields() -> List<&2, String>:
-  ["id", "name", "state", "status", "conclusion", "html_url"]
+  ["kind", "id", "name", "state", "status", "conclusion", "runner_name", "started_at", "completed_at", "duration", "html_url", "steps.#"]
 
-# which jobs a filter keeps: --job is an id, --failed drops the ones that passed
+def steps.fields(n: Nat, +i: U32) -> List<&2, String>:
+  match n:
+    case 0n:
+      Nil{}
+    case 1n+p:
+      +prefix = prefix.of("steps", i)
+      List.append(&2, String, [Api.key(prefix, "number"), Api.key(prefix, "name"), Api.key(prefix, "state"), Api.key(prefix, "status"), Api.key(prefix, "conclusion"), Api.key(prefix, "started_at"), Api.key(prefix, "completed_at"), Api.key(prefix, "duration")], steps.fields(p, (i + 1 : U32)))
+
+def job.json.fields(+row: Map<&2, String>) -> List<&2, String>:
+  List.append(&2, String, job.fields(), steps.fields(Api.count(row, "steps"), 0))
+
+# The original id-only predicate remains useful to callers without a job name.
 def want.job(+id: String, +conclusion: String, +job: String, only_failed: Bool) -> Bool:
   Bool.and(Bool.or(String.is_empty(job), String.eq(id, job)), Bool.or(Bool.not(only_failed), failed.labels(conclusion)))
+
+# Names match exactly apart from case. A partial matrix label must not silently
+# select another job. --failed intersects the name/id selection.
+def want.job.named(+id: String, +name: String, +conclusion: String, +job: String, only_failed: Bool) -> Bool:
+  (String.is_empty(job) || String.eq(id, job) || Runlogs.same(name, job)) && (Bool.not(only_failed) || failed.labels(conclusion))
 
 def keep.if(+row: Map<&2, String>, rest: List<&2, Map<&2, String>>, keep: Bool) -> List<&2, Map<&2, String>>:
   match keep:
@@ -257,7 +370,7 @@ def keep.if(+row: Map<&2, String>, rest: List<&2, Map<&2, String>>, keep: Bool) 
       rest
 
 def keep.job(+row: Map<&2, String>, rest: List<&2, Map<&2, String>>, +job: String, only_failed: Bool) -> List<&2, Map<&2, String>>:
-  keep.if(row, rest, want.job(Api.f(row, "id"), Api.f(row, "conclusion"), job, only_failed))
+  keep.if(row, rest, want.job.named(Api.f(row, "id"), Api.f(row, "name"), Api.f(row, "conclusion"), job, only_failed))
 
 def keep.go(n: Nat, +i: U32, +src: Map<&2, String>, +job: String, +only_failed: Bool) -> List<&2, Map<&2, String>>:
   match n:
@@ -266,22 +379,28 @@ def keep.go(n: Nat, +i: U32, +src: Map<&2, String>, +job: String, +only_failed: 
     case 1n+p:
       keep.job(job.row(src, prefix.of("jobs", i)), keep.go(p, (i + 1 : U32), src, job, only_failed), job, only_failed)
 
+def keep.rows(xs: List<&2, Map<&2, String>>, +job: String, +only_failed: Bool) -> List<&2, Map<&2, String>>:
+  match xs:
+    case Nil{}:
+      Nil{}
+    case Con{x, rest}:
+      keep.job(x, keep.rows(rest, job, only_failed), job, only_failed)
+
 # view
 # ----
 
-def view.json.jobs(xs: List<&2, Map<&2, String>>) -> IO(Unit):
+def view.json.jobs(xs: List<&2, Map<&2, String>>) -> List<&2, String>:
   match xs:
     case Nil{}:
-      IO.pure(Unit, Unit{})
-    case Con{x, rest}:
-      do IO<Unit>:
-        IO.print(Cli.json.row(x, job.fields()))
-        view.json.jobs(rest)
+      Nil{}
+    case Con{+x, rest}:
+      Cli.json.row(x, job.json.fields(x)) <> view.json.jobs(rest)
+
+def view.json.text(+row: Map<&2, String>, jobs: List<&2, Map<&2, String>>) -> String:
+  "[" ++ String.join(Cli.json.row(row, run.fields()) <> view.json.jobs(jobs), ",\n") ++ "]"
 
 def view.json(+row: Map<&2, String>, +jobs: List<&2, Map<&2, String>>) -> IO(Unit):
-  do IO<Unit>:
-    IO.print(Cli.json.row(row, run.fields()))
-    view.json.jobs(jobs)
+  IO.print(view.json.text(row, jobs))
 
 def view.text(+on: Bool, +row: Map<&2, String>, +jobs: List<&2, Map<&2, String>>) -> String:
   "#" ++ Api.f(row, "id") ++ "  " ++ Ui.state(on, Api.f(row, "state")) ++ "  " ++ Api.f(row, "workflow") ++ "\n" ++
@@ -317,6 +436,39 @@ def require.at(+env: Cli.Env, n: Nat, +what: String) -> IO(String):
     case Cli.Env{r, t, c, j, +args}:
       require.str(env, Cli.arg(args, n), what)
 
+# View and log selection need every job, including jobs beyond the first page.
+type JobPages is Type:
+  FetchJobs{url: String, acc: List<&2, Map<&2, String>>}
+  ReadJobs{reply: Api.Reply, acc: List<&2, Map<&2, String>>}
+  NextJobs{last: Bool, url: String, acc: List<&2, Map<&2, String>>}
+
+def jobs.page(+next: String, body: Bytes.Bytes, acc: List<&2, Map<&2, String>>) -> JobPages:
+  NextJobs{String.is_empty(next), next, List.append(&2, Map<&2, String>, acc, jrows.of(Api.obj(body)))}
+
+def jobs.walk(fuel: Nat, +env: Cli.Env, +repo: Ctx.Repo, +tok: String, st: JobPages) -> IO(List<&2, Map<&2, String>>):
+  match fuel st:
+    case 0n s:
+      Cli.fail(List<&2, Map<&2, String>>, env, "runs: too many job pages")
+    case 1n+p FetchJobs{url, acc}:
+      do IO<List<&2, Map<&2, String>>>:
+        r : Api.Reply <- Api.get(repo, tok, url)
+        jobs.walk(p, env, repo, tok, ReadJobs{r, acc})
+    case 1n+p ReadJobs{Api.Broke{w}, acc}:
+      Cli.fail(List<&2, Map<&2, String>>, env, w)
+    case 1n+p ReadJobs{Api.Reply{+status, +next, body}, acc}:
+      do IO<List<&2, Map<&2, String>>>:
+        b : Bytes.Bytes <- ok.body(env, status, body, Api.ok(status))
+        jobs.walk(p, env, repo, tok, jobs.page(next, b, acc))
+    case 1n+p NextJobs{True{}, url, acc}:
+      IO.pure(List<&2, Map<&2, String>>, acc)
+    case 1n+p NextJobs{False{}, url, acc}:
+      jobs.walk(p, env, repo, tok, FetchJobs{url, acc})
+
+def jobs.fetch(+env: Cli.Env, +id: String) -> IO(List<&2, Map<&2, String>>):
+  match env:
+    case Cli.Env{+repo, +tok, on, json, a}:
+      jobs.walk(301n, env, repo, tok, FetchJobs{Api.path(repo, "actions/runs/" ++ Url.encode(id) ++ "/jobs?page=1&per_page=100&limit=100"), Nil{}})
+
 def view(+env: Cli.Env) -> IO(Unit):
   match env:
     case Cli.Env{+repo, +tok, on, json, +args}:
@@ -327,12 +479,21 @@ def view(+env: Cli.Env) -> IO(Unit):
         now : Time.Instant <- Time.now()
         +src : Map<&2, String> = Api.obj(body)
         +row : Map<&2, String> = run.row(src, "", forge.of(repo), now)
-        jr : Api.Reply <- Api.get(repo, tok, Api.path(repo, "actions/runs/" ++ id ++ "/jobs"))
-        jb : Bytes.Bytes <- fetch.body(env, jr)
-        view.print(env, row, jrows.of(Api.obj(jb)))
+        jobs : List<&2, Map<&2, String>> <- jobs.fetch(env, id)
+        view.print(env, row, jobs)
 
 # logs
 # ----
+
+# A summary lets unfinished jobs report their status without stopping completed
+# jobs later in the response from printing. Incomplete retrieval exits 1 at end.
+type LogSummary is Data:
+  LogSummary{matched: U32, printed: U32, incomplete: Bool}
+
+def logs.sum(a: LogSummary, b: LogSummary) -> LogSummary:
+  match a b:
+    case LogSummary{am, ap, ai} LogSummary{bm, bp, bi}:
+      LogSummary{(am + bm : U32), (ap + bp : U32), ai || bi}
 
 def log.nl(+text: String) -> String:
   Ctx.or.if(text ++ "\n", text, String.ends_with(text, "\n"))
@@ -340,32 +501,141 @@ def log.nl(+text: String) -> String:
 def logs.head(+on: Bool, +row: Map<&2, String>) -> String:
   Ui.bold(on, Api.f(row, "name")) ++ "  " ++ Ui.state(on, Api.f(row, "state")) ++ "  " ++ Ui.dim(on, "#" ++ Api.f(row, "id")) ++ "\n"
 
-def logs.one(+env: Cli.Env, +row: Map<&2, String>) -> IO(Unit):
-  match env:
-    case Cli.Env{+repo, +tok, on, json, a}:
-      do IO<Unit>:
-        r : Api.Reply <- Api.get(repo, tok, Api.path(repo, "actions/jobs/" ++ Api.f(row, "id") ++ "/logs"))
-        b : Bytes.Bytes <- fetch.body(env, r)
-        IO.write(logs.head(on, row) ++ log.nl(Api.text(b)) ++ "\n")
+def logs.pending(forge: Ctx.Forge, +status: String) -> Bool:
+  match forge:
+    case Ctx.GitHub{}:
+      Bool.not(String.eq(status, "completed"))
+    case Ctx.Gitea{}:
+      False{}
 
-def logs.jobs(+env: Cli.Env, xs: List<&2, Map<&2, String>>) -> IO(Unit):
-  match xs:
-    case Nil{}:
-      IO.pure(Unit, Unit{})
-    case Con{x, rest}:
-      do IO<Unit>:
-        logs.one(env, x)
-        logs.jobs(env, rest)
+def logs.pending.message(+id: String, +name: String, +status: String) -> String:
+  "runs logs: job " ++ name ++ " is " ++ status ++ "; logs appear when it finishes; try cha runs watch " ++ id
+
+def logs.get(+env: Cli.Env, +row: Map<&2, String>, +suffix: String) -> IO(Bytes.Bytes):
+  match env:
+    case Cli.Env{+repo, tok, on, json, a}:
+      do IO<Bytes.Bytes>:
+        r : Api.Reply <- Api.get(repo, tok, Api.path(repo, "actions/jobs/" ++ Api.f(row, "id") ++ suffix))
+        fetch.body(env, r)
+
+def logs.whole(+env: Cli.Env, +row: Map<&2, String>) -> IO(LogSummary):
+  match env:
+    case Cli.Env{repo, tok, on, json, a}:
+      do IO<LogSummary>:
+        b : Bytes.Bytes <- logs.get(env, row, "/logs")
+        IO.write(logs.head(on, row) ++ log.nl(Runlogs.strip.bom(Api.text(b))) ++ "\n")
+        return LogSummary{1, 1, False{}}
+
+def logs.step.path(+job: String, position: U32) -> String:
+  "actions/jobs/" ++ job ++ "/steps/" ++ U32.show(position) ++ "/logs"
+
+def logs.step.gitea(+env: Cli.Env, +row: Map<&2, String>, +name: String, body: Maybe<&2, String>) -> IO(LogSummary):
+  match env body:
+    case Cli.Env{repo, tok, on, json, a} None{}:
+      do IO<LogSummary>:
+        Ui.error(on, "runs logs: no usable timing metadata for step " ++ name ++ " in job " ++ Api.f(row, "name") ++ "; omit --step to read the job log")
+        return LogSummary{1, 0, True{}}
+    case Cli.Env{repo, tok, +on, json, a} Some{text}:
+      do IO<LogSummary>:
+        Ui.info(on, "runs logs: Gitea step times have one-second precision; boundary lines can overlap adjacent steps")
+        IO.write(logs.head(on, row) ++ "  step: " ++ name ++ "\n" ++ log.nl(text) ++ "\n")
+        return LogSummary{1, 1, False{}}
+
+def logs.step.fetch(+env: Cli.Env, +row: Map<&2, String>, s: Runlogs.Step, forge: Ctx.Forge) -> IO(LogSummary):
+  match env s forge:
+    case Cli.Env{+repo, tok, on, json, a} Runlogs.Step{position, +name, status, conclusion, started, completed} Ctx.GitHub{}:
+      do IO<LogSummary>:
+        r : Api.Reply <- Api.get(repo, tok, Api.path(repo, logs.step.path(Api.f(row, "id"), position)))
+        b : Bytes.Bytes <- fetch.body(env, r)
+        IO.write(logs.head(on, row) ++ "  step: " ++ name ++ "\n" ++ log.nl(Runlogs.strip.bom(Api.text(b))) ++ "\n")
+        return LogSummary{1, 1, False{}}
+    case Cli.Env{repo, tok, on, json, a} Runlogs.Step{position, +name, status, conclusion, started, completed} Ctx.Gitea{}:
+      do IO<LogSummary>:
+        b : Bytes.Bytes <- logs.get(env, row, "/logs")
+        logs.step.gitea(env, row, name, Runlogs.window(Api.text(b), started, completed))
+
+def logs.step.skip(+env: Cli.Env, +row: Map<&2, String>, +s: Runlogs.Step, forge: Ctx.Forge, skipped: Bool) -> IO(LogSummary):
+  match env s skipped:
+    case Cli.Env{repo, tok, on, json, a} Runlogs.Step{position, name, status, conclusion, started, completed} True{}:
+      do IO<LogSummary>:
+        Ui.info(on, "runs logs: step " ++ name ++ " was skipped and has no logs")
+        return LogSummary{1, 0, False{}}
+    case Cli.Env{repo, tok, on, json, a} Runlogs.Step{position, name, status, conclusion, started, completed} False{}:
+      logs.step.fetch(env, row, s, forge)
+
+def logs.step(+env: Cli.Env, +row: Map<&2, String>, +s: Runlogs.Step, forge: Ctx.Forge) -> IO(LogSummary):
+  match s:
+    case Runlogs.Step{position, name, status, +conclusion, started, completed}:
+      logs.step.skip(env, row, s, forge, String.eq(conclusion, "skipped"))
+
+def logs.steps(+env: Cli.Env, +row: Map<&2, String>, xs: List<&2, Runlogs.Step>) -> IO(LogSummary):
+  match env xs:
+    case Cli.Env{repo, tok, on, json, a} Nil{}:
+      IO.pure(LogSummary, LogSummary{0, 0, False{}})
+    case Cli.Env{+repo, tok, on, json, a} Con{s, rest}:
+      do IO<LogSummary>:
+        a : LogSummary <- logs.step(env, row, s, forge.of(repo))
+        b : LogSummary <- logs.steps(env, row, rest)
+        return logs.sum(a, b)
+
+def logs.pick.step(+env: Cli.Env, +row: Map<&2, String>, +step: String, whole: Bool) -> IO(LogSummary):
+  match whole:
+    case True{}:
+      logs.whole(env, row)
+    case False{}:
+      logs.steps(env, row, Runlogs.steps.of(row, "steps", step))
+
+def logs.one(+env: Cli.Env, +id: String, +row: Map<&2, String>, +step: String, pending: Bool) -> IO(LogSummary):
+  match env pending:
+    case Cli.Env{repo, tok, on, json, a} True{}:
+      do IO<LogSummary>:
+        Ui.info(on, logs.pending.message(id, Api.f(row, "name"), Api.f(row, "status")))
+        return LogSummary{0, 0, True{}}
+    case Cli.Env{repo, tok, on, json, a} False{}:
+      logs.pick.step(env, row, step, String.is_empty(step))
+
+def logs.jobs(+env: Cli.Env, +id: String, xs: List<&2, Map<&2, String>>, +step: String) -> IO(LogSummary):
+  match env xs:
+    case Cli.Env{repo, tok, on, json, a} Nil{}:
+      IO.pure(LogSummary, LogSummary{0, 0, False{}})
+    case Cli.Env{+repo, tok, on, json, a} Con{+row, rest}:
+      do IO<LogSummary>:
+        a : LogSummary <- logs.one(env, id, row, step, logs.pending(forge.of(repo), Api.f(row, "status")))
+        b : LogSummary <- logs.jobs(env, id, rest, step)
+        return logs.sum(a, b)
 
 def logs.miss(+xs: List<&2, Map<&2, String>>, +job: String) -> Bool:
   Bool.and(Bool.not(String.is_empty(job)), Nat.is_eq(List.length(&2, Map<&2, String>, xs), 0n))
 
-def logs.pick.if(+env: Cli.Env, +xs: List<&2, Map<&2, String>>, +job: String, miss: Bool) -> IO(Unit):
+def logs.available.steps(xs: List<&2, Map<&2, String>>) -> String:
+  match xs:
+    case Nil{}:
+      ""
+    case Con{+row, rest}:
+      Api.f(row, "name") ++ ":\n" ++ Runlogs.steps.names(Runlogs.steps.of(row, "steps", "")) ++ logs.available.steps(rest)
+
+def logs.finish.if(+env: Cli.Env, +xs: List<&2, Map<&2, String>>, +step: String, missing: Bool, incomplete: Bool) -> IO(Unit):
+  match missing incomplete:
+    case _ True{}:
+      IO.die(Unit, 1, "")
+    case True{} False{}:
+      Cli.fail(Unit, env, "runs logs: no step " ++ step ++ "; available steps (when supplied by the forge):\n" ++ logs.available.steps(xs) ++ "omit --step to read complete job logs")
+    case False{} False{}:
+      IO.pure(Unit, Unit{})
+
+def logs.finish(+env: Cli.Env, +xs: List<&2, Map<&2, String>>, +step: String, result: LogSummary) -> IO(Unit):
+  match result:
+    case LogSummary{matched, printed, incomplete}:
+      logs.finish.if(env, xs, step, Bool.not(String.is_empty(step)) && U32.is_eq(matched, 0), incomplete)
+
+def logs.pick.if(+env: Cli.Env, +id: String, +xs: List<&2, Map<&2, String>>, +all: List<&2, Map<&2, String>>, +job: String, +step: String, miss: Bool) -> IO(Unit):
   match miss:
     case True{}:
-      Cli.fail(Unit, env, "runs logs: no job " ++ job)
+      Cli.fail(Unit, env, "runs logs: no job " ++ job ++ "; available jobs:\n" ++ job.lines(False{}, all))
     case False{}:
-      logs.jobs(env, xs)
+      do IO<Unit>:
+        result : LogSummary <- logs.jobs(env, id, xs, step)
+        logs.finish(env, xs, step, result)
 
 def logs(+env: Cli.Env) -> IO(Unit):
   match env:
@@ -373,11 +643,11 @@ def logs(+env: Cli.Env) -> IO(Unit):
       do IO<Unit>:
         +id : String <- require.at(env, 1n, "run id")
         +job : String = Cli.flag(args, "--job", "")
-        r : Api.Reply <- Api.get(repo, tok, Api.path(repo, "actions/runs/" ++ id ++ "/jobs"))
-        body : Bytes.Bytes <- fetch.body(env, r)
-        +js : Map<&2, String> = Api.obj(body)
-        +ks : List<&2, Map<&2, String>> = keep.go(Api.count(js, "jobs"), 0, js, job, Cli.has(args, "--failed"))
-        logs.pick.if(env, ks, job, logs.miss(ks, job))
+        +step : String <- require.if(env, Cli.flag(args, "--step", ""), "step name", (Cli.has(args, "--step") || Cli.has(args, "--step=")) && (String.is_empty(Cli.flag(args, "--step", "")) || String.starts_with(Cli.flag(args, "--step", ""), "--")))
+        +all : List<&2, Map<&2, String>> <- jobs.fetch(env, id)
+        +ks : List<&2, Map<&2, String>> = keep.rows(all, job, Cli.has(args, "--failed"))
+        +named : List<&2, Map<&2, String>> = keep.rows(all, job, False{})
+        logs.pick.if(env, id, ks, all, job, step, logs.miss(named, job))
 
 # watch
 # -----
@@ -551,27 +821,69 @@ def dispatch(+env: Cli.Env) -> IO(Unit):
         check.ok(env, r)
         dispatch.url(env, ref)
 
-def rerun.post(+env: Cli.Env, +id: String) -> IO(Unit):
+# A selected job uses the job endpoint; --failed uses the run's failed-jobs endpoint.
+def rerun.path(+id: String, +job: String, failed: Bool, specific: Bool) -> String:
+  match failed specific:
+    case f True{}:
+      "actions/jobs/" ++ Url.encode(job) ++ "/rerun"
+    case True{} False{}:
+      "actions/runs/" ++ Url.encode(id) ++ "/rerun-failed-jobs"
+    case False{} False{}:
+      "actions/runs/" ++ Url.encode(id) ++ "/rerun"
+
+def rerun.post(+env: Cli.Env, +id: String, +job: String, +failed: Bool) -> IO(Unit):
   match env:
     case Cli.Env{+repo, +tok, on, json, a}:
       do IO<Unit>:
-        r : Api.Reply <- Api.send(repo, tok, "POST", Api.path(repo, "actions/runs/" ++ id ++ "/rerun"), None{})
+        r : Api.Reply <- Api.send(repo, tok, "POST", Api.path(repo, rerun.path(id, job, failed, Bool.not(String.is_empty(job)))), None{})
         check.ok(env, r)
         done.url(env, "actions/runs/" ++ id)
 
-def rerun.go(+env: Cli.Env, +forge: Ctx.Forge, +id: String) -> IO(Unit):
+def rerun.job.check(+env: Cli.Env, +id: String, +job: String, same: Bool) -> IO(Unit):
+  match same:
+    case True{}:
+      rerun.post(env, id, job, False{})
+    case False{}:
+      Cli.fail(Unit, env, "runs rerun: job does not belong to run " ++ id)
+
+def rerun.selected(+env: Cli.Env, +id: String, +job: String, +failed: Bool, specific: Bool) -> IO(Unit):
+  match env specific:
+    case Cli.Env{repo, tok, on, json, a} False{}:
+      rerun.post(env, id, job, failed)
+    case Cli.Env{+repo, +tok, on, json, a} True{}:
+      do IO<Unit>:
+        r : Api.Reply <- Api.get(repo, tok, Api.path(repo, "actions/jobs/" ++ Url.encode(job)))
+        b : Bytes.Bytes <- fetch.body(env, r)
+        rerun.job.check(env, id, job, String.eq(Api.f(Api.obj(b), "run_id"), id))
+
+def rerun.valid(+env: Cli.Env, +id: String, +job: String, +failed: Bool, conflict: Bool) -> IO(Unit):
+  match conflict:
+    case True{}:
+      Cli.fail(Unit, env, "runs rerun: choose either --failed or --job ID")
+    case False{}:
+      rerun.selected(env, id, job, failed, Bool.not(String.is_empty(job)))
+
+def rerun.go(+env: Cli.Env, +forge: Ctx.Forge, +id: String, +job: String, +failed: Bool) -> IO(Unit):
   match forge:
     case Ctx.Gitea{}:
       Cli.fail(Unit, env, "runs rerun: this forge has no rerun API; push a commit or rerun from the web UI")
     case Ctx.GitHub{}:
-      rerun.post(env, id)
+      rerun.valid(env, id, job, failed, failed && Bool.not(String.is_empty(job)))
+
+def rerun.args(+env: Cli.Env, +repo: Ctx.Repo, +id: String, +job: String, +failed: Bool, missing: Bool) -> IO(Unit):
+  match missing:
+    case True{}:
+      Cli.fail(Unit, env, "runs rerun: --job needs a job id")
+    case False{}:
+      rerun.go(env, forge.of(repo), id, job, failed)
 
 def rerun(+env: Cli.Env) -> IO(Unit):
   match env:
     case Cli.Env{+repo, +tok, on, json, +args}:
       do IO<Unit>:
         +id : String <- require.at(env, 1n, "run id")
-        rerun.go(env, forge.of(repo), id)
+        +job : String = Cli.flag(args, "--job", "")
+        rerun.args(env, repo, id, job, Cli.has(args, "--failed"), (Cli.has(args, "--job") || Cli.has(args, "--job=")) && (String.is_empty(job) || String.starts_with(job, "--")))
 
 def cancel.bad(+env: Cli.Env, +status: U32, body: Bytes.Bytes, missing: Bool) -> IO(Unit):
   match missing:
@@ -612,15 +924,157 @@ def list.print(+on: Bool, json: Bool, +xs: List<&2, Map<&2, String>>) -> IO(Unit
     case False{}:
       IO.write(run.lines(on, xs))
 
+# Match the workflow's display name, full path, or file basename. A path can
+# include @ref on both forges; it is not part of the filename.
+def workflow.matches(+row: Map<&2, String>, +wanted: String) -> Bool:
+  +path = Ctx.first(String.split(Api.f(row, "path"), '@'))
+  String.is_empty(wanted) || String.eq(wanted, Api.f(row, "workflow")) || String.eq(wanted, Api.f(row, "name")) || String.eq(wanted, path) || String.eq(wanted, Ctx.last(String.split(path, '/')))
+
+def workflow.any(wanted: List<&2, String>, +row: Map<&2, String>) -> Bool:
+  match wanted:
+    case Nil{}:
+      False{}
+    case Con{w, rest}:
+      workflow.matches(row, w) || workflow.any(rest, row)
+
+def workflow.want(wanted: List<&2, String>, +row: Map<&2, String>) -> Bool:
+  match wanted:
+    case Nil{}:
+      True{}
+    case Con{w, rest}:
+      workflow.any(Con{w, rest}, row)
+
+# Workflow display names are absent from Gitea run rows. Resolve names using
+# current workflow metadata, then filter historical runs by their file paths.
+def workflow.add.if(+path: String, acc: List<&2, String>, matches: Bool) -> List<&2, String>:
+  match matches:
+    case True{}:
+      path <> acc
+    case False{}:
+      acc
+
+def workflow.add(+src: Map<&2, String>, +prefix: String, +wanted: String, acc: List<&2, String>) -> List<&2, String>:
+  workflow.add.if(Ctx.last(String.split(Ctx.or(g(src, prefix, "path"), g(src, prefix, "id")), '/')), acc, String.eq(g(src, prefix, "name"), wanted))
+
+def workflow.named(n: Nat, +i: U32, +src: Map<&2, String>, +wanted: String, acc: List<&2, String>) -> List<&2, String>:
+  match n:
+    case 0n:
+      acc
+    case 1n+p:
+      workflow.named(p, (i + 1 : U32), src, wanted, workflow.add(src, prefix.of("workflows", i), wanted, acc))
+
+def list.keep(xs: List<&2, Map<&2, String>>, +workflow: List<&2, String>) -> List<&2, Map<&2, String>>:
+  match xs:
+    case Nil{}:
+      Nil{}
+    case Con{+x, rest}:
+      keep.if(x, list.keep(rest, workflow), workflow.want(workflow, x))
+
+type WorkflowPages is Type:
+  FetchWorkflows{url: String, matches: List<&2, String>}
+  ReadWorkflows{reply: Api.Reply, matches: List<&2, String>}
+  NextWorkflows{last: Bool, url: String, matches: List<&2, String>}
+
+def workflow.page(+next: String, body: Bytes.Bytes, +wanted: String, acc: List<&2, String>) -> WorkflowPages:
+  +src = Api.obj(body)
+  NextWorkflows{String.is_empty(next), next, workflow.named(Api.count(src, "workflows"), 0, src, wanted, acc)}
+
+def workflow.finish(+env: Cli.Env, xs: List<&2, String>, +wanted: String) -> IO(List<&2, String>):
+  match xs:
+    case Nil{}:
+      Cli.fail(List<&2, String>, env, "runs list: no workflow named " ++ wanted ++ "; try its file name")
+    case Con{x, rest}:
+      IO.pure(List<&2, String>, Con{x, rest})
+
+def workflow.walk(fuel: Nat, +env: Cli.Env, +repo: Ctx.Repo, +tok: String, +wanted: String, st: WorkflowPages) -> IO(List<&2, String>):
+  match fuel st:
+    case 0n s:
+      Cli.fail(List<&2, String>, env, "runs list: too many workflow pages; use a file name")
+    case 1n+p FetchWorkflows{url, acc}:
+      do IO<List<&2, String>>:
+        r : Api.Reply <- Api.get(repo, tok, url)
+        workflow.walk(p, env, repo, tok, wanted, ReadWorkflows{r, acc})
+    case 1n+p ReadWorkflows{Api.Broke{w}, acc}:
+      Cli.fail(List<&2, String>, env, w)
+    case 1n+p ReadWorkflows{Api.Reply{+status, +next, body}, acc}:
+      do IO<List<&2, String>>:
+        b : Bytes.Bytes <- ok.body(env, status, body, Api.ok(status))
+        workflow.walk(p, env, repo, tok, wanted, workflow.page(next, b, wanted, acc))
+    case 1n+p NextWorkflows{True{}, url, acc}:
+      workflow.finish(env, acc, wanted)
+    case 1n+p NextWorkflows{False{}, url, acc}:
+      workflow.walk(p, env, repo, tok, wanted, FetchWorkflows{url, acc})
+
+def workflow.name.resolve(+env: Cli.Env, +repo: Ctx.Repo, +tok: String, +wanted: String, forge: Ctx.Forge) -> IO(List<&2, String>):
+  match forge:
+    case Ctx.GitHub{}:
+      IO.pure(List<&2, String>, [wanted])
+    case Ctx.Gitea{}:
+      workflow.walk(301n, env, repo, tok, wanted, FetchWorkflows{Api.path(repo, "actions/workflows?page=1&limit=100"), Nil{}})
+
+def workflow.resolve(+env: Cli.Env, +repo: Ctx.Repo, +tok: String, +wanted: String, empty: Bool, file: Bool) -> IO(List<&2, String>):
+  match empty file:
+    case True{} f:
+      IO.pure(List<&2, String>, Nil{})
+    case False{} True{}:
+      IO.pure(List<&2, String>, [wanted])
+    case False{} False{}:
+      workflow.name.resolve(env, repo, tok, wanted, forge.of(repo))
+
+def require.limit(+env: Cli.Env, v: U32, valid: Bool) -> IO(Nat):
+  match valid:
+    case True{}:
+      IO.pure(Nat, U32.to_nat(v))
+    case False{}:
+      Cli.fail(Nat, env, "runs list: --limit must be an integer from 1 to 1000")
+
+def list.limit(+env: Cli.Env, n: Maybe<&2, U32>) -> IO(Nat):
+  match n:
+    case Some{+v}:
+      require.limit(env, v, (v > 0 : U32) && (v <= 1000 : U32))
+    case None{}:
+      Cli.fail(Nat, env, "runs list: --limit must be an integer from 1 to 1000")
+
+# Both APIs wrap their rows in workflow_runs, so Api.all's array walker cannot
+# be used here. Follow Link pages until enough matching runs have been collected.
+type RunPages is Type:
+  FetchRuns{url: String, acc: List<&2, Map<&2, String>>}
+  ReadRuns{reply: Api.Reply, acc: List<&2, Map<&2, String>>}
+  NextRuns{done: Bool, url: String, acc: List<&2, Map<&2, String>>}
+
+def list.page(+env: Cli.Env, +forge: Ctx.Forge, +now: Time.Instant, +wanted: List<&2, String>, +limit: Nat, +next: String, body: Bytes.Bytes, acc: List<&2, Map<&2, String>>) -> RunPages:
+  +got = List.append(&2, Map<&2, String>, acc, list.keep(rows.of(Api.obj(body), "workflow_runs", forge, now), wanted))
+  NextRuns{String.is_empty(next) || Nat.is_ge(List.length(&2, Map<&2, String>, got), limit), next, List.take(&2, Map<&2, String>, got, limit)}
+
+def list.walk(fuel: Nat, +env: Cli.Env, +repo: Ctx.Repo, +tok: String, +now: Time.Instant, +wanted: List<&2, String>, +limit: Nat, st: RunPages) -> IO(List<&2, Map<&2, String>>):
+  match fuel st:
+    case 0n s:
+      Cli.fail(List<&2, Map<&2, String>>, env, "runs list: pagination limit reached; narrow --branch or --status")
+    case 1n+p FetchRuns{url, acc}:
+      do IO<List<&2, Map<&2, String>>>:
+        r : Api.Reply <- Api.get(repo, tok, url)
+        list.walk(p, env, repo, tok, now, wanted, limit, ReadRuns{r, acc})
+    case 1n+p ReadRuns{Api.Broke{w}, acc}:
+      Cli.fail(List<&2, Map<&2, String>>, env, w)
+    case 1n+p ReadRuns{Api.Reply{+status, +next, body}, acc}:
+      do IO<List<&2, Map<&2, String>>>:
+        b : Bytes.Bytes <- ok.body(env, status, body, Api.ok(status))
+        list.walk(p, env, repo, tok, now, wanted, limit, list.page(env, forge.of(repo), now, wanted, limit, next, b, acc))
+    case 1n+p NextRuns{True{}, url, acc}:
+      IO.pure(List<&2, Map<&2, String>>, acc)
+    case 1n+p NextRuns{False{}, url, acc}:
+      list.walk(p, env, repo, tok, now, wanted, limit, FetchRuns{url, acc})
+
 def list(+env: Cli.Env) -> IO(Unit):
   match env:
     case Cli.Env{+repo, +tok, on, json, +args}:
       do IO<Unit>:
-        r : Api.Reply <- Api.get(repo, tok, Api.path(repo, runs.url(forge.of(repo), Cli.flag(args, "--branch", ""), Cli.flag(args, "--status", ""), Cli.flag(args, "--limit", "20"))))
-        body : Bytes.Bytes <- fetch.body(env, r)
-        now : Time.Instant <- Time.now()
-        +src : Map<&2, String> = Api.obj(body)
-        list.print(on, json, rows.of(src, "workflow_runs", forge.of(repo), now))
+        +limit : Nat <- list.limit(env, U32.read(Cli.flag(args, "--limit", "20")))
+        +now : Time.Instant <- Time.now()
+        +wanted : String = Cli.flag(args, "--workflow", "")
+        +workflows : List<&2, String> <- workflow.resolve(env, repo, tok, wanted, String.is_empty(wanted), String.ends_with(wanted, ".yml") || String.ends_with(wanted, ".yaml"))
+        xs : List<&2, Map<&2, String>> <- list.walk(301n, env, repo, tok, now, workflows, limit, FetchRuns{Api.path(repo, runs.url(forge.of(repo), Cli.flag(args, "--branch", ""), Cli.flag(args, "--status", ""), "50")), Nil{}})
+        list.print(on, json, xs)
 
 # routing
 # -------
