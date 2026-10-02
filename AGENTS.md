@@ -29,6 +29,7 @@ Humans and agents, under the same rules. A coding agent named **memu** is a regu
 | `test/*_live.bend` | checks against real forges, run by hand |
 | `LAWS.bend`, `PROOF.bend` | the laws and their proofs |
 | `skills/cha/SKILL.md` | the agent skill. Keep it in step with the commands and flags |
+| `docs/how.md` | how a command flows, with a diagram |
 | `packaging/arch/` | PKGBUILD. Bump `pkgver` with `version()` in `main.bend` and tag `v<version>` |
 
 `scripts/check.sh` checks definition order, type-checks every file, proves the laws and runs the offline checks. Run it before every commit. `bend PROOF.bend` on its own always ends with "SOME PROOFS FAIL" plus a list of defs relying on foreign code (the tty and http effects pulled in by `ui` and `api`). That's cha's green state. `check.sh` fails only on a law error, a TODO, or a law that itself relies on foreign code.

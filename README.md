@@ -24,7 +24,7 @@ $ cha runs watch 1337
 $ cha moved --since 1d
 ```
 
-> 🫖 **Early days.** The commands above work today. See the [agent skill](skills/cha/SKILL.md) for supported flags and the [roadmap](docs/roadmap.md) for the next priorities.
+> 🫖 **Early days.** The commands above work today. See the [agent skill](skills/cha/SKILL.md) for supported flags, [how a command flows](docs/how.md) for the path from shell to forge, and the [roadmap](docs/roadmap.md) for the next priorities.
 
 ## 📦 Install
 
