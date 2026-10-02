@@ -71,6 +71,36 @@ def stop.of(n: Nat) -> Rgb:
 def stop(+i: U32) -> Rgb:
   stop.of(U32.to_nat(i))
 
+# one channel t of the way from a to b, t in 0..1
+def blend(a: U32, b: U32, +t: F32) -> U32:
+  U32.from_nat(F32.to_nat(F32.round(F32.lerp(F32.from_nat(U32.to_nat(a)), F32.from_nat(U32.to_nat(b)), t))))
+
+def mix(x: Rgb, y: Rgb, +t: F32) -> Rgb:
+  match x y:
+    case Rgb{r, g, b} Rgb{r2, g2, b2}:
+      Rgb{blend(r, r2, t), blend(g, g2, t), blend(b, b2, t)}
+
+def gradient.at(+p: F32, +i: Nat) -> Rgb:
+  mix(stop.of(i), stop.of(1n+i), (p - F32.from_nat(i) : F32))
+
+# the glow at t in 0..1, blended between the stops instead of snapping to one
+def gradient(+t: F32) -> Rgb:
+  +p = (F32.clamp(t, 0.0, 1.0) * 6.0 : F32)
+  gradient.at(p, F32.to_nat(p))
+
+def tri.if(+u: F32, rising: Bool) -> F32:
+  match rising:
+    case True{}:
+      (u * 2.0 : F32)
+    case False{}:
+      (2.0 - (u * 2.0 : F32) : F32)
+
+# the flow at column x and time t seconds: a triangle wave, so pink -> mint -> pink
+# loops without a seam (ito's wave). 8 columns a cycle, 1.2 cycles a second.
+def wave(+x: F32, +t: F32) -> Rgb:
+  +u = F32.mod((((x / 8.0 : F32) + 100.0 : F32) - (t * 1.2 : F32) : F32), 1.0)
+  gradient(tri.if(u, F32.is_lt(u, 0.5)))
+
 def glow.go(cs: List<&2, Char>, +on: Bool, +i: U32, +n: U32) -> String:
   match cs:
     case Nil{}:

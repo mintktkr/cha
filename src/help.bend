@@ -4,6 +4,7 @@
 import Base
 import ./ui.bend as Ui
 import ./cli.bend as Cli
+import 0xd60fd658d4bdabf892f8041a7a731848/tty.bend as Tty
 
 # one line of a command list: the name and its args, a description, an example
 type Row is Data:
@@ -27,9 +28,9 @@ def pad.at(+s: String, +w: Nat, short: Bool) -> String:
 def pad(+s: String, +w: Nat) -> String:
   pad.at(s, w, Nat.is_lt(String.length(s), w))
 
-# esc when up, so a redraw steps back over the previous frame
-def up.if(+up: Bool, +esc: String) -> String:
-  match up:
+# esc when on, nothing otherwise: cursor moves only reach a terminal with colour
+def esc.if(+on: Bool, +esc: String) -> String:
+  match on:
     case True{}:
       esc
     case False{}:
@@ -83,62 +84,88 @@ def face.of(n: Nat) -> String:
 
 # The banner
 # ----------
-# No hub package for the glow here: the gradient and the little cup are cha's own.
+# A mug of tea beside the name. The page prints at once; then, when it all fits on the
+# screen, the banner alone redraws in place for a second and comes to rest (ito's way:
+# nothing waits on the show). Only on a terminal with colour.
 
-# one banner character, coloured by its place in the gradient
-def wave.one(+on: Bool, c: Char, i: U32, +shift: U32, +n: U32) -> String:
-  Ui.fg(on, Ui.stop(((((i + shift) * 6) / n) % 7 : U32)), String.from_list([c]))
+def tagline() -> String:
+  "a forge CLI for Gitea, Forgejo and GitHub"
 
-def wave.go(cs: List<&2, Char>, +on: Bool, +i: U32, +shift: U32, +n: U32) -> String:
+def wisp.of(n: Nat) -> String:
+  match n:
+    case 0n:
+      "("
+    case 1n+_:
+      ")"
+
+# a wisp's curl: ( and ) swap a few times a second, so the steam seems to climb
+def wisp(+k: Nat) -> String:
+  wisp.of(Nat.mod(k, 2n))
+
+def name.go(cs: List<&2, Char>, +on: Bool, +i: Nat, +t: F32) -> String:
   match cs:
     case Nil{}:
       ""
-    case Con{c, t}:
-      wave.one(on, c, i, shift, n) ++ wave.go(t, on, (i + 1 : U32), shift, n)
+    case Con{c, rest}:
+      Ui.fg(on, Ui.wave(F32.from_nat(i), t), String.from_list([c])) ++ name.go(rest, on, 1n+i, t)
 
-# the text with the gradient phase shifted, so the wave flows from frame to frame
-def wave(+on: Bool, +s: String, +shift: U32) -> String:
-  wave.go(String.to_list(s), on, 0, shift, U32.max(U32.from_nat(Nat.sub(String.length(s), 1n)), 1))
+# the name flowing at frame f, or the glow every log line starts with when still
+def name.if(+on: Bool, +f: Nat, still: Bool) -> String:
+  match still:
+    case True{}:
+      Ui.glow(on, "cha 茶")
+    case False{}:
+      name.go(String.to_list("cha 茶"), on, 0n, (F32.from_nat(f) / 30.0 : F32))
 
-# the steam above the cup: four glyphs, rotating with the phase
-def steam.of(k: Nat) -> String:
-  match k:
-    case 0n:
-      "·  ∘  °  ˚"
-    case 1n:
-      "˚  ·  ∘  °"
-    case 2n+_:
-      "°  ˚  ·  ∘"
+def mug(+on: Bool, s: String) -> String:
+  Ui.fg(on, Ui.stop(4), s)
 
-def steam.line(+phase: Nat) -> String:
-  "    " ++ steam.of(Nat.mod(phase, 3n))
+def steam(+on: Bool, s: String) -> String:
+  Ui.fg(on, Ui.stop(4), Ui.dim(on, s))
 
-def cup.top() -> String:
-  "  ╭─────╮⌒  "
+# six lines, each clearing the rest of its row: two wisps, staggered, over the mug
+def banner.of(+on: Bool, +f: Nat, still: Bool) -> String:
+  +k = Nat.div(Nat.mul(f, 8n), 30n)
+  "  " ++ steam(on, "   " ++ wisp(k)) ++ esc.if(on, "\u{1b}[K") ++ "\n" ++
+  "  " ++ steam(on, "   " ++ wisp(1n+k) ++ "  " ++ wisp(k)) ++ esc.if(on, "\u{1b}[K") ++ "\n" ++
+  "  " ++ mug(on, "╷   ") ++ steam(on, " " ++ wisp(1n+k) ++ " ") ++ mug(on, " ╷") ++ esc.if(on, "\u{1b}[K") ++ "\n" ++
+  "  " ++ mug(on, "│ ") ++ Ui.fg(on, Ui.mint(), Ui.dim(on, "~~~~~")) ++ mug(on, " ├╮") ++ "    " ++ name.if(on, f, still) ++ "  " ++ face.of(0n) ++ "  " ++ tagline() ++ esc.if(on, "\u{1b}[K") ++ "\n" ++
+  "  " ++ mug(on, "│       ├╯") ++ esc.if(on, "\u{1b}[K") ++ "\n" ++
+  "  " ++ mug(on, "╰───────╯") ++ esc.if(on, "\u{1b}[K")
 
-def cup.bottom() -> String:
-  "  ╰─────╯"
+def esc.n(+n: Nat, +c: String) -> String:
+  "\u{1b}[" ++ Nat.show(n) ++ c
 
-# one frame: rising steam, the cup, and the wave flowing across the banner
-def frame(+on: Bool, +up: Bool, +phase: Nat) -> String:
-  up.if(up, "\u{1b}[2A\r") ++ steam.line(phase) ++ "\n" ++
-  cup.top() ++ wave(on, "cha 茶", U32.from_nat(phase)) ++ "\n" ++ cup.bottom()
-
-# 12 frames at 120ms: about a second and a half of tea
-def anim.go(+fuel: Nat, +on: Bool, +phase: Nat) -> IO(Unit):
+# 30 frames at 33ms, then the still banner. up is how far the banner's first line is
+# above the cursor; after the banner's six lines it is five lines lower.
+def anim.go(+fuel: Nat, +on: Bool, +up: Nat, +f: Nat) -> IO(Unit):
   match fuel:
     case 0n:
-      IO.pure(Unit, Unit{})
+      IO.write(esc.n(up, "F") ++ banner.of(on, f, True{}) ++ esc.n(Nat.sub(up, 5n), "E"))
     case 1n+k:
       do IO<Unit>:
-        IO.write(frame(on, Nat.is_gt(phase, 0n), phase))
-        IO.sleep(120)
-        anim.go(k, on, 1n+phase)
+        IO.sleep(33)
+        IO.write(esc.n(up, "F") ++ banner.of(on, f, False{}) ++ esc.n(Nat.sub(up, 5n), "E"))
+        anim.go(k, on, up, 1n+f)
 
-def banner(+on: Bool) -> IO(Unit):
-  do IO<Unit>:
-    anim.go(12n, on, 0n)
-    IO.write("\n\n")
+def lines.fit(xs: List<&2, String>, +cols: U32) -> Bool:
+  match xs:
+    case Nil{}:
+      True{}
+    case Con{+x, rest}:
+      (Tty.width(x) < cols : U32) && lines.fit(rest, cols)
+
+def fits.wh(+lines: List<&2, String>, wh: U32 & U32) -> Bool:
+  (cols, rows) = wh
+  lines.fit(lines, cols) && Nat.is_lt(List.length(&2, String, lines), U32.to_nat(rows))
+
+# the whole page is on screen without wrapping, so jumping back up lands on the banner
+def fits.of(+lines: List<&2, String>, size: Maybe<&1, U32 & U32>) -> Bool:
+  match size:
+    case None{}:
+      False{}
+    case Some{wh}:
+      fits.wh(lines, wh)
 
 # cha help
 # --------
@@ -164,21 +191,35 @@ def global.rows() -> List<&2, Row>:
    Row{"CHA_USER", "which credential to pick for a host", ""},
    Row{"GITHUB_TOKEN", "a token for github.com", ""}]
 
-def top.body(+on: Bool) -> String:
-  "  " ++ Ui.glow(on, "cha 茶") ++ "  " ++ face.of(0n) ++ "  a forge CLI for Gitea, Forgejo and GitHub\n\n" ++
+# everything below the name line
+def top.rest(+on: Bool) -> String:
   "  one binary. no gh, no tea, not even git.  " ++ face.of(1n) ++ "\n\n" ++
   row.lines(on, groups(), 13n) ++
   "\n  " ++ Ui.bold(on, "global flags") ++ "\n" ++
   row.lines(on, global.rows(), 24n) ++
   "\n  " ++ Ui.dim(on, "cha help <command>   that command's usage, flags and examples") ++ "\n"
 
-# the show only when the terminal asked for colour
+def top.body(+on: Bool) -> String:
+  "  " ++ Ui.glow(on, "cha 茶") ++ "  " ++ face.of(0n) ++ "  " ++ tagline() ++ "\n\n" ++ top.rest(on)
+
+def anim.if(+on: Bool, +up: Nat, fits: Bool) -> IO(Unit):
+  match fits:
+    case True{}:
+      anim.go(30n, on, up, 1n)
+    case False{}:
+      IO.pure(Unit, Unit{})
+
+# the show only when the terminal asked for colour; a page taller or wider than the
+# screen prints still, since the jump back up would land on the wrong lines
 def top.at(+on: Bool, anim: Bool) -> IO(Unit):
   match anim:
     case True{}:
       do IO<Unit>:
-        banner(on)
-        IO.write(top.body(on))
+        size : Maybe<&1, U32 & U32> <- Tty.size()
+        +lines : List<&2, String> = String.split(banner.of(False{}, 0n, True{}) ++ "\n\n" ++ top.rest(False{}), '\n')
+        +fits : Bool = fits.of(lines, size)
+        IO.write(banner.of(on, 0n, Bool.not(fits)) ++ "\n\n" ++ top.rest(on))
+        anim.if(on, Nat.sub(List.length(&2, String, lines), 1n), fits)
     case False{}:
       IO.write(top.body(on))
 
