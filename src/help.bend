@@ -157,7 +157,7 @@ def groups() -> List<&2, Row>:
 def global.rows() -> List<&2, Row>:
   [Row{"-R owner/repo", "the repo, on the checkout's host", ""},
    Row{"-R host/owner/repo", "the repo, on any host", ""},
-   Row{"--json", "stable machine-readable rows", ""},
+   Row{"--json [FIELDS]", "machine-readable rows, optionally only FIELDS", ""},
    Row{"--body-file -", "read a body from stdin", ""},
    Row{"NO_COLOR / TERM=dumb", "plain text, no colour", ""},
    Row{"CHA_TOKEN", "a token for any host", ""},
@@ -199,7 +199,7 @@ def issue.flags() -> List<&2, Row>:
   [Row{"--state open|closed|all", "which issues (default open)", ""},
    Row{"--label L", "only issues with this label", ""},
    Row{"--all", "every page, not just the first", ""},
-   Row{"--json", "stable machine-readable rows", ""},
+   Row{"--json [FIELDS]", "machine-readable rows, optionally only FIELDS", ""},
    Row{"--comments", "include comments (view)", ""},
    Row{"--title T", "the title", ""},
    Row{"--body B", "the body text", ""},
@@ -210,6 +210,7 @@ def issue.flags() -> List<&2, Row>:
 
 def issue.examples() -> List<&2, String>:
   ["cha issue list --state all --json",
+   "cha issue list --json number,title",
    "cha issue view 42 --comments",
    "cha issue create --title \"kettle is empty\" --body-file - --label bug"]
 
@@ -231,7 +232,7 @@ def pr.rows() -> List<&2, Row>:
 
 def pr.flags() -> List<&2, Row>:
   [Row{"--state open|closed|all", "which pull requests (default open)", ""},
-   Row{"--json", "stable machine-readable rows", ""},
+   Row{"--json [FIELDS]", "machine-readable rows, optionally only FIELDS", ""},
    Row{"--comments", "include comments (view)", ""},
    Row{"--head H", "the branch with the changes", ""},
    Row{"--base main", "the branch to merge into", ""},
@@ -501,7 +502,7 @@ def comp.head() -> List<&2, String>:
 
 def comp.global() -> List<&2, String>:
   ["complete -c cha -s R -x -d 'repo: owner/repo, or host/owner/repo'",
-   "complete -c cha -l json -d 'stable machine-readable rows'",
+   "complete -c cha -l json -d 'machine-readable rows, optionally only FIELDS'",
    "complete -c cha -s h -l help -d 'this help'",
    ""]
 
@@ -529,7 +530,7 @@ def comp.issue() -> List<&2, String>:
    "complete -c cha -n '__cha_using_sub issue list' -l state -x -a 'open closed all' -d 'which issues'",
    "complete -c cha -n '__cha_using_sub issue list' -l label -x -d 'only issues with this label'",
    "complete -c cha -n '__cha_using_sub issue list' -l all -d 'every page'",
-   "complete -c cha -n '__cha_using_sub issue list' -l json -d 'machine-readable rows'",
+   "complete -c cha -n '__cha_using_sub issue list' -l json -d 'machine-readable rows, optionally only FIELDS'",
    "complete -c cha -n '__cha_using_sub issue view' -l comments -d 'include comments'",
    "complete -c cha -n '__cha_using_sub issue create' -l title -x -d 'the title'",
    "complete -c cha -n '__cha_using_sub issue create' -l body -x -d 'the body text'",
@@ -553,7 +554,7 @@ def comp.pr() -> List<&2, String>:
    "complete -c cha -n '__cha_sub_command pr' -a comment -d 'comment on a pull request'",
    "complete -c cha -n '__cha_sub_command pr' -a checks -d 'the checks'",
    "complete -c cha -n '__cha_using_sub pr list' -l state -x -a 'open closed all' -d 'which pull requests'",
-   "complete -c cha -n '__cha_using_sub pr list' -l json -d 'machine-readable rows'",
+   "complete -c cha -n '__cha_using_sub pr list' -l json -d 'machine-readable rows, optionally only FIELDS'",
    "complete -c cha -n '__cha_using_sub pr view' -l comments -d 'include comments'",
    "complete -c cha -n '__cha_using_sub pr create' -l head -x -d 'the branch with the changes'",
    "complete -c cha -n '__cha_using_sub pr create' -l base -x -d 'the branch to merge into'",

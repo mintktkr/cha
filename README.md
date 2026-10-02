@@ -49,7 +49,7 @@ $ cha completions fish > ~/.config/fish/completions/cha.fish
 - **Made for agents too.** Much of the time a coding agent runs `cha`, so:
   - it never opens an editor. Bodies come from stdin or a file
   - piped output is plain text, with no escape codes
-  - `--json` gives stable fields
+  - `--json` gives stable fields, `--json a,b` only those
   - exit codes mean something
 - **Gitea Actions included.** List runs, read job logs, dispatch workflows.
 - **Nothing to install.** cha speaks HTTPS and JSON itself. Credentials come from git's credential store or an environment variable.

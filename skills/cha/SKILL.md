@@ -18,6 +18,10 @@ description: Use cha for Gitea, Forgejo and GitHub work from the terminal - issu
 
 - Piped output is plain text: no colour, no animation, one line per item in lists.
 - `--json` gives an array of objects with flat string fields (`"user.login"`, `"labels"`), booleans as `"true"`/`"false"`.
+- Bare `--json` prints every field. `--json a,b` or `--json=a,b` prints only those fields, in that order. Spaces after commas are trimmed.
+- The word after a bare `--json` is the field list unless it starts with `-` or a digit, or is a command name. So `cha issue view --json 7` is issue 7, and `cha issue view --json title 7` selects the title. In scripts, use `--json=a,b`.
+- An unknown field exits 1 with `unknown JSON field X; valid fields: a, b, c`, so `--json nope` is a cheap way to list a command's fields.
+- `issue view --comments`, `runs view` and `moved` print nested records. They take no field list and exit 1 if given one; bare `--json` still works.
 - Write commands print the URL of what they created or changed on stdout.
 - Errors go to stderr with exit code 1. `pr checks` and `runs watch` also exit 1 when something failed.
 - Bodies come from `--body TEXT` or `--body-file PATH`. `--body-file -` reads stdin. cha never opens an editor or prompts.
@@ -77,6 +81,7 @@ cha completions fish
 ## Recipes
 
 - Why did CI fail: `cha runs list --limit 5`, then `cha runs logs ID --failed`.
+- Failing run ids for a script: `cha runs list --status failure --json=id,workflow`.
 - Catch up on a repo: `cha moved --since 1d`.
 - Long comment or body from a heredoc: `cha issue comment 12 --body-file - <<'EOF' ... EOF`.
 - Check the latest upstream version: `cha -R github.com/owner/repo release latest`.
