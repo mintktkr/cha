@@ -625,9 +625,9 @@ def diff.url(f: Ctx.Forge, +n: String) -> String:
     case Ctx.GitHub{}:
       "pulls/" ++ n
 
-# a diff redirected to a file or a patch tool keeps the bytes the forge sent; on a
-# terminal the diff is printed without escape sequences, as a file of its own can carry
-# them
+# a diff a pipe or a redirect carries keeps the bytes the forge sent, for a file or a
+# patch tool; on a terminal the diff is printed without escape sequences, as a file of its
+# own can carry them
 def diff.text(body: Bytes.Bytes, tty: Bool) -> String:
   match tty:
     case True{}:
@@ -635,15 +635,17 @@ def diff.text(body: Bytes.Bytes, tty: Bool) -> String:
     case False{}:
       Api.raw.text(body)
 
-def diff.write(+env: Cli.Env, body: Bytes.Bytes) -> IO(Unit):
-  match env:
-    case Cli.Env{r, t, +on, j, a}:
-      IO.write(nled(diff.text(body, on)))
+def diff.write(body: Bytes.Bytes) -> IO(Unit):
+  do IO<Unit>:
+    # the stream decides, not the colour flag: NO_COLOR in a terminal still means a human
+    # is reading the diff, and only a pipe or a redirect needs the bytes exact
+    tty : Bool <- Ui.tty()
+    IO.write(nled(diff.text(body, tty)))
 
 def diff.ok(+env: Cli.Env, body: Bytes.Bytes, +status: U32, good: Bool) -> IO(Unit):
   match good:
     case True{}:
-      diff.write(env, body)
+      diff.write(body)
     case False{}:
       Cli.fail(Unit, env, Api.message(status, body))
 

@@ -30,6 +30,11 @@ def color() -> IO(Bool):
     term : String <- Ctx.env("TERM")
     return tty && Bool.not(String.eq(term, "dumb"))
 
+# stdout is a terminal, whatever colour is doing. A decision about style takes the colour
+# flag; a decision about safety (whether raw bytes may reach a terminal) takes this one.
+def tty() -> IO(Bool):
+  Tty.stdout_tty()
+
 def esc(code: String) -> String:
   "\u{1b}[" ++ code ++ "m"
 

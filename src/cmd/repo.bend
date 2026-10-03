@@ -405,9 +405,9 @@ def file.reply(f: Ctx.Forge, +repo: Ctx.Repo, +tok: String, url: String) -> IO(A
     case Ctx.GitHub{}:
       raw.get(repo, tok, url)
 
-# A file's contents are the file, so a redirect keeps them byte-exact: piped (or with
-# colour off), the body is printed as it came; a terminal gets the text without escape
-# sequences, so a file whose bytes are a title screen cannot draw on it.
+# A file's contents are the file, so a pipe or a redirect keeps them byte-exact: the body
+# is printed as it came. A terminal gets the text without escape sequences, so a file whose
+# bytes are a title screen cannot draw on it.
 def file.text(body: Bytes.Bytes, tty: Bool) -> String:
   match tty:
     case True{}:
@@ -415,15 +415,17 @@ def file.text(body: Bytes.Bytes, tty: Bool) -> String:
     case False{}:
       Api.raw.text(body)
 
-def file.write(+env: Cli.Env, body: Bytes.Bytes) -> IO(Unit):
-  match env:
-    case Cli.Env{r, t, +on, j, a}:
-      IO.write(file.text(body, on))
+def file.write(body: Bytes.Bytes) -> IO(Unit):
+  do IO<Unit>:
+    # the stream decides, not the colour flag: NO_COLOR in a terminal still means a human
+    # is reading the bytes, and only a pipe or a redirect needs them exact
+    tty : Bool <- Ui.tty()
+    IO.write(file.text(body, tty))
 
 def file.print(+env: Cli.Env, +status: U32, body: Bytes.Bytes, good: Bool) -> IO(Unit):
   match good:
     case True{}:
-      file.write(env, body)
+      file.write(body)
     case False{}:
       Cli.fail(Unit, env, Api.message(status, body))
 
