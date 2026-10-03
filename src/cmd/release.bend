@@ -165,7 +165,7 @@ def view.fields(+x: Map<&2, String>) -> List<&2, String>:
   List.append(&2, String, view.base.fields(), asset.fields(Api.count(x, "assets"), 0))
 
 def view.text(+on: Bool, +x: Map<&2, String>) -> String:
-  +body = Api.f(x, "body")
+  +body = Api.f.lines(x, "body")
   Ui.bold(on, Ui.fg(on, Ui.aqua(), Api.f(x, "tag_name"))) ++ "  " ++ Api.f(x, "name") ++ prefixed(release.flags(on, x), "  ") ++ "\n" ++
   Ui.dim(on, String.take(Api.f(x, "published"), 10n)) ++ "\n" ++
   Ui.fg(on, Ui.aqua(), Api.f(x, "html_url")) ++ "\n" ++

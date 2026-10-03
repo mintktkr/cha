@@ -66,6 +66,7 @@ def main() -> IO(Unit):
     expect("a C1 control is dropped", Clean.text("a\u{85}b"), "ab")
     expect("tab is kept", Clean.text("a\tb"), "a\tb")
     expect("newline is kept", Clean.text("a\nb"), "a\nb")
+    expect("a one-line field flattens newline and tab", Clean.line("a\nb\tc"), "a b c")
     expect("emoji and CJK are kept", Clean.text("茶 (´∀｀)♡ 🍵"), "茶 (´∀｀)♡ 🍵")
     expect("plain text is unchanged", Clean.text("hello world"), "hello world")
     expect("nothing left to print", Clean.text("\u{1b}[2J"), "")

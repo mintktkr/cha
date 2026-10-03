@@ -485,10 +485,10 @@ def view.labels(+on: Bool, +x: Map<&2, String>) -> String:
   view.labels.if(on, names, String.is_empty(names))
 
 def view.text(+on: Bool, +x: Map<&2, String>) -> String:
-  "#" ++ Api.f(x, "number") ++ "  " ++ Ui.state(on, Api.f(x, "state")) ++ "  " ++ Ui.bold(on, Api.f(x, "title")) ++ "\n" ++ "@" ++ Api.f(x, "user.login") ++ "  " ++ Api.f(x, "created_at") ++ view.labels(on, x) ++ "\n" ++ Ui.dim(on, Api.f(x, "html_url")) ++ "\n\n" ++ Api.f(x, "body")
+  "#" ++ Api.f(x, "number") ++ "  " ++ Ui.state(on, Api.f(x, "state")) ++ "  " ++ Ui.bold(on, Api.f(x, "title")) ++ "\n" ++ "@" ++ Api.f(x, "user.login") ++ "  " ++ Api.f(x, "created_at") ++ view.labels(on, x) ++ "\n" ++ Ui.dim(on, Api.f(x, "html_url")) ++ "\n\n" ++ Api.f.lines(x, "body")
 
 def comment.text(+on: Bool, +c: Map<&2, String>) -> String:
-  "\n\n@" ++ Api.f(c, "user.login") ++ "  " ++ Ui.dim(on, Api.f(c, "created_at")) ++ "\n" ++ Api.f(c, "body")
+  "\n\n@" ++ Api.f(c, "user.login") ++ "  " ++ Ui.dim(on, Api.f(c, "created_at")) ++ "\n" ++ Api.f.lines(c, "body")
 
 def comments.text(+on: Bool, cs: List<&2, Map<&2, String>>) -> String:
   match cs:

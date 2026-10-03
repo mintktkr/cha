@@ -281,10 +281,14 @@ def f.of(r: Map<&2, String> & String) -> String:
 def raw.f(+row: Map<&2, String>, k: String) -> String:
   f.of(Map.get(String, "", row, k))
 
-# a field of a row as text safe for a terminal, "" when missing. This is the one door a
-# command reads a forge field through, so a title, a body, a label, a branch name or a
-# job name is cleaned once here instead of at every print.
+# a field of a row as text safe for one line of a terminal, "" when missing. This is the
+# one door a command reads a forge field through, so a title, a label, a branch name or a
+# job name is cleaned once here instead of at every print, and can't start a fake row.
 def f(+row: Map<&2, String>, k: String) -> String:
+  Clean.line(raw.f(row, k))
+
+# a field whose lines are its content (a body, a comment, release notes), safe to print
+def f.lines(+row: Map<&2, String>, k: String) -> String:
   Clean.text(raw.f(row, k))
 
 def join.go(n: Nat, +row: Map<&2, String>, +list: String, +field: String, +sep: String, +i: U32, acc: String) -> String:
@@ -311,7 +315,7 @@ def raw.join(+row: Map<&2, String>, +list: String, +field: String, +sep: String)
 
 # the same join, safe to print
 def join(+row: Map<&2, String>, +list: String, +field: String, +sep: String) -> String:
-  Clean.text(raw.join(row, list, field, sep))
+  Clean.line(raw.join(row, list, field, sep))
 
 def message.text(+s: String) -> String:
   Ctx.or.if(": " ++ s, "", String.is_empty(s))

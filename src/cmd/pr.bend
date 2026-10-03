@@ -279,7 +279,7 @@ def comment.lines(+on: Bool, xs: List<&2, Map<&2, String>>) -> String:
     case Nil{}:
       ""
     case Con{+x, rest}:
-      Ui.dim(on, "@" ++ Api.f(x, "user.login") ++ "  " ++ Api.f(x, "created_at")) ++ "\n" ++ Api.f(x, "body") ++ "\n\n" ++ comment.lines(on, rest)
+      Ui.dim(on, "@" ++ Api.f(x, "user.login") ++ "  " ++ Api.f(x, "created_at")) ++ "\n" ++ Api.f.lines(x, "body") ++ "\n\n" ++ comment.lines(on, rest)
 
 def comment.ok(+env: Cli.Env, +on: Bool, body: Bytes.Bytes, +status: U32, good: Bool) -> IO(Unit):
   match good:
@@ -300,7 +300,7 @@ def comment.got(+env: Cli.Env, +on: Bool, r: Api.Reply) -> IO(Unit):
 
 def view.text(+on: Bool, +row: Map<&2, String>, +reviews: Tally) -> String:
   st = state.merged(Api.f(row, "state"), merged.of(row))
-  +txt = Api.f(row, "body")
+  +txt = Api.f.lines(row, "body")
   Ui.bold(on, "#" ++ Api.f(row, "number") ++ "  " ++ Api.f(row, "title")) ++ "\n" ++
   Ui.state(on, st) ++ "  " ++ Api.f(row, "head.ref") ++ " -> " ++ Api.f(row, "base.ref") ++ "  " ++ Ui.dim(on, "@" ++ Api.f(row, "user.login")) ++ "\n" ++
   mergeable.line(on, Api.f(row, "mergeable")) ++ "  " ++ reviews.line(on, reviews) ++ "\n" ++

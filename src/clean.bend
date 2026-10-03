@@ -142,3 +142,24 @@ def walk(cs: String, +st: Mode, acc: String) -> String:
 # text safe to print: every escape sequence and control byte dropped
 def text(s: String) -> String:
   walk(s, Plain{}, SNil{})
+
+# Text for one line of a list or a header: a newline or a tab in a title, a label or a
+# branch name would start a row that cha never printed, so each becomes a space.
+def flat.char(c: Char, blank: Bool) -> Char:
+  match blank:
+    case True{}:
+      Chr{32}
+    case False{}:
+      c
+
+def flat(cs: String, acc: String) -> String:
+  match cs:
+    case SNil{}:
+      String.reverse(acc)
+    case SCon{+c, t}:
+      +u = Char.to_u32(c)
+      flat(t, SCon{flat.char(c, U32.is_eq(u, 10) || U32.is_eq(u, 9)), acc})
+
+# text safe to print on one line: cleaned, then flattened
+def line(s: String) -> String:
+  flat(text(s), SNil{})

@@ -163,3 +163,6 @@ def Laws.clean_controls():
 
 def Laws.clean_plain():
   {==}
+
+def Laws.clean_line():
+  {==}

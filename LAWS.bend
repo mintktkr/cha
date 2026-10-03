@@ -140,3 +140,8 @@ law clean_controls:
 # LAW: a character that is neither a control nor an escape is kept.
 law clean_plain:
   {Clean.text("茶 (´∀｀)♡ 🍵") == "茶 (´∀｀)♡ 🍵" : String}
+
+# LAW: a field printed on one line keeps to it: a newline or a tab becomes a space, after
+# the escapes are gone, so a title can't start a row of its own.
+law clean_line:
+  {Clean.line("a\nb\tc\r\nd\u{1b}[2J") == "a b c d" : String}
