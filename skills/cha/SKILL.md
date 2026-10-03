@@ -79,7 +79,7 @@ cha completions fish
 - `runs list --workflow` matches an exact filename, path or display name. Filtering follows pages until `--limit` matches (default 20, range 1–1000), with a 100-page safety cap. A display name resolves first through the workflows the forge lists now, on Gitea and GitHub alike; a name that matches no workflow exits 1 with the names it found, and a filename is used as given, for renamed or removed workflows.
 - When `head_branch` is absent, the branch column falls back to the workflow ref. Tags and pull-request refs retain their `refs/tags/` or `refs/pull/` prefix.
 - Logs accept a job id or case-insensitive exact job name. `--failed` selects failed jobs; it still prints each selected job's full log unless `--step` is also given.
-- On GitHub, unfinished jobs print a watch hint on stderr while completed jobs still print their logs; partial retrieval exits 1. `--step` uses the step log endpoint. On Gitea it needs step timestamps; its whole-second boundaries can overlap adjacent steps, and missing metadata produces an actionable error.
+- On GitHub, unfinished jobs print a watch hint on stderr while completed jobs still print their logs; partial retrieval exits 1. `--step` cuts the job log between the runner's `##[group]Run ...` markers, matching the step by case-insensitive name; a step the runner gave no group (an image pull, a runner step) falls back to its step times. On Gitea it needs step timestamps; its whole-second boundaries can overlap adjacent steps, and missing metadata produces an actionable error.
 - `runs rerun --job` requires a job id belonging to the supplied run. It cannot be combined with `--failed`.
 
 ## Recipes

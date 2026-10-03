@@ -648,30 +648,58 @@ def logs.whole(+env: Cli.Env, +row: Map<&2, String>) -> IO(LogSummary):
         IO.write(logs.head(on, row) ++ log.nl(Runlogs.strip.bom(Api.text(b))) ++ "\n")
         return LogSummary{1, 1, False{}}
 
-def logs.step.path(+job: String, position: U32) -> String:
-  "actions/jobs/" ++ job ++ "/steps/" ++ U32.show(position) ++ "/logs"
+def logs.step.show(+env: Cli.Env, +row: Map<&2, String>, +name: String, +text: String) -> IO(LogSummary):
+  match env:
+    case Cli.Env{repo, tok, on, json, a}:
+      do IO<LogSummary>:
+        IO.write(logs.head(on, row) ++ "  step: " ++ name ++ "\n" ++ log.nl(text) ++ "\n")
+        return LogSummary{1, 1, False{}}
+
+def logs.step.missing(+env: Cli.Env, +row: Map<&2, String>, +name: String, why: String) -> IO(LogSummary):
+  match env:
+    case Cli.Env{repo, tok, on, json, a}:
+      do IO<LogSummary>:
+        Ui.error(on, "runs logs: no " ++ why ++ " for step " ++ name ++ " in job " ++ Api.f(row, "name") ++ "; omit --step to read the job log")
+        return LogSummary{1, 0, True{}}
+
+def logs.step.text(+env: Cli.Env, +row: Map<&2, String>, +name: String, text: Maybe<&2, String>) -> IO(LogSummary):
+  match text:
+    case Some{+t}:
+      logs.step.show(env, row, name, t)
+    case None{}:
+      logs.step.missing(env, row, name, "log section and no step times")
+
+# the section the log opened for the step, or its step times when the runner wrote
+# no group line for it
+def logs.step.section(+env: Cli.Env, +row: Map<&2, String>, +name: String, got: Maybe<&2, String>, fallback: Maybe<&2, String>) -> IO(LogSummary):
+  logs.step.text(env, row, name, Maybe.or(&2, String, got, fallback))
 
 def logs.step.gitea(+env: Cli.Env, +row: Map<&2, String>, +name: String, body: Maybe<&2, String>) -> IO(LogSummary):
   match env body:
     case Cli.Env{repo, tok, on, json, a} None{}:
-      do IO<LogSummary>:
-        Ui.error(on, "runs logs: no usable timing metadata for step " ++ name ++ " in job " ++ Api.f(row, "name") ++ "; omit --step to read the job log")
-        return LogSummary{1, 0, True{}}
-    case Cli.Env{repo, tok, +on, json, a} Some{text}:
+      logs.step.missing(env, row, name, "usable timing metadata")
+    case Cli.Env{repo, tok, on, json, a} Some{text}:
       do IO<LogSummary>:
         Ui.info(on, "runs logs: Gitea step times have one-second precision; boundary lines can overlap adjacent steps")
-        IO.write(logs.head(on, row) ++ "  step: " ++ name ++ "\n" ++ log.nl(text) ++ "\n")
-        return LogSummary{1, 1, False{}}
+        logs.step.show(env, row, name, text)
+
+# GitHub has no per-step log endpoint, so the step's section is cut out of the job log.
+# A step the runner wrote no group line for still has its step times to fall back on.
+def logs.step.github.at(+env: Cli.Env, +row: Map<&2, String>, +name: String, +position: U32, +started: String, +completed: String, +text: String) -> IO(LogSummary):
+  logs.step.section(env, row, name, Runlogs.cut.section(text, Runlogs.steps.of(row, "steps", ""), position), Runlogs.window(text, started, completed))
+
+def logs.step.github(+env: Cli.Env, +row: Map<&2, String>, s: Runlogs.Step) -> IO(LogSummary):
+  match env s:
+    case Cli.Env{repo, tok, on, json, a} Runlogs.Step{position, +name, status, conclusion, +started, +completed}:
+      do IO<LogSummary>:
+        b : Bytes.Bytes <- logs.get(env, row, "/logs")
+        logs.step.github.at(env, row, name, position, started, completed, Api.text(b))
 
 def logs.step.fetch(+env: Cli.Env, +row: Map<&2, String>, s: Runlogs.Step, forge: Ctx.Forge) -> IO(LogSummary):
   match env s forge:
-    case Cli.Env{+repo, tok, on, json, a} Runlogs.Step{position, +name, status, conclusion, started, completed} Ctx.GitHub{}:
-      do IO<LogSummary>:
-        r : Api.Reply <- Api.get(repo, tok, Api.path(repo, logs.step.path(Api.f(row, "id"), position)))
-        b : Bytes.Bytes <- fetch.body(env, r)
-        IO.write(logs.head(on, row) ++ "  step: " ++ name ++ "\n" ++ log.nl(Runlogs.strip.bom(Api.text(b))) ++ "\n")
-        return LogSummary{1, 1, False{}}
-    case Cli.Env{repo, tok, on, json, a} Runlogs.Step{position, +name, status, conclusion, started, completed} Ctx.Gitea{}:
+    case Cli.Env{repo, tok, on, json, a} Runlogs.Step{position, +name, status, conclusion, started, completed} Ctx.GitHub{}:
+      logs.step.github(env, row, s)
+    case Cli.Env{repo, tok, on, json, a} Runlogs.Step{position, +name, status, conclusion, +started, +completed} Ctx.Gitea{}:
       do IO<LogSummary>:
         b : Bytes.Bytes <- logs.get(env, row, "/logs")
         logs.step.gitea(env, row, name, Runlogs.window(Api.text(b), started, completed))
@@ -751,7 +779,7 @@ def logs.finish.if(+env: Cli.Env, +xs: List<&2, Map<&2, String>>, +step: String,
     case _ True{}:
       IO.die(Unit, 1, "")
     case True{} False{}:
-      Cli.fail(Unit, env, "runs logs: no step " ++ step ++ "; available steps (when supplied by the forge):\n" ++ logs.available.steps(xs) ++ "omit --step to read complete job logs")
+      Cli.fail(Unit, env, "runs logs: no step named " ++ step ++ "; steps:\n" ++ logs.available.steps(xs))
     case False{} False{}:
       IO.pure(Unit, Unit{})
 
