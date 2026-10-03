@@ -120,19 +120,60 @@ def list(+env: Cli.Env) -> IO(Unit):
 # view
 # ----
 
+# one asset's flat fields, as Api.rows flattens a release's assets array
+def asset.key(+i: U32, +k: String) -> String:
+  "assets." ++ U32.show(i) ++ "." ++ k
+
+def asset.line(+on: Bool, +x: Map<&2, String>, +i: U32) -> String:
+  "  " ++ Api.f(x, asset.key(i, "name")) ++ "  " ++ Ui.dim(on, Api.f(x, asset.key(i, "size"))) ++ "  " ++ Api.f(x, asset.key(i, "browser_download_url")) ++ "\n"
+
+def asset.lines(n: Nat, +i: U32, +on: Bool, +x: Map<&2, String>) -> String:
+  match n:
+    case 0n:
+      ""
+    case 1n+p:
+      asset.line(on, x, i) ++ asset.lines(p, (i + 1 : U32), on, x)
+
+# a block of assets, one line each: name, size in bytes, download URL; "" when there are none
+# the count is matched in a helper, because a match may not read a computed value
+def asset.block.none(+on: Bool, +x: Map<&2, String>, none: Bool) -> String:
+  match none:
+    case True{}:
+      ""
+    case False{}:
+      "assets:\n" ++ asset.lines(Api.count(x, "assets"), 0, on, x)
+
+def asset.block(+on: Bool, +x: Map<&2, String>) -> String:
+  asset.block.none(on, x, Nat.is_eq(Api.count(x, "assets"), 0n))
+
+def asset.fields(n: Nat, +i: U32) -> List<&2, String>:
+  match n:
+    case 0n:
+      Nil{}
+    case 1n+p:
+      List.append(&2, String, [asset.key(i, "name"), asset.key(i, "size"), asset.key(i, "browser_download_url")], asset.fields(p, (i + 1 : U32)))
+
+def view.base.fields() -> List<&2, String>:
+  ["tag_name", "name", "published", "draft", "prerelease", "body", "html_url", "assets.#"]
+
+# the release's own fields, then one set per asset
+def view.fields(+x: Map<&2, String>) -> List<&2, String>:
+  List.append(&2, String, view.base.fields(), asset.fields(Api.count(x, "assets"), 0))
+
 def view.text(+on: Bool, +x: Map<&2, String>) -> String:
   +body = Api.f(x, "body")
   Ui.bold(on, Ui.fg(on, Ui.aqua(), Api.f(x, "tag_name"))) ++ "  " ++ Api.f(x, "name") ++ prefixed(release.flags(on, x), "  ") ++ "\n" ++
   Ui.dim(on, String.take(Api.f(x, "published"), 10n)) ++ "\n" ++
   Ui.fg(on, Ui.aqua(), Api.f(x, "html_url")) ++ "\n" ++
-  Ctx.or.if("\n" ++ body ++ "\n", "", String.is_empty(body))
+  Ctx.or.if("\n" ++ body ++ "\n", "", String.is_empty(body)) ++
+  asset.block(on, x)
 
 def view.out(+on: Bool, json: Cli.Json, +x: Map<&2, String>) -> IO(Unit):
   match json:
     case Cli.Off{}:
       IO.write(view.text(on, x))
     case j:
-      Cli.json.emit(on, j, [x], ["tag_name", "name", "published", "draft", "prerelease", "body", "html_url"])
+      Cli.json.emit(on, j, [x], view.fields(x))
 
 # which endpoint answers a tag: latest, or releases/tags/<tag>
 def latest.of(+tag: String) -> Bool:
