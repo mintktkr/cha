@@ -4,6 +4,7 @@ import Base
 import ./api.bend as Api
 import ./ctx.bend as Ctx
 import 0x3bfb4ae4d3b87b90f01bfcd298211455/time.bend as Time
+import 0x4eed9d7ac6ece61523d747a9d804e4f0/int.bend as Int
 
 type Step is Data:
   Step{position: U32, name: String, status: String, conclusion: String, started: String, completed: String}
@@ -224,24 +225,35 @@ def step.position(+s: Step) -> U32:
 def stamp(m: Maybe<&2, Time.Instant>) -> Time.Instant:
   Maybe.default(&2, Time.Instant, m, Time.Instant.epoch())
 
-# A log line's time, cut to the whole second the forge times a step with.
-def line.second(+line: String) -> Time.Instant:
-  whole(stamp(Time.rfc3339.parse(Ctx.first(String.split(line, ' ')))))
+# A stamp as whole seconds since the epoch, the grain the forge times a step with; 0 when
+# the forge gave none. Windows compare these U32s, not Instants: an Instant is wide on the
+# native lane, and a def holding four of them is past its 247-word limit.
+def secs(i: Time.Instant) -> U32:
+  match i:
+    case Time.Instant{s, n}:
+      Int.I64.to_u32(s)
 
-def in.window.at(+t: Time.Instant, +start: Time.Instant, +stop: Time.Instant) -> Bool:
-  after(Time.Instant.cmp(start, Time.Instant.epoch())) && (at.least(Time.Instant.cmp(t, start)) && at.most(Time.Instant.cmp(t, stop)))
+def second.of(+s: String) -> U32:
+  secs(stamp(Time.rfc3339.parse(s)))
+
+# A log line's time, as a whole second.
+def line.second(+line: String) -> U32:
+  second.of(Ctx.first(String.split(line, ' ')))
+
+def in.window.at(+t: U32, +start: U32, +stop: U32) -> Bool:
+  U32.is_gt(start, 0) && (U32.is_ge(t, start) && U32.is_le(t, stop))
 
 # The line's second against the step's window, which is as fine as the forge's times.
 def in.window(+line: String, +s: Step) -> Bool:
   match s:
     case Step{p, n, status, conclusion, +started, +completed}:
-      in.window.at(line.second(line), whole(stamp(Time.rfc3339.parse(started))), whole(stamp(Time.rfc3339.parse(completed))))
+      in.window.at(line.second(line), second.of(started), second.of(completed))
 
 # The line opens the step's window when the two whole seconds agree.
 def at.start(+line: String, +s: Step) -> Bool:
   match s:
     case Step{p, n, status, conclusion, +started, +completed}:
-      in.window.at(line.second(line), whole(stamp(Time.rfc3339.parse(started))), whole(stamp(Time.rfc3339.parse(started))))
+      in.window.at(line.second(line), second.of(started), second.of(started))
 
 # scrutinees follow binder order, so edge comes before owns here
 def owner.rank.at(+line: String, +head: Step, edge: Bool, owns: Bool) -> Nat:
