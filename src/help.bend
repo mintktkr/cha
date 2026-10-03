@@ -175,7 +175,7 @@ def groups() -> List<&2, Row>:
    Row{"pr", "pull requests: list, view, diff, create, merge, edit, comment, checks", "cha pr list"},
    Row{"runs", "actions: list, view, logs, watch, dispatch, rerun, cancel", "cha runs watch 4142"},
    Row{"repo", "repo: view, labels, label-create, branches, file, tree", "cha repo labels"},
-   Row{"release", "releases: list, view, latest, create", "cha release latest"},
+   Row{"release", "releases: list, view, latest, create, upload", "cha release latest"},
    Row{"moved", "what changed in the repo since a time", "cha moved --since 1d"},
    Row{"auth", "which login and token source a host uses", "cha auth status"},
    Row{"runners", "a repo's or an org's self-hosted runners", "cha runners"},
@@ -358,7 +358,8 @@ def release.rows() -> List<&2, Row>:
   [Row{"list", "the repo's releases", "cha release list"},
    Row{"view TAG|latest", "one release", "cha release view latest"},
    Row{"latest", "the latest release", "cha release latest"},
-   Row{"create TAG [--title T] [--notes N|--notes-file F] [--draft] [--prerelease]", "make a release", "cha release create v0.1.0 --title \"one cup\""}]
+   Row{"create TAG [--title T] [--notes N|--notes-file F] [--draft] [--prerelease]", "make a release", "cha release create v0.1.0 --title \"one cup\""},
+   Row{"upload TAG FILE...", "attach files to a release", "cha release upload v0.1.0 out/cha"}]
 
 def release.flags() -> List<&2, Row>:
   [Row{"--title T", "the release's title", ""},
@@ -370,7 +371,8 @@ def release.flags() -> List<&2, Row>:
 def release.examples() -> List<&2, String>:
   ["cha release list",
    "cha release view latest",
-   "cha release create v0.1.0 --title \"one cup\" --notes-file - --draft"]
+   "cha release create v0.1.0 --title \"one cup\" --notes-file - --draft",
+   "cha release upload v0.1.0 out/cha out/cha-0.1.0-1-x86_64.pkg.tar.zst"]
 
 def release.page() -> Page:
   Page{"cha release", "cha release <command> [flags]", release.rows(), release.flags(), release.examples()}
@@ -576,7 +578,7 @@ def comp.groups() -> List<&2, String>:
    "complete -c cha -n '__cha_needs_command' -a pr -d 'pull requests: list, view, diff, create, merge, edit, comment, checks'",
    "complete -c cha -n '__cha_needs_command' -a runs -d 'actions: list, view, logs, watch, dispatch, rerun, cancel'",
    "complete -c cha -n '__cha_needs_command' -a repo -d 'repo: view, labels, label-create, branches, file, tree'",
-   "complete -c cha -n '__cha_needs_command' -a release -d 'releases: list, view, latest, create'",
+   "complete -c cha -n '__cha_needs_command' -a release -d 'releases: list, view, latest, create, upload'",
    "complete -c cha -n '__cha_needs_command' -a moved -d 'what changed since a time'",
    "complete -c cha -n '__cha_needs_command' -a auth -d 'login and token source'",
    "complete -c cha -n '__cha_in_group auth' -a status -d 'login and token source'",
@@ -677,6 +679,7 @@ def comp.release() -> List<&2, String>:
    "complete -c cha -n '__cha_sub_command release' -a view -d 'one release'",
    "complete -c cha -n '__cha_sub_command release' -a latest -d 'the latest release'",
    "complete -c cha -n '__cha_sub_command release' -a create -d 'make a release'",
+   "complete -c cha -n '__cha_sub_command release' -a upload -d 'attach files to a release'",
    "complete -c cha -n '__cha_using_sub release create' -l title -x -d \"the release's title\"",
    "complete -c cha -n '__cha_using_sub release create' -l notes -x -d 'the release notes'",
    "complete -c cha -n '__cha_using_sub release create' -l notes-file -r -F -d 'the notes from a file; - is stdin'",

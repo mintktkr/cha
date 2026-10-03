@@ -1,11 +1,13 @@
-# cha release: list, view, latest, create.
+# cha release: list, view, latest, create, upload.
 import Base
 import 0x584fc27920487ceab242392391418d7f/json.bend as Json
 import 0x49814d83de8f70993a43e1002be29ecd/bytes.bend as Bytes
+import 0xcfc8be7b076f41f95c8e118383892d55/encoding.bend as Enc
 import ../ctx.bend as Ctx
 import ../api.bend as Api
 import ../ui.bend as Ui
 import ../cli.bend as Cli
+import ../url.bend as Url
 
 # Replies
 # -------
@@ -333,11 +335,222 @@ def create(+env: Cli.Env) -> IO(Unit):
         notes : String <- notes.of(env, Cli.flag(args, "--notes", ""), Cli.flag(args, "--notes-file", ""), Cli.has(args, "--notes-file"))
         create.send(env, repo, tok, t, Cli.flag(args, "--title", ""), notes, Cli.has(args, "--draft"), Cli.has(args, "--prerelease"), Cli.flag(args, "--target", ""))
 
+# upload
+# ------
+
+# Multipart (RFC 7578), the framing Gitea's asset endpoint takes
+# --------------------------------------------------------------
+
+# fixed, because one body is framed once; 16 random hex digits are far past what a
+# file would carry, and a forge only needs it to be absent from the bytes it parses
+
+def mp.boundary() -> String:
+  "----chaBoundary2b6f1c9d47ae3058"
+
+# a filename sits inside a quoted header, so `"`, `\` and a line break would break out of it
+
+def mp.name.keep(+c: U32) -> Bool:
+  Bool.not(U32.is_eq(c, 34) || U32.is_eq(c, 92) || U32.is_eq(c, 13) || U32.is_eq(c, 10))
+
+def mp.name.push(+c: U32, acc: String, keep: Bool) -> String:
+  match keep:
+    case True{}:
+      SCon{Chr{c}, acc}
+    case False{}:
+      acc
+
+def mp.name.go(s: String, acc: String) -> String:
+  match s:
+    case SNil{}:
+      String.reverse(acc)
+    case SCon{Chr{+c}, t}:
+      mp.name.go(t, mp.name.push(c, acc, mp.name.keep(c)))
+
+# the filename a part may carry
+
+def mp.name(+s: String) -> String:
+  mp.name.go(s, SNil{})
+
+def mp.head(+boundary: String, +field: String, +name: String) -> String:
+  "--" ++ boundary ++ "\r\n" ++
+  "Content-Disposition: form-data; name=\"" ++ field ++ "\"; filename=\"" ++ name ++ "\"\r\n" ++
+  "Content-Type: application/octet-stream\r\n\r\n"
+
+def mp.tail(+boundary: String) -> String:
+  "\r\n--" ++ boundary ++ "--\r\n"
+
+# one multipart/form-data body: the part's header, the file's bytes, the terminator
+
+def mp.body(+boundary: String, +field: String, +name: String, data: Bytes.Bytes) -> Bytes.Bytes:
+  Bytes.concat([Enc.utf8.encode(mp.head(boundary, field, mp.name(name))), data, Enc.utf8.encode(mp.tail(boundary))])
+
+# A file, as bytes
+# ----------------
+
+# the bytes a read gave back, in one buffer
+
+def read.bytes.of(xs: List<&2, U32>, buf: Bytes.Bytes, +i: U32) -> Bytes.Bytes:
+  match xs:
+    case Nil{}:
+      buf
+    case Con{v, t}:
+      read.bytes.of(t, Bytes.set(buf, i, v), (i + 1 : U32))
+
+def read.bytes.text(+env: Cli.Env, +path: String, r: Result<&1, &1, U32 & String, List<&2, U32>>) -> IO(Bytes.Bytes):
+  match r:
+    case Done{+xs}:
+      IO.pure(Bytes.Bytes, read.bytes.of(xs, Bytes.new(U32.from_nat(List.length(&2, U32, xs))), 0))
+    case Fail{e}:
+      Cli.fail(Bytes.Bytes, env, "can't read " ++ path)
+
+def read.bytes.got(+env: Cli.Env, +path: String, r: File & Result<&1, &1, U32 & String, List<&2, U32>>) -> IO(Bytes.Bytes):
+  (f, got) = r
+  do IO<Bytes.Bytes>:
+    File.close(f)
+    read.bytes.text(env, path, got)
+
+def read.bytes.sized(+env: Cli.Env, +path: String, f: File, got: Result<&1, &1, U32 & String, U32>) -> IO(Bytes.Bytes):
+  match got:
+    case Done{size}:
+      do IO<Bytes.Bytes>:
+        r : File & Result<&1, &1, U32 & String, List<&2, U32>> <- File.read_bytes(f, size)
+        read.bytes.got(env, path, r)
+    case Fail{e}:
+      do IO<Bytes.Bytes>:
+        File.close(f)
+        Cli.fail(Bytes.Bytes, env, "can't read " ++ path)
+
+def read.bytes.size(+env: Cli.Env, +path: String, r: File & Result<&1, &1, U32 & String, U32>) -> IO(Bytes.Bytes):
+  (f, got) = r
+  read.bytes.sized(env, path, f, got)
+
+def read.bytes.open(+env: Cli.Env, +path: String, r: Result<&1, &1, U32 & String, File>) -> IO(Bytes.Bytes):
+  match r:
+    case Done{f}:
+      do IO<Bytes.Bytes>:
+        s : File & Result<&1, &1, U32 & String, U32> <- File.size(f)
+        read.bytes.size(env, path, s)
+    case Fail{e}:
+      Cli.fail(Bytes.Bytes, env, "can't read " ++ path)
+
+# a file whole, as bytes, failing the command when it cannot be read
+
+def read.bytes(+env: Cli.Env, +path: String) -> IO(Bytes.Bytes):
+  do IO<Bytes.Bytes>:
+    r : Result<&1, &1, U32 & String, File> <- File.open(path, "r")
+    read.bytes.open(env, path, r)
+
+# The request
+# -----------
+
+def forge.of(+r: Ctx.Repo) -> Ctx.Forge:
+  match r:
+    case Ctx.Repo{f, h, o, n}:
+      f
+
+# the last path segment: the name an upload lands under
+
+def base.name(+path: String) -> String:
+  Ctx.last(String.split(path, '/'))
+
+# Gitea takes a multipart form; GitHub takes the file itself
+
+def upload.headers(f: Ctx.Forge, +boundary: String) -> Map<&2, List<&2, String>>:
+  match f:
+    case Ctx.GitHub{}:
+      Api.header.one("content-type", "application/octet-stream")
+    case Ctx.Gitea{}:
+      Api.header.one("content-type", "multipart/form-data; boundary=" ++ boundary)
+
+def upload.body(f: Ctx.Forge, +boundary: String, +name: String, data: Bytes.Bytes) -> Bytes.Bytes:
+  match f:
+    case Ctx.GitHub{}:
+      data
+    case Ctx.Gitea{}:
+      mp.body(boundary, "attachment", name, data)
+
+# GitHub's release carries the upload URL as a template: .../assets{?name,label}. The part
+# before the `{` is the URL, and the name goes in the query either way.
+
+def upload.template(+u: String, +name: String) -> String:
+  Ctx.first(String.split(u, '{')) ++ "?name=" ++ name
+
+# where an asset uploads. GitHub answers its own host, whatever the API host is; Gitea takes
+# the release's path on its own host. Both read the name from the query.
+
+def upload.url(f: Ctx.Forge, +repo: Ctx.Repo, +release: Map<&2, String>, +name: String) -> String:
+  match f:
+    case Ctx.GitHub{}:
+      upload.template(Api.f(release, "upload_url"), Url.encode(name))
+    case Ctx.Gitea{}:
+      Api.path(repo, "releases/" ++ Api.f(release, "id") ++ "/assets?name=" ++ Url.encode(name))
+
+# The command
+# -----------
+
+def upload.tag(+env: Cli.Env, +tag: String, empty: Bool) -> IO(String):
+  match empty:
+    case True{}:
+      Cli.fail(String, env, "release upload: a tag is required")
+    case False{}:
+      IO.pure(String, tag)
+
+def upload.paths(+env: Cli.Env, paths: List<&2, String>) -> IO(List<&2, String>):
+  match paths:
+    case Nil{}:
+      Cli.fail(List<&2, String>, env, "release upload: a file is required")
+    case Con{p, rest}:
+      IO.pure(List<&2, String>, paths)
+
+# the release a tag names, which is what an asset attaches to
+
+def upload.release(+env: Cli.Env, +repo: Ctx.Repo, +tok: String, +tag: String) -> IO(Map<&2, String>):
+  do IO<Map<&2, String>>:
+    r : Api.Reply <- Api.get(repo, tok, Api.path(repo, "releases/tags/" ++ tag))
+    b : Bytes.Bytes <- body.reply(env, r)
+    return Api.obj(b)
+
+def uploaded(+env: Cli.Env, +name: String, +url: String) -> IO(Unit):
+  match env:
+    case Cli.Env{r, t, +on, j, a}:
+      do IO<Unit>:
+        IO.print(url)
+        Ui.done(on, "uploaded " ++ name)
+
+def upload.file(+env: Cli.Env, +repo: Ctx.Repo, +tok: String, +release: Map<&2, String>, +path: String) -> IO(Unit):
+  do IO<Unit>:
+    +name : String = base.name(path)
+    +f : Ctx.Forge = forge.of(repo)
+    +b : String = mp.boundary()
+    data : Bytes.Bytes <- read.bytes(env, path)
+    r : Api.Reply <- Api.send.raw(repo, tok, "POST", upload.url(f, repo, release, name), upload.headers(f, b), upload.body(f, b, name, data))
+    got : Bytes.Bytes <- body.reply(env, r)
+    uploaded(env, name, Api.f(Api.obj(got), "browser_download_url"))
+
+def upload.files(xs: List<&2, String>, +env: Cli.Env, +repo: Ctx.Repo, +tok: String, +release: Map<&2, String>) -> IO(Unit):
+  match xs:
+    case Nil{}:
+      IO.pure(Unit, Unit{})
+    case Con{+path, rest}:
+      do IO<Unit>:
+        upload.file(env, repo, tok, release, path)
+        upload.files(rest, env, repo, tok, release)
+
+def upload(+env: Cli.Env) -> IO(Unit):
+  match env:
+    case Cli.Env{+repo, +tok, on, json, +args}:
+      do IO<Unit>:
+        +tag : String = Cli.arg(args, 1n)
+        t : String <- upload.tag(env, tag, String.is_empty(tag))
+        paths : List<&2, String> <- upload.paths(env, List.drop(&2, String, Cli.positional(args), 2n))
+        release : Map<&2, String> <- upload.release(env, repo, tok, t)
+        upload.files(paths, env, repo, tok, release)
+
 # dispatch
 # --------
 
 def names() -> List<&2, String>:
-  ["list", "view", "latest", "create"]
+  ["list", "view", "latest", "create", "upload"]
 
 def index.at(eq: Bool, +i: Nat, +later: Nat) -> Nat:
   match eq:
@@ -364,7 +577,9 @@ def run.at(+env: Cli.Env, n: Nat) -> IO(Unit):
       latest(env)
     case 3n:
       create(env)
-    case 4n+k:
+    case 4n:
+      upload(env)
+    case 5n+k:
       Cli.fail(Unit, env, "release: unknown subcommand, try cha help")
 
 def run.sub(+env: Cli.Env, +sub: String, empty: Bool) -> IO(Unit):

@@ -22,7 +22,7 @@ description: Use cha for Gitea, Forgejo and GitHub work from the terminal - issu
 - The word after a bare `--json` is the field list unless it starts with `-` or a digit, or is a command name. So `cha issue view --json 7` is issue 7, and `cha issue view --json title 7` selects the title. In scripts, use `--json=a,b`.
 - An unknown field exits 1 with `unknown JSON field X; valid fields: a, b, c`, so `--json nope` is a cheap way to list a command's fields.
 - `issue view --comments`, `runs view` and `moved` print nested records. They take no field list and exit 1 if given one; bare `--json` still works.
-- Write commands print the URL of what they created or changed on stdout.
+- Write commands print the URL of what they created or changed on stdout; `release upload` prints one line per file, the asset's download URL.
 - Errors go to stderr with exit code 1. `pr checks` and `runs watch` also exit 1 when something failed.
 - Forge text is printed with its control characters and escape sequences removed, on stderr too, so a title, a body, a label, a branch name or a CI log line cannot move the cursor or spoof output. Raw content stays byte-exact when piped: `repo file` and `pr diff` print the bytes unchanged into a redirect, and `--json` keeps the data, escaping control characters as `\uXXXX`.
 - Bodies come from `--body TEXT` or `--body-file PATH`. `--body-file -` reads stdin. cha never opens an editor or prompts.
@@ -62,6 +62,7 @@ cha repo tree [--ref R]
 
 cha release list  /  cha release latest  /  cha release view TAG|latest
 cha release create TAG [--title T] [--notes N | --notes-file F] [--draft] [--prerelease] [--target BRANCH]
+cha release upload TAG FILE...        # attach files; the asset name is the file's basename
 
 cha moved [--since 1d|6h|30m|ISO8601] [--json]   # issues/PRs, comments, commits, runs since then
 cha auth status [--json]               # host, forge, login, token source; exit 1 without a working token
@@ -90,6 +91,7 @@ cha completions fish
 - Catch up on a repo: `cha moved --since 1d`.
 - Long comment or body from a heredoc: `cha issue comment 12 --body-file - <<'EOF' ... EOF`.
 - Check the latest upstream version: `cha -R github.com/owner/repo release latest`.
+- Attach a build to a release: `cha release upload v0.1.0 out/cha`. The asset name is the file's basename, each asset's URL is printed, and `cha release view v0.1.0` lists the assets afterwards.
 - Read a file without cloning: `cha -R host/owner/repo repo file README.md --ref main`.
 
 ## Forge differences cha already handles

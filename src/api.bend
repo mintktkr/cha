@@ -111,6 +111,11 @@ def reply(r: Hairpin.Client & Result<&1, &1, Http.Err, Http.Res>) -> IO(Reply):
 def json.headers() -> Map<&2, List<&2, String>>:
   Map.set(&2, List<&2, String>, Map.new(&2, List<&2, String>), "content-type", ["application/json"])
 
+# one request header, as a client takes them
+
+def header.one(+k: String, +v: String) -> Map<&2, List<&2, String>>:
+  Http.set(Http.empty(), k, v)
+
 # one request; url is relative to the forge's API root, or absolute
 def send(repo: Ctx.Repo, +tok: String, +method: String, url: String, body: Maybe<&1, Json.Val>) -> IO(Reply):
   match body:
@@ -122,6 +127,14 @@ def send(repo: Ctx.Repo, +tok: String, +method: String, url: String, body: Maybe
       do IO<Reply>:
         r : Hairpin.Client & Result<&1, &1, Http.Err, Http.Res> <- Hairpin.request(client(repo, tok), method, url, json.headers(), Json.encode.bytes(v))
         reply(r)
+
+# one request whose body is bytes the caller framed, and whose headers are its own
+# (uploads: GitHub takes the file raw, Gitea a multipart form)
+
+def send.raw(repo: Ctx.Repo, +tok: String, +method: String, url: String, headers: Map<&2, List<&2, String>>, body: Bytes.Bytes) -> IO(Reply):
+  do IO<Reply>:
+    r : Hairpin.Client & Result<&1, &1, Http.Err, Http.Res> <- Hairpin.request(client(repo, tok), method, url, headers, body)
+    reply(r)
 
 def get(repo: Ctx.Repo, +tok: String, url: String) -> IO(Reply):
   send(repo, tok, "GET", url, None{})
