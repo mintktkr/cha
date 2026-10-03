@@ -2,6 +2,7 @@ import Base
 import ../src/ctx.bend as Ctx
 import ../src/api.bend as Api
 import ../src/cmd/runs.bend as Runs
+import 0x49814d83de8f70993a43e1002be29ecd/bytes.bend as Bytes
 import 0x3bfb4ae4d3b87b90f01bfcd298211455/time.bend as Time
 
 def expect.if(+got: String, +want: String, same: Bool) -> IO(Unit):
@@ -38,6 +39,51 @@ def fake() -> Map<&2, String>:
   m = Map.set(&2, String, m, "workflow_runs.1.path", "ci.yml@refs/heads/main")
   m
 
+# Forgejo serves its own run schema: one status field, commit_sha, prettyref,
+# started and stopped, and index_in_repo for the run number. The skipped run
+# never started, so its started is the epoch.
+def fj.body() -> String:
+  "{\"workflow_runs\":[{\"id\":\"7448154\",\"title\":\"merge forgejo\",\"workflow_id\":\"merge-requirements.yml\",\"index_in_repo\":\"204056\",\"prettyref\":\"#14633\",\"commit_sha\":\"43cd3108ca5755ecd8958f51706dfd9bec0bc33b\",\"event\":\"pull_request\",\"status\":\"success\",\"started\":\"2026-01-02T10:00:00Z\",\"stopped\":\"2026-01-02T10:00:02Z\",\"updated\":\"2026-01-02T10:00:02Z\",\"html_url\":\"https://codeberg.org/forgejo/forgejo/actions/runs/204056\"},{\"id\":\"7448151\",\"workflow_id\":\"release-notes-assistant.yml\",\"index_in_repo\":\"204055\",\"prettyref\":\"#14633\",\"commit_sha\":\"43cd3108ca5755ecd8958f51706dfd9bec0bc33b\",\"event\":\"pull_request\",\"status\":\"skipped\",\"started\":\"1970-01-01T01:00:00+01:00\",\"stopped\":\"2026-01-02T10:00:35Z\",\"updated\":\"2026-01-02T10:00:35Z\"},{\"id\":\"7448149\",\"title\":\"push to forgejo\",\"workflow_id\":\"testing.yml\",\"index_in_repo\":\"204053\",\"prettyref\":\"forgejo\",\"commit_sha\":\"3a81b293b09618b12a10bb25cc8d8b447c6561b7\",\"event\":\"push\",\"status\":\"running\",\"started\":\"2026-01-02T10:00:00Z\",\"updated\":\"2026-01-02T10:00:01Z\"}]}"
+
+def fj.check.finished(+row: Map<&2, String>) -> IO(Unit):
+  do IO<Unit>:
+    expect(Api.f(row, "workflow"), "merge-requirements.yml")
+    expect(Api.f(row, "path"), "merge-requirements.yml")
+    expect(Api.f(row, "name"), "merge-requirements.yml")
+    expect(Api.f(row, "run_number"), "204056")
+    expect(Api.f(row, "status"), "completed")
+    expect(Api.f(row, "conclusion"), "success")
+    expect(Api.f(row, "state"), "success")
+    expect(Api.f(row, "branch"), "#14633")
+    expect(Api.f(row, "sha"), "43cd3108ca5755ecd8958f51706dfd9bec0bc33b")
+    expect(Api.f(row, "title"), "merge forgejo")
+    expect(Api.f(row, "event"), "pull_request")
+    expect(Api.f(row, "started_at"), "2026-01-02T10:00:00Z")
+    expect(Api.f(row, "updated_at"), "2026-01-02T10:00:02Z")
+    expect(Api.f(row, "completed_at"), "2026-01-02T10:00:02Z")
+    expect(Api.f(row, "duration"), "2")
+    expect(Api.f(row, "html_url"), "https://codeberg.org/forgejo/forgejo/actions/runs/204056")
+    expect(Bool.show(String.ends_with(Api.f(row, "age"), " ago")), "True")
+
+def fj.check.skipped(+row: Map<&2, String>) -> IO(Unit):
+  do IO<Unit>:
+    expect(Api.f(row, "status"), "completed")
+    expect(Api.f(row, "conclusion"), "skipped")
+    expect(Api.f(row, "state"), "skipped")
+    expect(Api.f(row, "started_at"), "")
+    expect(Api.f(row, "age"), "")
+    expect(Api.f(row, "duration"), "")
+    expect(Api.f(row, "title"), "release-notes-assistant.yml")
+
+def fj.check.running(+row: Map<&2, String>) -> IO(Unit):
+  do IO<Unit>:
+    expect(Api.f(row, "status"), "running")
+    expect(Api.f(row, "conclusion"), "")
+    expect(Api.f(row, "state"), "running")
+    expect(Api.f(row, "branch"), "forgejo")
+    expect(Api.f(row, "completed_at"), "")
+    expect(Api.f(row, "duration"), "")
+
 def main() -> IO(Unit):
   do IO<Unit>:
     expect(Runs.runs.url(Ctx.Gitea{}, "main", "failure", "5"), "actions/runs?page=1&limit=5&branch=main&status=failure")
@@ -73,3 +119,7 @@ def main() -> IO(Unit):
     +xs : List<&2, Map<&2, String>> = Runs.rows.of(src, "workflow_runs", Ctx.Gitea{}, now)
     expect(Nat.show(List.length(&2, Map<&2, String>, xs)), "2")
     expect(Nat.show(Api.count(src, "workflow_runs")), "2")
+    +fsrc : Map<&2, String> = Api.obj(Bytes.from_string(fj.body()))
+    fj.check.finished(Runs.run.row(fsrc, "workflow_runs.0", Ctx.Gitea{}, now))
+    fj.check.skipped(Runs.run.row(fsrc, "workflow_runs.1", Ctx.Gitea{}, now))
+    fj.check.running(Runs.run.row(fsrc, "workflow_runs.2", Ctx.Gitea{}, now))

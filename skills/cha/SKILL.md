@@ -96,6 +96,7 @@ cha completions fish
 
 ## Forge differences cha already handles
 
+- Forgejo (Codeberg) answers Actions with its own schema: `workflow_id`, `prettyref`, `commit_sha`, `started`/`stopped` and one status field. `runs list` and `runs view` map it onto the same columns. Its job listing carries no runner, timings or steps, so those stay empty there.
 - Gitea's 405 on merge means a conflict or a moved base. cha says so.
 - Label names are checked before any write, because Gitea silently ignores unknown names, or wipes the set on replace.
 - Gitea 1.25 has no API to rerun or cancel an Actions run. `cha runs rerun|cancel` exit 1 with a hint: push a commit, or use the web UI.

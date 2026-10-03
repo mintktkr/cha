@@ -24,6 +24,67 @@ def g(+src: Map<&2, String>, +prefix: String, +k: String) -> String:
 def g.raw(+src: Map<&2, String>, +prefix: String, +k: String) -> String:
   Api.raw.f(src, Api.key(prefix, k))
 
+# Shapes
+# ------
+# Forgejo serves its own Actions schema. Its runs name the commit in commit_sha
+# where Gitea and GitHub name it head_sha, and its jobs carry a task_id, so key
+# presence tells the schemas apart even when a value is empty.
+
+def has.got(r: Map<&2, String> & Bool) -> Bool:
+  (m, ok) = r
+  ok
+
+def key.has(+src: Map<&2, String>, +k: String) -> Bool:
+  has.got(Map.has(&2, String, src, k))
+
+def fj.run(+src: Map<&2, String>, +prefix: String) -> Bool:
+  key.has(src, Api.key(prefix, "commit_sha"))
+
+def fj.job(+src: Map<&2, String>, +prefix: String) -> Bool:
+  key.has(src, Api.key(prefix, "task_id"))
+
+# Forgejo's open statuses; every other value it reports is a conclusion
+def live.status(+status: String) -> Bool:
+  String.eq(status, "waiting") || String.eq(status, "running") || String.eq(status, "unknown") || String.is_empty(status)
+
+def fj.status.of(+status: String, open: Bool) -> String:
+  match open:
+    case True{}:
+      status
+    case False{}:
+      "completed"
+
+def fj.conclusion.of(+status: String, open: Bool) -> String:
+  match open:
+    case True{}:
+      ""
+    case False{}:
+      status
+
+# Forgejo carries one status field where Gitea and GitHub carry a status and a
+# conclusion: map it onto the pair the rest of cha reads.
+def status.of(+src: Map<&2, String>, +prefix: String, fj: Bool) -> String:
+  match fj:
+    case True{}:
+      fj.status.of(g.raw(src, prefix, "status"), live.status(g.raw(src, prefix, "status")))
+    case False{}:
+      g.raw(src, prefix, "status")
+
+def conclusion.of(+src: Map<&2, String>, +prefix: String, fj: Bool) -> String:
+  match fj:
+    case True{}:
+      fj.conclusion.of(g.raw(src, prefix, "status"), live.status(g.raw(src, prefix, "status")))
+    case False{}:
+      g.raw(src, prefix, "conclusion")
+
+# Forgejo writes the epoch when a run never got a start
+def zero.instant(+m: Maybe<&2, Time.Instant>) -> Bool:
+  match m:
+    case None{}:
+      False{}
+    case Some{i}:
+      Int.I64.is_zero(Time.Duration.to_ms(Time.Instant.since_epoch(i)))
+
 # States
 # ------
 
@@ -120,30 +181,36 @@ def short.if(+s: String, cut: Bool) -> String:
 def short.sha(+s: String) -> String:
   short.if(s, Nat.is_gt(String.length(s), 7n))
 
-# when a run started: Gitea says started_at, GitHub run_started_at then created_at
+# Forgejo writes the epoch when a run never got a start
+def started.nonzero(+s: String) -> String:
+  Ctx.or.if(s, "", zero.instant(Time.rfc3339.parse(s)))
+
+# when a run started: Gitea says started_at, Forgejo started, GitHub
+# run_started_at then created_at
 def started.at(+src: Map<&2, String>, +prefix: String, +forge: Ctx.Forge) -> String:
   match forge:
     case Ctx.Gitea{}:
-      g.raw(src, prefix, "started_at")
+      started.nonzero(Ctx.or(g.raw(src, prefix, "started_at"), g.raw(src, prefix, "started")))
     case Ctx.GitHub{}:
       Ctx.or(g.raw(src, prefix, "run_started_at"), g.raw(src, prefix, "created_at"))
 
-# the workflow's name: Gitea only names the file, GitHub names the workflow
+# the workflow's name: Gitea and Forgejo name the file, GitHub names the
+# workflow
 def wf.of(+src: Map<&2, String>, +prefix: String, +forge: Ctx.Forge) -> String:
   match forge:
     case Ctx.Gitea{}:
-      Ctx.first(String.split(g.raw(src, prefix, "path"), '@'))
+      Ctx.first(String.split(Ctx.or(g.raw(src, prefix, "path"), g.raw(src, prefix, "workflow_id")), '@'))
     case Ctx.GitHub{}:
       g.raw(src, prefix, "name")
 
 def age.at(+src: Map<&2, String>, +prefix: String, +forge: Ctx.Forge, +now: Time.Instant) -> String:
   age.of.parse(Time.rfc3339.parse(started.at(src, prefix, forge)), now)
 
-# updated_at can change after completion; only expose a real completion timestamp.
+# updated_at can change after completion; only expose a real completion timestamp
 def completed.at(+src: Map<&2, String>, +prefix: String, done: Bool) -> String:
   match done:
     case True{}:
-      g.raw(src, prefix, "completed_at")
+      Ctx.or(g.raw(src, prefix, "completed_at"), g.raw(src, prefix, "stopped"))
     case False{}:
       ""
 
@@ -168,6 +235,7 @@ def elapsed(+start: String, +end: String) -> String:
 
 # Gitea leaves head_branch empty for tags and PR refs. Keep those full refs
 # recognizable instead of presenting a tag or pull request as a branch.
+# Forgejo has no head_branch: its prettyref is the branch, tag or pull request
 def branch.ref(+ref: String, branch: Bool) -> String:
   match branch:
     case True{}:
@@ -177,28 +245,35 @@ def branch.ref(+ref: String, branch: Bool) -> String:
 
 def branch.of(+src: Map<&2, String>, +prefix: String) -> String:
   +ref = Ctx.or(g.raw(src, prefix, "ref"), Ctx.rest(String.split(g.raw(src, prefix, "path"), '@'), "@"))
-  Ctx.or(g.raw(src, prefix, "head_branch"), branch.ref(ref, String.starts_with(ref, "refs/heads/")))
+  Ctx.or(Ctx.or(g.raw(src, prefix, "head_branch"), g.raw(src, prefix, "prettyref")), branch.ref(ref, String.starts_with(ref, "refs/heads/")))
 
-# one run, as the flat row every run command reads
+# one run, as the flat row every run command reads. Gitea 1.25 and GitHub share
+# their field names; Forgejo's are the fallback on the right of every or.
 def run.row(+src: Map<&2, String>, +prefix: String, +forge: Ctx.Forge, +now: Time.Instant) -> Map<&2, String>:
+  +fj : Bool = fj.run(src, prefix)
+  +status : String = status.of(src, prefix, fj)
+  +conclusion : String = conclusion.of(src, prefix, fj)
+  +done : Bool = String.eq(status, "completed")
+  +started : String = started.at(src, prefix, forge)
+  +finished : String = completed.at(src, prefix, done)
   m = Map.new(&2, String)
   m = Map.set(&2, String, m, "id", g.raw(src, prefix, "id"))
   m = Map.set(&2, String, m, "kind", "run")
-  m = Map.set(&2, String, m, "path", g.raw(src, prefix, "path"))
-  m = Map.set(&2, String, m, "name", g.raw(src, prefix, "name"))
-  m = Map.set(&2, String, m, "run_number", g.raw(src, prefix, "run_number"))
-  m = Map.set(&2, String, m, "status", g.raw(src, prefix, "status"))
-  m = Map.set(&2, String, m, "conclusion", g.raw(src, prefix, "conclusion"))
-  m = Map.set(&2, String, m, "state", state(src, prefix))
+  m = Map.set(&2, String, m, "path", Ctx.or(g.raw(src, prefix, "path"), g.raw(src, prefix, "workflow_id")))
+  m = Map.set(&2, String, m, "name", Ctx.or(g.raw(src, prefix, "name"), g.raw(src, prefix, "workflow_id")))
+  m = Map.set(&2, String, m, "run_number", Ctx.or(g.raw(src, prefix, "run_number"), g.raw(src, prefix, "index_in_repo")))
+  m = Map.set(&2, String, m, "status", status)
+  m = Map.set(&2, String, m, "conclusion", conclusion)
+  m = Map.set(&2, String, m, "state", state.of(status, conclusion, done))
   m = Map.set(&2, String, m, "workflow", wf.of(src, prefix, forge))
   m = Map.set(&2, String, m, "branch", branch.of(src, prefix))
-  m = Map.set(&2, String, m, "sha", g.raw(src, prefix, "head_sha"))
-  m = Map.set(&2, String, m, "title", Ctx.or(g.raw(src, prefix, "display_title"), wf.of(src, prefix, forge)))
+  m = Map.set(&2, String, m, "sha", Ctx.or(g.raw(src, prefix, "head_sha"), g.raw(src, prefix, "commit_sha")))
+  m = Map.set(&2, String, m, "title", Ctx.or(Ctx.or(g.raw(src, prefix, "display_title"), g.raw(src, prefix, "title")), wf.of(src, prefix, forge)))
   m = Map.set(&2, String, m, "event", g.raw(src, prefix, "event"))
-  m = Map.set(&2, String, m, "started_at", started.at(src, prefix, forge))
-  m = Map.set(&2, String, m, "updated_at", g.raw(src, prefix, "updated_at"))
-  m = Map.set(&2, String, m, "completed_at", completed.at(src, prefix, String.eq(g.raw(src, prefix, "status"), "completed")))
-  m = Map.set(&2, String, m, "duration", elapsed(started.at(src, prefix, forge), completed.at(src, prefix, String.eq(g.raw(src, prefix, "status"), "completed"))))
+  m = Map.set(&2, String, m, "started_at", started)
+  m = Map.set(&2, String, m, "updated_at", Ctx.or(g.raw(src, prefix, "updated_at"), g.raw(src, prefix, "updated")))
+  m = Map.set(&2, String, m, "completed_at", finished)
+  m = Map.set(&2, String, m, "duration", elapsed(started, finished))
   m = Map.set(&2, String, m, "age", age.at(src, prefix, forge, now))
   m = Map.set(&2, String, m, "html_url", g.raw(src, prefix, "html_url"))
   m
@@ -299,13 +374,16 @@ def steps.copy(n: Nat, +i: U32, +src: Map<&2, String>, +prefix: String, m: Map<&
       steps.copy(p, (i + 1 : U32), src, prefix, step.copy(src, Api.key(prefix, target), target, m))
 
 def job.row(+src: Map<&2, String>, +prefix: String) -> Map<&2, String>:
+  +fj : Bool = fj.job(src, prefix)
+  +status : String = status.of(src, prefix, fj)
+  +conclusion : String = conclusion.of(src, prefix, fj)
   m = Map.new(&2, String)
   m = Map.set(&2, String, m, "kind", "job")
   m = Map.set(&2, String, m, "id", g.raw(src, prefix, "id"))
   m = Map.set(&2, String, m, "name", g.raw(src, prefix, "name"))
-  m = Map.set(&2, String, m, "status", g.raw(src, prefix, "status"))
-  m = Map.set(&2, String, m, "conclusion", g.raw(src, prefix, "conclusion"))
-  m = Map.set(&2, String, m, "state", state(src, prefix))
+  m = Map.set(&2, String, m, "status", status)
+  m = Map.set(&2, String, m, "conclusion", conclusion)
+  m = Map.set(&2, String, m, "state", state.of(status, conclusion, String.eq(status, "completed")))
   m = Map.set(&2, String, m, "runner_name", g.raw(src, prefix, "runner_name"))
   m = Map.set(&2, String, m, "started_at", g.raw(src, prefix, "started_at"))
   m = Map.set(&2, String, m, "completed_at", g.raw(src, prefix, "completed_at"))
@@ -315,15 +393,32 @@ def job.row(+src: Map<&2, String>, +prefix: String) -> Map<&2, String>:
   m = Map.set(&2, String, m, "steps.#", Nat.show(count))
   steps.copy(count, 0, src, prefix, m)
 
-def jrows.go(n: Nat, +i: U32, +src: Map<&2, String>) -> List<&2, Map<&2, String>>:
+# Gitea and GitHub wrap a job list in "jobs"; Forgejo answers a bare array,
+# whose rows sit at the root of the flattened body.
+def jobs.wrapped(+src: Map<&2, String>) -> Bool:
+  Bool.not(String.is_empty(Api.f(src, "jobs.#")))
+
+def jobs.root.of(+src: Map<&2, String>, wrapped: Bool) -> String:
+  match wrapped:
+    case True{}:
+      "jobs"
+    case False{}:
+      ""
+
+# jobs.# when the list is wrapped, # when it is a bare array at the root
+def jobs.count(+src: Map<&2, String>, +root: String) -> Nat:
+  Api.count.of(U32.read(g(src, root, "#")))
+
+def jrows.go(n: Nat, +i: U32, +src: Map<&2, String>, +root: String) -> List<&2, Map<&2, String>>:
   match n:
     case 0n:
       Nil{}
     case 1n+p:
-      job.row(src, prefix.of("jobs", i)) <> jrows.go(p, (i + 1 : U32), src)
+      job.row(src, Api.key(root, U32.show(i))) <> jrows.go(p, (i + 1 : U32), src, root)
 
 def jrows.of(+src: Map<&2, String>) -> List<&2, Map<&2, String>>:
-  jrows.go(Api.count(src, "jobs"), 0, src)
+  +root = jobs.root.of(src, jobs.wrapped(src))
+  jrows.go(jobs.count(src, root), 0, src, root)
 
 def step.text(+on: Bool, +label: String, +name: String, +seconds: String, skipped: Bool) -> String:
   match skipped:

@@ -112,6 +112,37 @@ def gitea.jobs.done(page: Runs.JobPages) -> IO(Unit):
     case _:
       IO.die(Unit, 1, "Gitea job pages must stop at total_count or an empty page")
 
+# Forgejo answers the job list with a bare array, and each job carries a task_id.
+def fj.jobs.body() -> String:
+  "[{\"id\":13655010,\"run_id\":7448154,\"attempt\":1,\"handle\":\"38df3c67-e365-43e0-b90c-cd4fbef034c1\",\"repo_id\":73144,\"owner_id\":70422,\"name\":\"merge-conditions\",\"needs\":null,\"runs_on\":[\"docker\"],\"task_id\":10078131,\"status\":\"success\"},{\"id\":13655011,\"run_id\":7448154,\"name\":\"build\",\"runs_on\":[\"docker\"],\"task_id\":10078132,\"status\":\"running\"}]"
+
+def fj.check.jobs(xs: List<&2, Map<&2, String>>) -> IO(Unit):
+  match xs:
+    case Con{+job, Con{+active, Nil{}}}:
+      do IO<Unit>:
+        expect(Api.f(job, "kind"), "job")
+        expect(Api.f(job, "id"), "13655010")
+        expect(Api.f(job, "name"), "merge-conditions")
+        expect(Api.f(job, "status"), "completed")
+        expect(Api.f(job, "conclusion"), "success")
+        expect(Api.f(job, "state"), "success")
+        expect(Api.f(job, "runner_name"), "")
+        expect(Api.f(job, "duration"), "")
+        expect(Api.f(job, "steps.#"), "0")
+        expect(Api.f(active, "state"), "running")
+        expect(Api.f(active, "conclusion"), "")
+    case _:
+      IO.die(Unit, 1, "a bare job array must flatten to one row per job")
+
+def fj.check.page(page: Runs.JobPages) -> IO(Unit):
+  match page:
+    case Runs.NextJobs{True{}, next, +rows}:
+      do IO<Unit>:
+        expect(next, "")
+        expect(Nat.show(List.length(&2, Map<&2, String>, rows)), "2")
+    case _:
+      IO.die(Unit, 1, "a bare job array is the whole list, with no link to follow")
+
 def main() -> IO(Unit):
   do IO<Unit>:
     expect(Runs.job.duration("2026-01-02T10:00:00-03:00", "2026-01-02T13:01:30Z"), "90")
@@ -138,3 +169,5 @@ def main() -> IO(Unit):
     yes(String.contains(text, "    skipped  Upload  \n"))
     expect(Bool.show(String.contains(text, "\u{1b}[")), "False")
     expect(Runs.step.text(True{}, "skipped", "Upload", "", True{}), Ui.dim(True{}, "    skipped  Upload  "))
+    fj.check.jobs(Runs.jrows.of(Api.obj(Bytes.from_string(fj.jobs.body()))))
+    fj.check.page(Runs.jobs.page("", "fallback-2", Bytes.from_string(fj.jobs.body()), Nil{}))
