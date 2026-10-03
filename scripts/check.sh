@@ -6,6 +6,8 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 bend=${BEND:-bend}
+# as in CI: no update notice on stderr, which would read as a failure below
+export BEND_NO_TELEMETRY=1
 bun scripts/order.ts main.bend src/*.bend src/cmd/*.bend
 # foreign_only: "SOME PROOFS FAIL", the foreign-code header, then nothing but "- def" lines
 foreign_only() {
