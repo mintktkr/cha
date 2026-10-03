@@ -365,6 +365,7 @@ def release.flags() -> List<&2, Row>:
   [Row{"--title T", "the release's title", ""},
    Row{"--notes N", "the release notes", ""},
    Row{"--notes-file F", "the notes from a file; - is stdin", ""},
+   Row{"--target BRANCH", "the branch the tag is created from", ""},
    Row{"--draft", "keep it a draft", ""},
    Row{"--prerelease", "mark it a prerelease", ""}]
 

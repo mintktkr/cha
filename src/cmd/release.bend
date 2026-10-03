@@ -3,6 +3,8 @@ import Base
 import 0x584fc27920487ceab242392391418d7f/json.bend as Json
 import 0x49814d83de8f70993a43e1002be29ecd/bytes.bend as Bytes
 import 0xcfc8be7b076f41f95c8e118383892d55/encoding.bend as Enc
+import 0x3bfb4ae4d3b87b90f01bfcd298211455/time.bend as Time
+import 0x4eed9d7ac6ece61523d747a9d804e4f0/int.bend as Int
 import ../ctx.bend as Ctx
 import ../api.bend as Api
 import ../ui.bend as Ui
@@ -341,11 +343,13 @@ def create(+env: Cli.Env) -> IO(Unit):
 # Multipart (RFC 7578), the framing Gitea's asset endpoint takes
 # --------------------------------------------------------------
 
-# fixed, because one body is framed once; 16 random hex digits are far past what a
-# file would carry, and a forge only needs it to be absent from the bytes it parses
+# The boundary comes from the wall clock, so it is new for every upload and, unlike a fixed
+# literal, cannot be sitting in the bytes of the file being uploaded (cha's own binary, at that).
 
-def mp.boundary() -> String:
-  "----chaBoundary2b6f1c9d47ae3058"
+def mp.boundary(+now: Time.Instant) -> String:
+  match now:
+    case Time.Instant{s, n}:
+      "----cha-" ++ U32.show(Int.I64.to_u32(s)) ++ "-" ++ U32.show(n)
 
 # a filename sits inside a quoted header, so `"`, `\` and a line break would break out of it
 
@@ -521,7 +525,8 @@ def upload.file(+env: Cli.Env, +repo: Ctx.Repo, +tok: String, +release: Map<&2, 
   do IO<Unit>:
     +name : String = base.name(path)
     +f : Ctx.Forge = forge.of(repo)
-    +b : String = mp.boundary()
+    now : Time.Instant <- Time.now()
+    +b : String = mp.boundary(now)
     data : Bytes.Bytes <- read.bytes(env, path)
     r : Api.Reply <- Api.send.raw(repo, tok, "POST", upload.url(f, repo, release, name), upload.headers(f, b), upload.body(f, b, name, data))
     got : Bytes.Bytes <- body.reply(env, r)

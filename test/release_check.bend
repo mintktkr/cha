@@ -1,6 +1,7 @@
 # offline checks for the release command's pure pieces: no network, no forge.
 import Base
 import 0x49814d83de8f70993a43e1002be29ecd/bytes.bend as Bytes
+import 0x3bfb4ae4d3b87b90f01bfcd298211455/time.bend as Time
 import ../src/ctx.bend as Ctx
 import ../src/cli.bend as Cli
 import ../src/api.bend as Api
@@ -17,6 +18,11 @@ def expect.if(+got: String, +want: String, same: Bool) -> IO(Unit):
 
 def expect(+got: String, +want: String) -> IO(Unit):
   expect.if(got, want, String.eq(got, want))
+
+# two strings that must not be equal, so one upload's boundary can't be another's
+
+def expect.differs(+a: String, +b: String) -> IO(Unit):
+  expect.if(a, b, Bool.not(String.eq(a, b)))
 
 # a release with everything a view reads, and one with a single attachment
 def full() -> String:
@@ -80,6 +86,11 @@ def listed() -> String:
 def asset() -> String:
   "test/release_check_asset.txt"
 
+# an instant, from the epoch, so the boundary can be checked without a clock
+
+def at(+ms: U32) -> Time.Instant:
+  Time.Instant.add(Time.Instant.epoch(), Time.Duration.of_ms(ms))
+
 def main() -> IO(Unit):
   do IO<Unit>:
     expect(Release.asset.line(False{}, row(full()), 0), "  cha-0.1.0-1-x86_64.pkg.tar.zst  1687933  https://example.org/rel/download/v0.1.0/cha.pkg.tar.zst\n")
@@ -104,6 +115,8 @@ def main() -> IO(Unit):
     expect(Release.mp.name("a.pkg"), "a.pkg")
     expect(Release.mp.name("a\"b\\c\r\nd.pkg"), "abcd.pkg")
     expect(Release.mp.name("cha-0.1.0-1-x86_64.pkg.tar.zst"), "cha-0.1.0-1-x86_64.pkg.tar.zst")
+    expect(Release.mp.boundary(at(1500)), "----cha-1-500000000")
+    expect.differs(Release.mp.boundary(at(1500)), Release.mp.boundary(at(1501)))
     expect(framed.body("a.pkg", "hi"), framed("a.pkg", "hi"))
     expect(framed.body("a\"b.pkg", binary()), framed("ab.pkg", binary()))
     expect(framed.body("cha.pkg", binary()), "--B\r\nContent-Disposition: form-data; name=\"attachment\"; filename=\"cha.pkg\"\r\nContent-Type: application/octet-stream\r\n\r\n" ++ binary() ++ "\r\n--B--\r\n")
