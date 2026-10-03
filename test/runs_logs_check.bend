@@ -127,6 +127,14 @@ def pair() -> Map<&2, String>:
   m = Map.set(&2, String, m, "steps.1.completed_at", "2026-01-01T00:00:09Z")
   m
 
+# a job log the size of a real one: Base's String.split overflowed on these
+def filler(n: Nat) -> String:
+  match n:
+    case 0n:
+      ""
+    case 1n+p:
+      "2026-01-01T00:00:08.6000000Z line\n" ++ filler(p)
+
 def section(+src: Map<&2, String>, +text: String, position: U32) -> String:
   Maybe.default(&2, String, Runlogs.cut.section(text, Runlogs.steps.of(src, "steps", ""), position), "no section")
 
@@ -178,3 +186,5 @@ def main() -> IO(Unit):
     expect("a step outside the job has no section", section(frames(), frames.log(), 9), "no section")
     expect("the group text tells two steps with one second between them apart", section(pair(), pair.log(), 0), "2026-01-01T00:00:08.0000000Z ##[group]Run actions/cache@v4\n2026-01-01T00:00:08.1000000Z ##[endgroup]\n2026-01-01T00:00:08.2000000Z cache restored")
     expect("and the later step keeps its own group", section(pair(), pair.log(), 1), "2026-01-01T00:00:08.3000000Z ##[group]Run scripts/check.sh\n2026-01-01T00:00:08.4000000Z ##[endgroup]\n2026-01-01T00:00:08.5000000Z ok")
+    expect("a log of thousands of lines splits", Nat.show(List.length(&2, String, Runlogs.split.lines(filler(3000n)))), "3001")
+    expect("and a step is cut out of it", section(pair(), pair.log() ++ filler(3000n), 1), "2026-01-01T00:00:08.3000000Z ##[group]Run scripts/check.sh\n2026-01-01T00:00:08.4000000Z ##[endgroup]\n2026-01-01T00:00:08.5000000Z ok")

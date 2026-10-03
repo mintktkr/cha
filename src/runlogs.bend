@@ -22,6 +22,38 @@ def strip.bom.if(+text: String, bom: Bool) -> String:
 def strip.bom(+text: String) -> String:
   strip.bom.if(text, String.starts_with(text, "\u{feff}"))
 
+# Lines of a log. Base's String.split recurses once per character and overflows the
+# stack on a job log of a few dozen KB, so this one walks the text as a tail call:
+# the current line is held reversed, and finished lines pile up in reverse.
+def split.close(st: String & List<&2, String>) -> String & List<&2, String>:
+  (line, acc) = st
+  (SNil{}, String.reverse(line) <> acc)
+
+def split.push(+c: U32, st: String & List<&2, String>) -> String & List<&2, String>:
+  (line, acc) = st
+  (SCon{Chr{c}, line}, acc)
+
+def split.step(+c: U32, st: String & List<&2, String>, nl: Bool) -> String & List<&2, String>:
+  match nl:
+    case True{}:
+      split.close(st)
+    case False{}:
+      split.push(c, st)
+
+def split.end(st: String & List<&2, String>) -> List<&2, String>:
+  (line, acc) = st
+  List.reverse(&2, String, String.reverse(line) <> acc)
+
+def split.go(s: String, st: String & List<&2, String>) -> List<&2, String>:
+  match s:
+    case SNil{}:
+      split.end(st)
+    case SCon{Chr{+c}, t}:
+      split.go(t, split.step(c, st, U32.is_eq(c, 10)))
+
+def split.lines(text: String) -> List<&2, String>:
+  split.go(text, (SNil{}, Nil{}))
+
 def steps.keep(+s: Step, rest: List<&2, Step>, keep: Bool) -> List<&2, Step>:
   match keep:
     case True{}:
@@ -106,7 +138,7 @@ def window.valid(+text: String, +start: Time.Instant, +stop: Time.Instant, valid
     case False{}:
       None{}
     case True{}:
-      Some{lines(String.split(strip.bom(text), '\n'), whole(start), whole(stop))}
+      Some{lines(split.lines(strip.bom(text)), whole(start), whole(stop))}
 
 def window.parsed(+text: String, start: Maybe<&2, Time.Instant>, stop: Maybe<&2, Time.Instant>) -> Maybe<&2, String>:
   match start stop:
@@ -358,5 +390,5 @@ def cut.go(fuel: Nat, +target: U32, st: Cut) -> Maybe<&2, String>:
 
 # One step's section of a job log, or none when the log never opened it.
 def cut.section(+text: String, +steps: List<&2, Step>, +position: U32) -> Maybe<&2, String>:
-  +lines = String.split(strip.bom(text), '\n')
+  +lines = split.lines(strip.bom(text))
   cut.go(Nat.add(List.length(&2, String, lines), 1n), position, More{lines, waiting.of(steps), False{}, Nil{}})
