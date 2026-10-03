@@ -43,7 +43,7 @@ def fake() -> Map<&2, String>:
 # started and stopped, and index_in_repo for the run number. The skipped run
 # never started, so its started is the epoch.
 def fj.body() -> String:
-  "{\"workflow_runs\":[{\"id\":\"7448154\",\"title\":\"merge forgejo\",\"workflow_id\":\"merge-requirements.yml\",\"index_in_repo\":\"204056\",\"prettyref\":\"#14633\",\"commit_sha\":\"43cd3108ca5755ecd8958f51706dfd9bec0bc33b\",\"event\":\"pull_request\",\"status\":\"success\",\"started\":\"2026-01-02T10:00:00Z\",\"stopped\":\"2026-01-02T10:00:02Z\",\"updated\":\"2026-01-02T10:00:02Z\",\"html_url\":\"https://codeberg.org/forgejo/forgejo/actions/runs/204056\"},{\"id\":\"7448151\",\"workflow_id\":\"release-notes-assistant.yml\",\"index_in_repo\":\"204055\",\"prettyref\":\"#14633\",\"commit_sha\":\"43cd3108ca5755ecd8958f51706dfd9bec0bc33b\",\"event\":\"pull_request\",\"status\":\"skipped\",\"started\":\"1970-01-01T01:00:00+01:00\",\"stopped\":\"2026-01-02T10:00:35Z\",\"updated\":\"2026-01-02T10:00:35Z\"},{\"id\":\"7448149\",\"title\":\"push to forgejo\",\"workflow_id\":\"testing.yml\",\"index_in_repo\":\"204053\",\"prettyref\":\"forgejo\",\"commit_sha\":\"3a81b293b09618b12a10bb25cc8d8b447c6561b7\",\"event\":\"push\",\"status\":\"running\",\"started\":\"2026-01-02T10:00:00Z\",\"updated\":\"2026-01-02T10:00:01Z\"}]}"
+  "{\"workflow_runs\":[{\"id\":\"7448154\",\"title\":\"merge forgejo\",\"workflow_id\":\"merge-requirements.yml\",\"index_in_repo\":\"204056\",\"prettyref\":\"#14633\",\"commit_sha\":\"43cd3108ca5755ecd8958f51706dfd9bec0bc33b\",\"event\":\"pull_request\",\"status\":\"success\",\"started\":\"2026-01-02T10:00:00Z\",\"stopped\":\"2026-01-02T10:00:02Z\",\"updated\":\"2026-01-02T10:00:02Z\",\"html_url\":\"https://codeberg.org/forgejo/forgejo/actions/runs/204056\"},{\"id\":\"7448151\",\"workflow_id\":\"release-notes-assistant.yml\",\"index_in_repo\":\"204055\",\"prettyref\":\"#14633\",\"commit_sha\":\"43cd3108ca5755ecd8958f51706dfd9bec0bc33b\",\"event\":\"pull_request\",\"status\":\"skipped\",\"started\":\"1970-01-01T01:00:00+01:00\",\"stopped\":\"2026-01-02T10:00:35Z\",\"updated\":\"2026-01-02T10:00:35Z\"},{\"id\":\"7448149\",\"title\":\"push to forgejo\",\"workflow_id\":\"testing.yml\",\"index_in_repo\":\"204053\",\"prettyref\":\"forgejo\",\"commit_sha\":\"3a81b293b09618b12a10bb25cc8d8b447c6561b7\",\"event\":\"push\",\"status\":\"running\",\"started\":\"2026-01-02T10:00:00Z\",\"updated\":\"2026-01-02T10:00:01Z\"},{\"id\":\"7448152\",\"workflow_id\":\"testing.yml\",\"index_in_repo\":\"204054\",\"prettyref\":\"#14569\",\"commit_sha\":\"83ff810a1a3fa81a8bd6cb2ea5e0f8e2a2f2a3b1\",\"event\":\"pull_request\",\"status\":\"blocked\",\"started\":\"1970-01-01T01:00:00+01:00\",\"stopped\":\"1970-01-01T01:00:00+01:00\",\"updated\":\"2026-01-02T10:00:45Z\"}]}"
 
 def fj.check.finished(+row: Map<&2, String>) -> IO(Unit):
   do IO<Unit>:
@@ -84,6 +84,19 @@ def fj.check.running(+row: Map<&2, String>) -> IO(Unit):
     expect(Api.f(row, "completed_at"), "")
     expect(Api.f(row, "duration"), "")
 
+# a blocked run waits for approval: it has not started, and none of its
+# timestamps are real
+def fj.check.approval(+row: Map<&2, String>) -> IO(Unit):
+  do IO<Unit>:
+    expect(Api.f(row, "status"), "blocked")
+    expect(Api.f(row, "conclusion"), "")
+    expect(Api.f(row, "state"), "blocked")
+    expect(Api.f(row, "started_at"), "")
+    expect(Api.f(row, "completed_at"), "")
+    expect(Api.f(row, "duration"), "")
+    expect(Api.f(row, "age"), "")
+    expect(Api.f(row, "updated_at"), "2026-01-02T10:00:45Z")
+
 def main() -> IO(Unit):
   do IO<Unit>:
     expect(Runs.runs.url(Ctx.Gitea{}, "main", "failure", "5"), "actions/runs?page=1&limit=5&branch=main&status=failure")
@@ -123,3 +136,4 @@ def main() -> IO(Unit):
     fj.check.finished(Runs.run.row(fsrc, "workflow_runs.0", Ctx.Gitea{}, now))
     fj.check.skipped(Runs.run.row(fsrc, "workflow_runs.1", Ctx.Gitea{}, now))
     fj.check.running(Runs.run.row(fsrc, "workflow_runs.2", Ctx.Gitea{}, now))
+    fj.check.approval(Runs.run.row(fsrc, "workflow_runs.3", Ctx.Gitea{}, now))

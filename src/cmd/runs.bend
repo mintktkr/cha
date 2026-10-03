@@ -43,9 +43,10 @@ def fj.run(+src: Map<&2, String>, +prefix: String) -> Bool:
 def fj.job(+src: Map<&2, String>, +prefix: String) -> Bool:
   key.has(src, Api.key(prefix, "task_id"))
 
-# Forgejo's open statuses; every other value it reports is a conclusion
+# Forgejo's open statuses: a blocked run waits for approval, it has not run;
+# every other value it reports is a conclusion
 def live.status(+status: String) -> Bool:
-  String.eq(status, "waiting") || String.eq(status, "running") || String.eq(status, "unknown") || String.is_empty(status)
+  String.eq(status, "waiting") || String.eq(status, "blocked") || String.eq(status, "running") || String.eq(status, "unknown") || String.is_empty(status)
 
 def fj.status.of(+status: String, open: Bool) -> String:
   match open:
@@ -181,8 +182,8 @@ def short.if(+s: String, cut: Bool) -> String:
 def short.sha(+s: String) -> String:
   short.if(s, Nat.is_gt(String.length(s), 7n))
 
-# Forgejo writes the epoch when a run never got a start
-def started.nonzero(+s: String) -> String:
+# Forgejo writes the epoch where a run has no timestamp
+def time.nonzero(+s: String) -> String:
   Ctx.or.if(s, "", zero.instant(Time.rfc3339.parse(s)))
 
 # when a run started: Gitea says started_at, Forgejo started, GitHub
@@ -190,7 +191,7 @@ def started.nonzero(+s: String) -> String:
 def started.at(+src: Map<&2, String>, +prefix: String, +forge: Ctx.Forge) -> String:
   match forge:
     case Ctx.Gitea{}:
-      started.nonzero(Ctx.or(g.raw(src, prefix, "started_at"), g.raw(src, prefix, "started")))
+      time.nonzero(Ctx.or(g.raw(src, prefix, "started_at"), g.raw(src, prefix, "started")))
     case Ctx.GitHub{}:
       Ctx.or(g.raw(src, prefix, "run_started_at"), g.raw(src, prefix, "created_at"))
 
@@ -210,7 +211,7 @@ def age.at(+src: Map<&2, String>, +prefix: String, +forge: Ctx.Forge, +now: Time
 def completed.at(+src: Map<&2, String>, +prefix: String, done: Bool) -> String:
   match done:
     case True{}:
-      Ctx.or(g.raw(src, prefix, "completed_at"), g.raw(src, prefix, "stopped"))
+      time.nonzero(Ctx.or(g.raw(src, prefix, "completed_at"), g.raw(src, prefix, "stopped")))
     case False{}:
       ""
 
