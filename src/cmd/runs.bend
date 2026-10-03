@@ -989,24 +989,54 @@ def workflow.want(wanted: List<&2, String>, +row: Map<&2, String>) -> Bool:
     case Con{w, rest}:
       workflow.any(Con{w, rest}, row)
 
-# Workflow display names are absent from Gitea run rows. Resolve names using
-# current workflow metadata, then filter historical runs by their file paths.
-def workflow.add.if(+path: String, acc: List<&2, String>, matches: Bool) -> List<&2, String>:
-  match matches:
-    case True{}:
-      path <> acc
-    case False{}:
-      acc
+# Workflow metadata, as name resolution needs it: a workflow's display name and
+# the basename of its file, which is what a run's path carries. Names resolve
+# through the workflows the forge lists now; historical runs are filtered by
+# their file paths afterwards.
+type Wf is Data:
+  Wf{name: String, file: String}
 
-def workflow.add(+src: Map<&2, String>, +prefix: String, +wanted: String, acc: List<&2, String>) -> List<&2, String>:
-  workflow.add.if(Ctx.last(String.split(Ctx.or(g(src, prefix, "path"), g(src, prefix, "id")), '/')), acc, String.eq(g(src, prefix, "name"), wanted))
+def wf.entry(+src: Map<&2, String>, +prefix: String) -> Wf:
+  Wf{g(src, prefix, "name"), Ctx.last(String.split(Ctx.or(g(src, prefix, "path"), g(src, prefix, "id")), '/'))}
 
-def workflow.named(n: Nat, +i: U32, +src: Map<&2, String>, +wanted: String, acc: List<&2, String>) -> List<&2, String>:
+def wf.entries(n: Nat, +i: U32, +src: Map<&2, String>, acc: List<&2, Wf>) -> List<&2, Wf>:
   match n:
     case 0n:
       acc
     case 1n+p:
-      workflow.named(p, (i + 1 : U32), src, wanted, workflow.add(src, prefix.of("workflows", i), wanted, acc))
+      wf.entries(p, (i + 1 : U32), src, List.append(&2, Wf, acc, [wf.entry(src, prefix.of("workflows", i))]))
+
+# the files of every workflow whose display name is wanted
+def wf.add.file(acc: List<&2, String>, +file: String, same: Bool) -> List<&2, String>:
+  match same:
+    case True{}:
+      List.append(&2, String, acc, [file])
+    case False{}:
+      acc
+
+def wf.files(xs: List<&2, Wf>, +wanted: String, acc: List<&2, String>) -> List<&2, String>:
+  match xs:
+    case Nil{}:
+      acc
+    case Con{Wf{+name, +file}, rest}:
+      wf.files(rest, wanted, wf.add.file(acc, file, String.eq(name, wanted)))
+
+# every display name, for the error when a name resolves to no file
+def wf.names(xs: List<&2, Wf>, acc: List<&2, String>) -> List<&2, String>:
+  match xs:
+    case Nil{}:
+      acc
+    case Con{Wf{+name, +file}, rest}:
+      wf.names(rest, List.append(&2, String, acc, [name]))
+
+# Gitea and GitHub both list a repository's workflows; Gitea pages with limit,
+# GitHub with per_page
+def workflows.at(+forge: Ctx.Forge) -> String:
+  match forge:
+    case Ctx.Gitea{}:
+      "actions/workflows?page=1&limit=100"
+    case Ctx.GitHub{}:
+      "actions/workflows?page=1&per_page=100"
 
 def list.keep(xs: List<&2, Map<&2, String>>, +workflow: List<&2, String>) -> List<&2, Map<&2, String>>:
   match xs:
@@ -1016,47 +1046,45 @@ def list.keep(xs: List<&2, Map<&2, String>>, +workflow: List<&2, String>) -> Lis
       keep.if(x, list.keep(rest, workflow), workflow.want(workflow, x))
 
 type WorkflowPages is Type:
-  FetchWorkflows{url: String, matches: List<&2, String>}
-  ReadWorkflows{reply: Api.Reply, matches: List<&2, String>}
-  NextWorkflows{last: Bool, url: String, matches: List<&2, String>}
+  FetchWorkflows{url: String, wfs: List<&2, Wf>}
+  ReadWorkflows{reply: Api.Reply, wfs: List<&2, Wf>}
+  NextWorkflows{last: Bool, url: String, wfs: List<&2, Wf>}
 
-def workflow.page(+next: String, body: Bytes.Bytes, +wanted: String, acc: List<&2, String>) -> WorkflowPages:
+def workflow.page(+next: String, body: Bytes.Bytes, acc: List<&2, Wf>) -> WorkflowPages:
   +src = Api.obj(body)
-  NextWorkflows{String.is_empty(next), next, workflow.named(Api.count(src, "workflows"), 0, src, wanted, acc)}
+  NextWorkflows{String.is_empty(next), next, wf.entries(Api.count(src, "workflows"), 0, src, acc)}
 
-def workflow.finish(+env: Cli.Env, xs: List<&2, String>, +wanted: String) -> IO(List<&2, String>):
+def workflow.finish.rows(+env: Cli.Env, xs: List<&2, String>, +wanted: String, +all: List<&2, Wf>) -> IO(List<&2, String>):
   match xs:
     case Nil{}:
-      Cli.fail(List<&2, String>, env, "runs list: no workflow named " ++ wanted ++ "; try its file name")
+      Cli.fail(List<&2, String>, env, "runs list: no workflow named " ++ wanted ++ "; workflows: " ++ Ctx.or(String.join(wf.names(all, Nil{}), ", "), "none"))
     case Con{x, rest}:
       IO.pure(List<&2, String>, Con{x, rest})
+
+def workflow.finish(+env: Cli.Env, +wfs: List<&2, Wf>, +wanted: String) -> IO(List<&2, String>):
+  workflow.finish.rows(env, wf.files(wfs, wanted, Nil{}), wanted, wfs)
 
 def workflow.walk(fuel: Nat, +env: Cli.Env, +repo: Ctx.Repo, +tok: String, +wanted: String, st: WorkflowPages) -> IO(List<&2, String>):
   match fuel st:
     case 0n s:
       Cli.fail(List<&2, String>, env, "runs list: too many workflow pages; use a file name")
-    case 1n+p FetchWorkflows{url, acc}:
+    case 1n+p FetchWorkflows{url, wfs}:
       do IO<List<&2, String>>:
         r : Api.Reply <- Api.get(repo, tok, url)
-        workflow.walk(p, env, repo, tok, wanted, ReadWorkflows{r, acc})
-    case 1n+p ReadWorkflows{Api.Broke{w}, acc}:
+        workflow.walk(p, env, repo, tok, wanted, ReadWorkflows{r, wfs})
+    case 1n+p ReadWorkflows{Api.Broke{w}, wfs}:
       Cli.fail(List<&2, String>, env, w)
-    case 1n+p ReadWorkflows{Api.Reply{+status, +next, body}, acc}:
+    case 1n+p ReadWorkflows{Api.Reply{+status, +next, body}, wfs}:
       do IO<List<&2, String>>:
         b : Bytes.Bytes <- ok.body(env, status, body, Api.ok(status))
-        workflow.walk(p, env, repo, tok, wanted, workflow.page(next, b, wanted, acc))
-    case 1n+p NextWorkflows{True{}, url, acc}:
-      workflow.finish(env, acc, wanted)
-    case 1n+p NextWorkflows{False{}, url, acc}:
-      workflow.walk(p, env, repo, tok, wanted, FetchWorkflows{url, acc})
+        workflow.walk(p, env, repo, tok, wanted, workflow.page(next, b, wfs))
+    case 1n+p NextWorkflows{True{}, url, wfs}:
+      workflow.finish(env, wfs, wanted)
+    case 1n+p NextWorkflows{False{}, url, wfs}:
+      workflow.walk(p, env, repo, tok, wanted, FetchWorkflows{url, wfs})
 
-def workflow.name.resolve(+env: Cli.Env, +repo: Ctx.Repo, +tok: String, +wanted: String, forge: Ctx.Forge) -> IO(List<&2, String>):
-  match forge:
-    case Ctx.GitHub{}:
-      IO.pure(List<&2, String>, [wanted])
-    case Ctx.Gitea{}:
-      workflow.walk(301n, env, repo, tok, wanted, FetchWorkflows{Api.path(repo, "actions/workflows?page=1&limit=100"), Nil{}})
-
+# --workflow by file name needs no lookup; a display name resolves through the
+# workflows the forge lists now, and a name that matches none exits 1
 def workflow.resolve(+env: Cli.Env, +repo: Ctx.Repo, +tok: String, +wanted: String, empty: Bool, file: Bool) -> IO(List<&2, String>):
   match empty file:
     case True{} f:
@@ -1064,7 +1092,7 @@ def workflow.resolve(+env: Cli.Env, +repo: Ctx.Repo, +tok: String, +wanted: Stri
     case False{} True{}:
       IO.pure(List<&2, String>, [wanted])
     case False{} False{}:
-      workflow.name.resolve(env, repo, tok, wanted, forge.of(repo))
+      workflow.walk(301n, env, repo, tok, wanted, FetchWorkflows{Api.path(repo, workflows.at(forge.of(repo))), Nil{}})
 
 def require.limit(+env: Cli.Env, v: U32, valid: Bool) -> IO(Nat):
   match valid:

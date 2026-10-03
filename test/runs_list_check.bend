@@ -71,10 +71,17 @@ def named.check(xs: List<&2, String>) -> IO(Unit):
   match xs:
     case Con{a, Con{b, Nil{}}}:
       do IO<Unit>:
-        expect(a, "ci-two.yml")
-        expect(b, "ci.yml")
+        expect(a, "ci.yml")
+        expect(b, "ci-two.yml")
     case _:
       IO.die(Unit, 1, "duplicate workflow display names must resolve all matching files")
+
+def none.check(xs: List<&2, String>) -> IO(Unit):
+  match xs:
+    case Nil{}:
+      IO.print("ok  a name that matches no workflow resolves to no file")
+    case _:
+      IO.die(Unit, 1, "a name that matches no workflow must resolve to no file")
 
 def main() -> IO(Unit):
   do IO<Unit>:
@@ -107,7 +114,12 @@ def main() -> IO(Unit):
     gitea.last(Runs.list.page(env(), Ctx.Gitea{}, now, Nil{}, 20n, "", "fallback-3", 3n, Bytes.from_string(page.counted("5")), Nil{}))
     expect(Runs.runs.at("&limit=50", 2), "actions/runs?page=2&limit=50")
     +workflows : Map<&2, String> = Api.obj(Bytes.from_string("{\"workflows\":[{\"id\":\"ci.yml\",\"name\":\"CI\",\"path\":\".gitea/workflows/ci.yml\"},{\"id\":\"ci-two.yml\",\"name\":\"CI\",\"path\":\".gitea/workflows/ci-two.yml\"},{\"id\":\"other.yml\",\"name\":\"Other\"}]}"))
-    named.check(Runs.workflow.named(Api.count(workflows, "workflows"), 0, workflows, "CI", Nil{}))
+    +wfs : List<&2, Runs.Wf> = Runs.wf.entries(Api.count(workflows, "workflows"), 0, workflows, Nil{})
+    named.check(Runs.wf.files(wfs, "CI", Nil{}))
+    none.check(Runs.wf.files(wfs, "nope", Nil{}))
+    expect(String.join(Runs.wf.names(wfs, Nil{}), ","), "CI,CI,Other")
+    expect(Runs.workflows.at(Ctx.Gitea{}), "actions/workflows?page=1&limit=100")
+    expect(Runs.workflows.at(Ctx.GitHub{}), "actions/workflows?page=1&per_page=100")
     expect(Runs.rerun.path("7", "", False{}, False{}), "actions/runs/7/rerun")
     expect(Runs.rerun.path("7", "", True{}, False{}), "actions/runs/7/rerun-failed-jobs")
     expect(Runs.rerun.path("7", "42", False{}, True{}), "actions/jobs/42/rerun")
