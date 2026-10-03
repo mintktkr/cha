@@ -78,7 +78,7 @@ cha is written in [Bend](https://bend-lang.com). The rules that must never break
 
 ## 💌 Contributing
 
-Humans and agents are both welcome, under the same rules. Start with [AGENTS.md](AGENTS.md).
+Humans and agents are both welcome, under the same rules. Start with [CONTRIBUTING.md](CONTRIBUTING.md), then [AGENTS.md](AGENTS.md) for the details. Stuck? See [SUPPORT.md](SUPPORT.md). Found a vulnerability? Report it privately, see [SECURITY.md](SECURITY.md).
 
 ## 📜 License
 

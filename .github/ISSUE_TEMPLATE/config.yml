@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Security report
+    url: https://github.com/mintktkr/cha/security/advisories/new
+    about: A token leak or other vulnerability. Report it privately, not in a public issue.

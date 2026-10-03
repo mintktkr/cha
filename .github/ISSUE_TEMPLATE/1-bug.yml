@@ -1,0 +1,46 @@
+name: Bug
+description: A command does the wrong thing, fails, or prints something it shouldn't.
+labels: [bug, needs-triage]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        A token or other secret in the output is a security bug. Report it privately, see SECURITY.md.
+  - type: input
+    id: command
+    attributes:
+      label: Command
+      description: The exact command you ran. Use a public repo with `-R` if you can.
+      placeholder: cha runs logs 1337 --failed -R codeberg.org/forgejo/forgejo
+    validations:
+      required: true
+  - type: dropdown
+    id: forge
+    attributes:
+      label: Forge
+      options:
+        - GitHub
+        - Gitea
+        - Forgejo
+        - more than one
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what you expected
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: Output
+      description: Paste it as is. Redact tokens and private hostnames.
+      render: shell
+  - type: input
+    id: version
+    attributes:
+      label: cha version
+      description: "`cha version`, or the commit if you run from source"
+    validations:
+      required: true

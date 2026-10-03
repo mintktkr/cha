@@ -1,0 +1,26 @@
+name: Feature
+description: A command, flag or field cha doesn't have yet.
+labels: [enhancement, needs-triage]
+body:
+  - type: textarea
+    id: need
+    attributes:
+      label: What you're trying to do
+      description: The task, not the solution. What do you run today instead (gh, tea, curl + jq)?
+    validations:
+      required: true
+  - type: textarea
+    id: shape
+    attributes:
+      label: What it could look like
+      description: The command line and the output you'd want.
+      render: shell
+  - type: dropdown
+    id: forge
+    attributes:
+      label: Forge
+      multiple: true
+      options:
+        - GitHub
+        - Gitea
+        - Forgejo
