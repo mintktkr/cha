@@ -9,7 +9,7 @@ Humans and agents, under the same rules. A coding agent named **memu** is a regu
 ## Bend
 
 - Run `bend guide` before writing Bend. The guide is the whole language.
-- Toolchain: bend **2.0.34**. Don't bump it as a side effect. A bump is its own commit.
+- Toolchain: bend **2.0.34**. Don't bump it as a side effect. A bump is its own commit, and it updates `BEND_VERSION` and `BEND_SHA256` in `.github/workflows/check.yml` (the sha256 is in bend-lang.com/install.sh).
 - Rules that must never break go in `LAWS.bend`. Run `bend PROOF.bend` before every commit. A red proof means the change doesn't land.
 - Parallelize where it's natural, for example the independent requests in a sweep.
 - Hub imports are pinned by hash. Never float a version. Hub packages churn daily, so a bump is deliberate and gets its own commit.
@@ -32,7 +32,7 @@ Humans and agents, under the same rules. A coding agent named **memu** is a regu
 | `docs/how.md` | how a command flows, with a diagram |
 | `packaging/arch/` | PKGBUILD. Bump `pkgver` with `version()` in `main.bend` and tag `v<version>` |
 
-`scripts/check.sh` checks definition order, type-checks every file, proves the laws and runs the offline checks. Run it before every commit. `bend PROOF.bend` on its own always ends with "SOME PROOFS FAIL" plus a list of defs relying on foreign code (the tty and http effects pulled in by `ui` and `api`). That's cha's green state. `check.sh` fails only on a law error, a TODO, or a law that itself relies on foreign code.
+`scripts/check.sh` checks definition order, type-checks every file, proves the laws and runs the offline checks. Run it before every commit. `bend PROOF.bend` on its own always ends with "SOME PROOFS FAIL" plus a list of defs relying on foreign code (the tty and http effects pulled in by `ui` and `api`). That's cha's green state. `check.sh` fails closed: a file passes only when bend exits 0 or prints nothing but that foreign-code list, and the proofs pass only if no law or proof is on it. Any other output (a TODO, an error, a crash, a missing hub package) is red. CI (`.github/workflows/check.yml`) runs `check.sh` on every push and pull request, with the same pinned bend.
 
 ## Bend patterns used here
 
@@ -50,7 +50,7 @@ These are the walls every newcomer hits. `src/` has a working example of each.
 - **Name clashes**: Base already has types such as `Word`, and `where` is a keyword. Check `bend base --types`.
 - **Running**:
   - `bend main.bend -- <args>` runs on the JS lane in seconds.
-  - `bend main.bend --check-only` type-checks. For `main.bend` it always ends with a list of "defs that rely on unsafe or foreign code": that's the network and tty effects, and it's expected. A real error prints `Error:` with a `Location:`.
+  - `bend main.bend --check-only` type-checks. For `main.bend` it always ends with a list of "defs that rely on unsafe or foreign code": that's the network and tty effects, and it's expected. Anything else in the output is a failure, with or without a `Location:` (an open `?TODO` prints none).
   - A native build, `bend main.bend -o out/cha`, takes minutes. Do it once at the end, not in the edit loop.
 - **The JS lane is heavy.** Every `bend main.bend -- ...` recompiles the whole program and takes 2-3 GB of memory. Run one bend process at a time, wrapped in `timeout`. Several agents in parallel will exhaust a 16 GB machine.
 - **A known JS-lane hang**: calling a helper that takes a `+Map` and returns a String from inside a recursive row-mapping def can loop forever with runaway memory (likely upstream bendlang/bend#1206). If a run hangs, inline the call.

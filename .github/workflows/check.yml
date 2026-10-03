@@ -1,0 +1,36 @@
+name: check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      BEND_VERSION: 2.0.34
+      # sha256 of bend-2.0.34-linux-x64.tar.gz, from bend-lang.com/install.sh
+      BEND_SHA256: 78106a97af242429dcc057258eb8d10f69cddebcd5e263022185a52d003e09bf
+      BEND_NO_TELEMETRY: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - name: install bend
+        run: |
+          name=bend-$BEND_VERSION-linux-x64.tar.gz
+          curl --proto '=https' --tlsv1.2 -fsSL -o "/tmp/$name" \
+            "https://github.com/bendlang/bend/releases/download/v$BEND_VERSION/$name"
+          echo "$BEND_SHA256  /tmp/$name" | sha256sum -c -
+          tar -xzf "/tmp/$name" -C "$HOME"
+          echo "BEND=$HOME/bend/bin/bend" >> "$GITHUB_ENV"
+      - uses: actions/cache@v4
+        with:
+          path: ~/.bend/lib
+          key: bend-hub-${{ hashFiles('**/*.bend') }}
+          restore-keys: bend-hub-
+      - run: scripts/check.sh
