@@ -116,12 +116,15 @@ def run.query(+f: Ctx.Forge) -> String:
 # Rows
 # ----
 
+# A row holds what the forge sent: these builders read raw, and the text printers read the
+# row back through Api.f. --json reads it through Api.raw.f.
+
 # a comment sits on an issue or a pull request; a forge may fill only one of the two urls
 def with.number(+x: Map<&2, String>) -> Map<&2, String>:
-  Map.set(&2, String, x, "number", Ctx.last(String.split(Ctx.or(Api.f(x, "issue_url"), Api.f(x, "pull_request_url")), '/')))
+  Map.set(&2, String, x, "number", Ctx.last(String.split(Ctx.or(Api.raw.f(x, "issue_url"), Api.raw.f(x, "pull_request_url")), '/')))
 
 def with.first(+x: Map<&2, String>) -> Map<&2, String>:
-  Map.set(&2, String, x, "first", Ctx.first(String.lines(Api.f(x, "body"))))
+  Map.set(&2, String, x, "first", Ctx.first(String.lines(Api.raw.f(x, "body"))))
 
 def comment.row(+x: Map<&2, String>) -> Map<&2, String>:
   with.first(with.number(x))
@@ -139,13 +142,13 @@ def comment.section(s: Section) -> Section:
       Section{h, comment.rows(xs), e}
 
 def with.short(+x: Map<&2, String>) -> Map<&2, String>:
-  Map.set(&2, String, x, "short", String.take(Api.f(x, "sha"), 7n))
+  Map.set(&2, String, x, "short", String.take(Api.raw.f(x, "sha"), 7n))
 
 def with.subject(+x: Map<&2, String>) -> Map<&2, String>:
-  Map.set(&2, String, x, "subject", Ctx.first(String.lines(Api.f(x, "commit.message"))))
+  Map.set(&2, String, x, "subject", Ctx.first(String.lines(Api.raw.f(x, "commit.message"))))
 
 def with.who(+x: Map<&2, String>) -> Map<&2, String>:
-  Map.set(&2, String, x, "author", Ctx.or(Api.f(x, "commit.author.name"), Api.f(x, "author.login")))
+  Map.set(&2, String, x, "author", Ctx.or(Api.raw.f(x, "commit.author.name"), Api.raw.f(x, "author.login")))
 
 def commit.row(+x: Map<&2, String>) -> Map<&2, String>:
   with.who(with.subject(with.short(x)))
@@ -164,29 +167,29 @@ def commit.section(s: Section) -> Section:
 
 # the run's conclusion once it finished, its status while it runs
 def run.state(+flat: Map<&2, String>, +pre: String) -> String:
-  Ctx.or(Api.f(flat, pre ++ "conclusion"), Api.f(flat, pre ++ "status"))
+  Ctx.or(Api.raw.f(flat, pre ++ "conclusion"), Api.raw.f(flat, pre ++ "status"))
 
 # the workflow's name, or its file for a forge that answers with a run path
 def run.workflow(+flat: Map<&2, String>, +pre: String) -> String:
-  Ctx.or(Api.f(flat, pre ++ "name"), Ctx.first(String.split(Api.f(flat, pre ++ "path"), '@')))
+  Ctx.or(Api.raw.f(flat, pre ++ "name"), Ctx.first(String.split(Api.raw.f(flat, pre ++ "path"), '@')))
 
 def run.created(+flat: Map<&2, String>, +pre: String) -> String:
-  Ctx.or(Api.f(flat, pre ++ "created_at"), Api.f(flat, pre ++ "started_at"))
+  Ctx.or(Api.raw.f(flat, pre ++ "created_at"), Api.raw.f(flat, pre ++ "started_at"))
 
 def run.updated(+flat: Map<&2, String>, +pre: String) -> String:
-  Ctx.or(Api.f(flat, pre ++ "updated_at"), Api.f(flat, pre ++ "completed_at"))
+  Ctx.or(Api.raw.f(flat, pre ++ "updated_at"), Api.raw.f(flat, pre ++ "completed_at"))
 
 def run.row(+flat: Map<&2, String>, +pre: String) -> Map<&2, String>:
   +r0 = Map.new(&2, String)
   +r1 = Map.set(&2, String, r0, "state", run.state(flat, pre))
   +r2 = Map.set(&2, String, r1, "workflow", run.workflow(flat, pre))
-  +r3 = Map.set(&2, String, r2, "branch", Api.f(flat, pre ++ "head_branch"))
+  +r3 = Map.set(&2, String, r2, "branch", Api.raw.f(flat, pre ++ "head_branch"))
   +r4 = Map.set(&2, String, r3, "created", run.created(flat, pre))
   +r5 = Map.set(&2, String, r4, "updated", run.updated(flat, pre))
-  Map.set(&2, String, r5, "html_url", Api.f(flat, pre ++ "html_url"))
+  Map.set(&2, String, r5, "html_url", Api.raw.f(flat, pre ++ "html_url"))
 
 def run.recent(+row: Map<&2, String>, +bound: Time.Instant) -> Bool:
-  Bool.or(at.least.text(Api.f(row, "created"), bound), at.least.text(Api.f(row, "updated"), bound))
+  Bool.or(at.least.text(Api.raw.f(row, "created"), bound), at.least.text(Api.raw.f(row, "updated"), bound))
 
 def run.rows(+n: Nat, +flat: Map<&2, String>, +i: U32, acc: List<&2, Map<&2, String>>) -> List<&2, Map<&2, String>>:
   match n:

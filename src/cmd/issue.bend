@@ -36,13 +36,14 @@ def prs.keep(xs: List<&2, Map<&2, String>>, keep: Bool) -> List<&2, Map<&2, Stri
     case False{}:
       real(xs)
 
-# labels joined into one field, for display and --json
+# labels joined into one field, for display and --json: a row field, so it stays as the
+# forge sent it and each output cleans or escapes it on the way out
 def with_labels(xs: List<&2, Map<&2, String>>) -> List<&2, Map<&2, String>>:
   match xs:
     case Nil{}:
       Nil{}
     case Con{+x, rest}:
-      Map.set(&2, String, x, "labels", Api.join(x, "labels", "name", ",")) <> with_labels(rest)
+      Map.set(&2, String, x, "labels", Api.raw.join(x, "labels", "name", ",")) <> with_labels(rest)
 
 def line(+on: Bool, +x: Map<&2, String>) -> String:
   +labels = Api.f(x, "labels")
@@ -504,7 +505,7 @@ def view.json.if(want: Bool, +x: Map<&2, String>, +cs: List<&2, Map<&2, String>>
       Cli.json.rows(Con{x, Nil{}}, issue.fields())
 
 def view.json(+x: Map<&2, String>, +cs: List<&2, Map<&2, String>>, want: Bool) -> String:
-  view.json.if(want, Map.set(&2, String, x, "labels", Api.join(x, "labels", "name", ", ")), cs)
+  view.json.if(want, Map.set(&2, String, x, "labels", Api.raw.join(x, "labels", "name", ", ")), cs)
 
 def view.json.out(+on: Bool, j: Cli.Json, +x: Map<&2, String>, +cs: List<&2, Map<&2, String>>, want: Bool) -> IO(Unit):
   match want:
@@ -513,7 +514,7 @@ def view.json.out(+on: Bool, j: Cli.Json, +x: Map<&2, String>, +cs: List<&2, Map
         Cli.json.whole(on, j, "issue view --comments")
         IO.write(view.json(x, cs, True{}) ++ "\n")
     case False{}:
-      Cli.json.emit(on, j, [Map.set(&2, String, x, "labels", Api.join(x, "labels", "name", ", "))], issue.fields())
+      Cli.json.emit(on, j, [Map.set(&2, String, x, "labels", Api.raw.join(x, "labels", "name", ", "))], issue.fields())
 
 def view.print.if(json: Cli.Json, +on: Bool, +x: Map<&2, String>, +cs: List<&2, Map<&2, String>>, want: Bool) -> IO(Unit):
   match json:

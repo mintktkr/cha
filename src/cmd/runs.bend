@@ -18,6 +18,12 @@ import 0x4eed9d7ac6ece61523d747a9d804e4f0/int.bend as Int
 def g(+src: Map<&2, String>, +prefix: String, +k: String) -> String:
   Api.f(src, Api.key(prefix, k))
 
+# the same field as the forge sent it, for the defs that build a row. A row holds what
+# the forge sent, so a command prints a field through g (clean) and passes it to --json
+# through Api.raw.f (exact). Reading something to print it goes through g, never g.raw.
+def g.raw(+src: Map<&2, String>, +prefix: String, +k: String) -> String:
+  Api.raw.f(src, Api.key(prefix, k))
+
 # States
 # ------
 
@@ -34,7 +40,7 @@ def state.of(+status: String, +conclusion: String, done: Bool) -> String:
       status
 
 def state(+src: Map<&2, String>, +prefix: String) -> String:
-  state.of(g(src, prefix, "status"), g(src, prefix, "conclusion"), String.eq(g(src, prefix, "status"), "completed"))
+  state.of(g.raw(src, prefix, "status"), g.raw(src, prefix, "conclusion"), String.eq(g.raw(src, prefix, "status"), "completed"))
 
 # Age
 # ---
@@ -118,17 +124,17 @@ def short.sha(+s: String) -> String:
 def started.at(+src: Map<&2, String>, +prefix: String, +forge: Ctx.Forge) -> String:
   match forge:
     case Ctx.Gitea{}:
-      g(src, prefix, "started_at")
+      g.raw(src, prefix, "started_at")
     case Ctx.GitHub{}:
-      Ctx.or(g(src, prefix, "run_started_at"), g(src, prefix, "created_at"))
+      Ctx.or(g.raw(src, prefix, "run_started_at"), g.raw(src, prefix, "created_at"))
 
 # the workflow's name: Gitea only names the file, GitHub names the workflow
 def wf.of(+src: Map<&2, String>, +prefix: String, +forge: Ctx.Forge) -> String:
   match forge:
     case Ctx.Gitea{}:
-      Ctx.first(String.split(g(src, prefix, "path"), '@'))
+      Ctx.first(String.split(g.raw(src, prefix, "path"), '@'))
     case Ctx.GitHub{}:
-      g(src, prefix, "name")
+      g.raw(src, prefix, "name")
 
 def age.at(+src: Map<&2, String>, +prefix: String, +forge: Ctx.Forge, +now: Time.Instant) -> String:
   age.of.parse(Time.rfc3339.parse(started.at(src, prefix, forge)), now)
@@ -137,7 +143,7 @@ def age.at(+src: Map<&2, String>, +prefix: String, +forge: Ctx.Forge, +now: Time
 def completed.at(+src: Map<&2, String>, +prefix: String, done: Bool) -> String:
   match done:
     case True{}:
-      g(src, prefix, "completed_at")
+      g.raw(src, prefix, "completed_at")
     case False{}:
       ""
 
@@ -170,31 +176,31 @@ def branch.ref(+ref: String, branch: Bool) -> String:
       ref
 
 def branch.of(+src: Map<&2, String>, +prefix: String) -> String:
-  +ref = Ctx.or(g(src, prefix, "ref"), Ctx.rest(String.split(g(src, prefix, "path"), '@'), "@"))
-  Ctx.or(g(src, prefix, "head_branch"), branch.ref(ref, String.starts_with(ref, "refs/heads/")))
+  +ref = Ctx.or(g.raw(src, prefix, "ref"), Ctx.rest(String.split(g.raw(src, prefix, "path"), '@'), "@"))
+  Ctx.or(g.raw(src, prefix, "head_branch"), branch.ref(ref, String.starts_with(ref, "refs/heads/")))
 
 # one run, as the flat row every run command reads
 def run.row(+src: Map<&2, String>, +prefix: String, +forge: Ctx.Forge, +now: Time.Instant) -> Map<&2, String>:
   m = Map.new(&2, String)
-  m = Map.set(&2, String, m, "id", g(src, prefix, "id"))
+  m = Map.set(&2, String, m, "id", g.raw(src, prefix, "id"))
   m = Map.set(&2, String, m, "kind", "run")
-  m = Map.set(&2, String, m, "path", g(src, prefix, "path"))
-  m = Map.set(&2, String, m, "name", g(src, prefix, "name"))
-  m = Map.set(&2, String, m, "run_number", g(src, prefix, "run_number"))
-  m = Map.set(&2, String, m, "status", g(src, prefix, "status"))
-  m = Map.set(&2, String, m, "conclusion", g(src, prefix, "conclusion"))
+  m = Map.set(&2, String, m, "path", g.raw(src, prefix, "path"))
+  m = Map.set(&2, String, m, "name", g.raw(src, prefix, "name"))
+  m = Map.set(&2, String, m, "run_number", g.raw(src, prefix, "run_number"))
+  m = Map.set(&2, String, m, "status", g.raw(src, prefix, "status"))
+  m = Map.set(&2, String, m, "conclusion", g.raw(src, prefix, "conclusion"))
   m = Map.set(&2, String, m, "state", state(src, prefix))
   m = Map.set(&2, String, m, "workflow", wf.of(src, prefix, forge))
   m = Map.set(&2, String, m, "branch", branch.of(src, prefix))
-  m = Map.set(&2, String, m, "sha", g(src, prefix, "head_sha"))
-  m = Map.set(&2, String, m, "title", Ctx.or(g(src, prefix, "display_title"), wf.of(src, prefix, forge)))
-  m = Map.set(&2, String, m, "event", g(src, prefix, "event"))
+  m = Map.set(&2, String, m, "sha", g.raw(src, prefix, "head_sha"))
+  m = Map.set(&2, String, m, "title", Ctx.or(g.raw(src, prefix, "display_title"), wf.of(src, prefix, forge)))
+  m = Map.set(&2, String, m, "event", g.raw(src, prefix, "event"))
   m = Map.set(&2, String, m, "started_at", started.at(src, prefix, forge))
-  m = Map.set(&2, String, m, "updated_at", g(src, prefix, "updated_at"))
-  m = Map.set(&2, String, m, "completed_at", completed.at(src, prefix, String.eq(g(src, prefix, "status"), "completed")))
-  m = Map.set(&2, String, m, "duration", elapsed(started.at(src, prefix, forge), completed.at(src, prefix, String.eq(g(src, prefix, "status"), "completed"))))
+  m = Map.set(&2, String, m, "updated_at", g.raw(src, prefix, "updated_at"))
+  m = Map.set(&2, String, m, "completed_at", completed.at(src, prefix, String.eq(g.raw(src, prefix, "status"), "completed")))
+  m = Map.set(&2, String, m, "duration", elapsed(started.at(src, prefix, forge), completed.at(src, prefix, String.eq(g.raw(src, prefix, "status"), "completed"))))
   m = Map.set(&2, String, m, "age", age.at(src, prefix, forge, now))
-  m = Map.set(&2, String, m, "html_url", g(src, prefix, "html_url"))
+  m = Map.set(&2, String, m, "html_url", g.raw(src, prefix, "html_url"))
   m
 
 def run.line(+on: Bool, +row: Map<&2, String>) -> String:
@@ -275,14 +281,14 @@ def job.duration.text(+seconds: String) -> String:
 
 # Copy each step to the normalized job row, retaining the flat array convention.
 def step.copy(+src: Map<&2, String>, +source: String, +target: String, m: Map<&2, String>) -> Map<&2, String>:
-  m = Map.set(&2, String, m, Api.key(target, "number"), g(src, source, "number"))
-  m = Map.set(&2, String, m, Api.key(target, "name"), g(src, source, "name"))
-  m = Map.set(&2, String, m, Api.key(target, "status"), g(src, source, "status"))
-  m = Map.set(&2, String, m, Api.key(target, "conclusion"), g(src, source, "conclusion"))
+  m = Map.set(&2, String, m, Api.key(target, "number"), g.raw(src, source, "number"))
+  m = Map.set(&2, String, m, Api.key(target, "name"), g.raw(src, source, "name"))
+  m = Map.set(&2, String, m, Api.key(target, "status"), g.raw(src, source, "status"))
+  m = Map.set(&2, String, m, Api.key(target, "conclusion"), g.raw(src, source, "conclusion"))
   m = Map.set(&2, String, m, Api.key(target, "state"), state(src, source))
-  m = Map.set(&2, String, m, Api.key(target, "started_at"), g(src, source, "started_at"))
-  m = Map.set(&2, String, m, Api.key(target, "completed_at"), g(src, source, "completed_at"))
-  Map.set(&2, String, m, Api.key(target, "duration"), job.duration(g(src, source, "started_at"), g(src, source, "completed_at")))
+  m = Map.set(&2, String, m, Api.key(target, "started_at"), g.raw(src, source, "started_at"))
+  m = Map.set(&2, String, m, Api.key(target, "completed_at"), g.raw(src, source, "completed_at"))
+  Map.set(&2, String, m, Api.key(target, "duration"), job.duration(g.raw(src, source, "started_at"), g.raw(src, source, "completed_at")))
 
 def steps.copy(n: Nat, +i: U32, +src: Map<&2, String>, +prefix: String, m: Map<&2, String>) -> Map<&2, String>:
   match n:
@@ -295,16 +301,16 @@ def steps.copy(n: Nat, +i: U32, +src: Map<&2, String>, +prefix: String, m: Map<&
 def job.row(+src: Map<&2, String>, +prefix: String) -> Map<&2, String>:
   m = Map.new(&2, String)
   m = Map.set(&2, String, m, "kind", "job")
-  m = Map.set(&2, String, m, "id", g(src, prefix, "id"))
-  m = Map.set(&2, String, m, "name", g(src, prefix, "name"))
-  m = Map.set(&2, String, m, "status", g(src, prefix, "status"))
-  m = Map.set(&2, String, m, "conclusion", g(src, prefix, "conclusion"))
+  m = Map.set(&2, String, m, "id", g.raw(src, prefix, "id"))
+  m = Map.set(&2, String, m, "name", g.raw(src, prefix, "name"))
+  m = Map.set(&2, String, m, "status", g.raw(src, prefix, "status"))
+  m = Map.set(&2, String, m, "conclusion", g.raw(src, prefix, "conclusion"))
   m = Map.set(&2, String, m, "state", state(src, prefix))
-  m = Map.set(&2, String, m, "runner_name", g(src, prefix, "runner_name"))
-  m = Map.set(&2, String, m, "started_at", g(src, prefix, "started_at"))
-  m = Map.set(&2, String, m, "completed_at", g(src, prefix, "completed_at"))
-  m = Map.set(&2, String, m, "duration", job.duration(g(src, prefix, "started_at"), g(src, prefix, "completed_at")))
-  m = Map.set(&2, String, m, "html_url", g(src, prefix, "html_url"))
+  m = Map.set(&2, String, m, "runner_name", g.raw(src, prefix, "runner_name"))
+  m = Map.set(&2, String, m, "started_at", g.raw(src, prefix, "started_at"))
+  m = Map.set(&2, String, m, "completed_at", g.raw(src, prefix, "completed_at"))
+  m = Map.set(&2, String, m, "duration", job.duration(g.raw(src, prefix, "started_at"), g.raw(src, prefix, "completed_at")))
+  m = Map.set(&2, String, m, "html_url", g.raw(src, prefix, "html_url"))
   +count = Api.count(src, Api.key(prefix, "steps"))
   m = Map.set(&2, String, m, "steps.#", Nat.show(count))
   steps.copy(count, 0, src, prefix, m)
@@ -699,8 +705,12 @@ def tick.at(+state: String, +conclusion: String, done: Bool) -> Tick:
     case False{}:
       More{state, conclusion}
 
+# The watch prints the state it reads, so unlike the row builders this reads the source
+# through the clean door.
 def tick.of(+src: Map<&2, String>) -> Tick:
-  tick.at(state(src, ""), g(src, "", "conclusion"), String.eq(g(src, "", "status"), "completed"))
+  +status = Api.f(src, "status")
+  +conclusion = Api.f(src, "conclusion")
+  tick.at(state.of(status, conclusion, String.eq(status, "completed")), conclusion, String.eq(status, "completed"))
 
 def spinner.at(g: Nat) -> String:
   match g:

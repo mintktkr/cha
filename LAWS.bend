@@ -3,6 +3,7 @@
 # unchanged, the string and flag helpers must behave at their edges, and a remote URL must
 # parse to the repo it names.
 import Base
+import ./src/clean.bend as Clean
 import ./src/ui.bend as Ui
 import ./src/ctx.bend as Ctx
 import ./src/cli.bend as Cli
@@ -104,3 +105,38 @@ law link_no_next:
 # LAW: a Link header with rel="next" yields that URL.
 law link_next_url:
   {Api.link.next("</issues?page=2>; rel=\"next\", </issues?page=5>; rel=\"last\"") == "/issues?page=2" : String}
+
+# Terminal escape
+# ---------------
+# Forge text reaches a terminal through Clean.text, which drops escape sequences and
+# control bytes, so a title, a body, a label or a CI log line cannot move the cursor,
+# clear the screen, retitle the window or open a hyperlink, and cannot redraw a line.
+
+# LAW: a CSI (an SGR colour, a screen clear) is dropped whole.
+law clean_csi:
+  {Clean.text("a\u{1b}[1;31mred\u{1b}[2Jb") == "aredb" : String}
+
+# LAW: an OSC is dropped whole, up to its BEL.
+law clean_osc_bel:
+  {Clean.text("\u{1b}]8;;https://example.com\u{7}link") == "link" : String}
+
+# LAW: an OSC ends at ESC backslash too.
+law clean_osc_st:
+  {Clean.text("\u{1b}]0;title\u{1b}\\ok") == "ok" : String}
+
+# LAW: an escape inside an escape sequence opens another one, so a doubled ESC cannot
+# hide the sequence after it.
+law clean_esc_esc:
+  {Clean.text("a\u{1b}\u{1b}[2Jb") == "ab" : String}
+
+# LAW: a carriage return is dropped, and one before a newline is that newline.
+law clean_cr:
+  {Clean.text("a\rb\r\nc\rd") == "ab\ncd" : String}
+
+# LAW: control bytes, DEL and a C1 control are dropped; tab and newline are kept.
+law clean_controls:
+  {Clean.text("a\u{0}b\tc\nd\u{7f}e\u{85}f") == "ab\tc\ndef" : String}
+
+# LAW: a character that is neither a control nor an escape is kept.
+law clean_plain:
+  {Clean.text("茶 (´∀｀)♡ 🍵") == "茶 (´∀｀)♡ 🍵" : String}

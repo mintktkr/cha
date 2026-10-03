@@ -3,6 +3,7 @@
 import Base
 import 0xd60fd658d4bdabf892f8041a7a731848/tty.bend as Tty
 import ./ctx.bend as Ctx
+import ./clean.bend as Clean
 
 type Rgb is Data:
   Rgb{r: U32, g: U32, b: U32}
@@ -152,14 +153,16 @@ def state.pick(+on: Bool, +s: String, +l: String) -> String:
 def state(+on: Bool, +s: String) -> String:
   state.pick(on, s, String.to_lower(s))
 
-# a line for stderr: the glowing prefix, then msg
+# a line for stderr: the glowing prefix, then msg. msg carries forge text (a job name,
+# the message a failed request put in its body), so it is cleaned here, once for every
+# line cha writes to stderr.
 def info(+on: Bool, msg: String) -> IO(Unit):
-  IO.print_err(prefix(on) ++ " " ++ msg)
+  IO.print_err(prefix(on) ++ " " ++ Clean.text(msg))
 
 # a line for stderr: the prefix, a pink ✗ and msg in pink
 def error(+on: Bool, msg: String) -> IO(Unit):
-  IO.print_err(prefix(on) ++ " " ++ fg(on, pink(), "✗ " ++ msg))
+  IO.print_err(prefix(on) ++ " " ++ fg(on, pink(), "✗ " ++ Clean.text(msg)))
 
 # a mint ✓ line for stderr
 def done(+on: Bool, msg: String) -> IO(Unit):
-  IO.print_err(fg(on, mint(), "✓ " ++ msg))
+  IO.print_err(fg(on, mint(), "✓ " ++ Clean.text(msg)))

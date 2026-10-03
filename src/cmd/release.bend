@@ -44,9 +44,11 @@ def bool.f(+x: Map<&2, String>, +k: String) -> Bool:
 # Rows
 # ----
 
-# published_at, or created_at for a release the forge has not published yet
+# published_at, or created_at for a release the forge has not published yet. A row holds
+# what the forge sent: the text printers read it back through Api.f, --json through
+# Api.raw.f.
 def release.row(+x: Map<&2, String>) -> Map<&2, String>:
-  Map.set(&2, String, x, "published", Ctx.or(Api.f(x, "published_at"), Api.f(x, "created_at")))
+  Map.set(&2, String, x, "published", Ctx.or(Api.raw.f(x, "published_at"), Api.raw.f(x, "created_at")))
 
 def release.rows(xs: List<&2, Map<&2, String>>) -> List<&2, Map<&2, String>>:
   match xs:

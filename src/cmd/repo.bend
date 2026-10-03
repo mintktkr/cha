@@ -173,13 +173,14 @@ def vis.kind(public: Bool) -> Nat:
 def vis.text(+on: Bool, +v: String) -> String:
   Ui.state.of(on, v, vis.kind(String.eq(v, "public")))
 
-# the gitea or the github spelling of one field
+# the gitea or the github spelling of one field, for building a row: a row holds what the
+# forge sent, and the text printers read it back through Api.f
 def pick(f: Ctx.Forge, +x: Map<&2, String>, +gitea: String, +github: String) -> String:
   match f:
     case Ctx.Gitea{}:
-      Api.f(x, gitea)
+      Api.raw.f(x, gitea)
     case Ctx.GitHub{}:
-      Api.f(x, github)
+      Api.raw.f(x, github)
 
 # view
 # ----
@@ -198,7 +199,7 @@ def visibility(f: Ctx.Forge, +x: Map<&2, String>) -> String:
     case Ctx.Gitea{}:
       gitea.visibility(bool.f(x, "private"), bool.f(x, "internal"))
     case Ctx.GitHub{}:
-      Ctx.or(Api.f(x, "visibility"), "public")
+      Ctx.or(Api.raw.f(x, "visibility"), "public")
 
 # the row of repo view, with the fields the two forges spell differently made one
 def view.row(+f: Ctx.Forge, +x: Map<&2, String>) -> Map<&2, String>:
@@ -240,7 +241,7 @@ def view(+env: Cli.Env) -> IO(Unit):
 # ------
 
 def label.row(+x: Map<&2, String>) -> Map<&2, String>:
-  Map.set(&2, String, x, "color", "#" ++ Ctx.strip_prefix(Api.f(x, "color"), "#"))
+  Map.set(&2, String, x, "color", "#" ++ Ctx.strip_prefix(Api.raw.f(x, "color"), "#"))
 
 def label.rows(xs: List<&2, Map<&2, String>>) -> List<&2, Map<&2, String>>:
   match xs:
@@ -404,10 +405,25 @@ def file.reply(f: Ctx.Forge, +repo: Ctx.Repo, +tok: String, url: String) -> IO(A
     case Ctx.GitHub{}:
       raw.get(repo, tok, url)
 
+# A file's contents are the file, so a redirect keeps them byte-exact: piped (or with
+# colour off), the body is printed as it came; a terminal gets the text without escape
+# sequences, so a file whose bytes are a title screen cannot draw on it.
+def file.text(body: Bytes.Bytes, tty: Bool) -> String:
+  match tty:
+    case True{}:
+      Api.text(body)
+    case False{}:
+      Api.raw.text(body)
+
+def file.write(+env: Cli.Env, body: Bytes.Bytes) -> IO(Unit):
+  match env:
+    case Cli.Env{r, t, +on, j, a}:
+      IO.write(file.text(body, on))
+
 def file.print(+env: Cli.Env, +status: U32, body: Bytes.Bytes, good: Bool) -> IO(Unit):
   match good:
     case True{}:
-      IO.write(Api.text(body))
+      file.write(env, body)
     case False{}:
       Cli.fail(Unit, env, Api.message(status, body))
 
@@ -446,9 +462,9 @@ def tree.key(+i: U32, +k: String) -> String:
   "tree." ++ U32.show(i) ++ "." ++ k
 
 def tree.row(+big: Map<&2, String>, +i: U32) -> Map<&2, String>:
-  a = Map.set(&2, String, Map.new(&2, String), "path", Api.f(big, tree.key(i, "path")))
-  b = Map.set(&2, String, a, "type", Api.f(big, tree.key(i, "type")))
-  Map.set(&2, String, b, "sha", Api.f(big, tree.key(i, "sha")))
+  a = Map.set(&2, String, Map.new(&2, String), "path", Api.raw.f(big, tree.key(i, "path")))
+  b = Map.set(&2, String, a, "type", Api.raw.f(big, tree.key(i, "type")))
+  Map.set(&2, String, b, "sha", Api.raw.f(big, tree.key(i, "sha")))
 
 def tree.rows(n: Nat, +big: Map<&2, String>, +i: U32) -> List<&2, Map<&2, String>>:
   match n:

@@ -1,5 +1,6 @@
 # proof: every claim in LAWS.bend. `bend PROOF.bend` prints ALL PROOFS CHECK once this holds.
 import Base
+import ./src/clean.bend as Clean
 import ./src/ui.bend as Ui
 import ./src/ctx.bend as Ctx
 import ./src/cli.bend as Cli
@@ -135,4 +136,30 @@ def Laws.link_no_next():
   {==}
 
 def Laws.link_next_url():
+  {==}
+
+# Terminal escape
+# ---------------
+# Each law is one path through the walk, so reflexivity is the whole proof: both sides
+# normalize to the same text once Clean.text has dropped what the walk drops.
+
+def Laws.clean_csi():
+  {==}
+
+def Laws.clean_osc_bel():
+  {==}
+
+def Laws.clean_osc_st():
+  {==}
+
+def Laws.clean_esc_esc():
+  {==}
+
+def Laws.clean_cr():
+  {==}
+
+def Laws.clean_controls():
+  {==}
+
+def Laws.clean_plain():
   {==}

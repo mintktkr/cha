@@ -6,6 +6,7 @@ import 0x584fc27920487ceab242392391418d7f/json.bend as Json
 import 0x49814d83de8f70993a43e1002be29ecd/bytes.bend as Bytes
 import 0xcfc8be7b076f41f95c8e118383892d55/encoding.bend as Enc
 import ./ctx.bend as Ctx
+import ./clean.bend as Clean
 
 # A finished request: the status, the next page's URL ("" when last) and the body.
 # Broke is a request that never got a status; why never holds the token.
@@ -131,8 +132,14 @@ def get(repo: Ctx.Repo, +tok: String, url: String) -> IO(Reply):
 def ok(+status: U32) -> Bool:
   (status >= 200 : U32) && (status < 300 : U32)
 
-def text(b: Bytes.Bytes) -> String:
+# a reply's body as the forge sent it, for callers that write it to a file
+def raw.text(b: Bytes.Bytes) -> String:
   Enc.utf8.decode(b)
+
+# a reply's body as text safe for a terminal. A CI job log is full of ANSI colour, so
+# every command that prints a body reads it here; raw.text keeps the bytes byte-exact.
+def text(b: Bytes.Bytes) -> String:
+  Clean.text(raw.text(b))
 
 # a JSON string as text
 def utf8(s: String) -> Json.Val:
@@ -253,20 +260,26 @@ def rows(b: Bytes.Bytes) -> List<&2, Map<&2, String>>:
 def obj(b: Bytes.Bytes) -> Map<&2, String>:
   obj.fueled(fuel(b))
 
-# a field of a row, "" when missing
 def f.of(r: Map<&2, String> & String) -> String:
   (m, v) = r
   v
 
-def f(+row: Map<&2, String>, k: String) -> String:
+# a field of a row as the forge sent it, "" when missing; --json prints it this way
+def raw.f(+row: Map<&2, String>, k: String) -> String:
   f.of(Map.get(String, "", row, k))
+
+# a field of a row as text safe for a terminal, "" when missing. This is the one door a
+# command reads a forge field through, so a title, a body, a label, a branch name or a
+# job name is cleaned once here instead of at every print.
+def f(+row: Map<&2, String>, k: String) -> String:
+  Clean.text(raw.f(row, k))
 
 def join.go(n: Nat, +row: Map<&2, String>, +list: String, +field: String, +sep: String, +i: U32, acc: String) -> String:
   match n:
     case 0n:
       acc
     case 1n+k:
-      join.go(k, row, list, field, sep, (i + 1 : U32), acc ++ Ctx.or.if(sep, "", U32.is_eq(i, 0)) ++ f(row, list ++ "." ++ U32.show(i) ++ Ctx.or.if("." ++ field, "", String.is_empty(field))))
+      join.go(k, row, list, field, sep, (i + 1 : U32), acc ++ Ctx.or.if(sep, "", U32.is_eq(i, 0)) ++ raw.f(row, list ++ "." ++ U32.show(i) ++ Ctx.or.if("." ++ field, "", String.is_empty(field))))
 
 def count.of(m: Maybe<&2, U32>) -> Nat:
   match m:
@@ -278,9 +291,14 @@ def count.of(m: Maybe<&2, U32>) -> Nat:
 def count(+row: Map<&2, String>, +list: String) -> Nat:
   count.of(U32.read(f(row, list ++ ".#")))
 
-# field of every item of a list field, joined: join(issue, "labels", "name", ", ")
-def join(+row: Map<&2, String>, +list: String, +field: String, +sep: String) -> String:
+# field of every item of a list field, joined, as the forge sent it: the field it builds
+# is a row field, which a command reads back through f or raw.f
+def raw.join(+row: Map<&2, String>, +list: String, +field: String, +sep: String) -> String:
   join.go(count(row, list), row, list, field, sep, 0, "")
+
+# the same join, safe to print
+def join(+row: Map<&2, String>, +list: String, +field: String, +sep: String) -> String:
+  Clean.text(raw.join(row, list, field, sep))
 
 def message.text(+s: String) -> String:
   Ctx.or.if(": " ++ s, "", String.is_empty(s))

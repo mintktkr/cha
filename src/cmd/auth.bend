@@ -46,10 +46,12 @@ def verdict(+env: Cli.Env, +why: String, ok: Bool) -> IO(Unit):
     case False{}:
       Cli.fail(Unit, env, why)
 
+# The login is a row field, so it is read the way a row is built: raw. The text printer
+# reads it back through Api.f.
 def login.of(+status: U32, body: Bytes.Bytes, good: Bool) -> String:
   match good:
     case True{}:
-      Api.f(Api.obj(body), "login")
+      Api.raw.f(Api.obj(body), "login")
     case False{}:
       ""
 

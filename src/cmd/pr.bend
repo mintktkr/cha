@@ -500,35 +500,38 @@ type Source is Data:
   GhStatus{}
   GhRun{}
 
+# one check, as the flat row pr checks prints and --json emits
 def check.row(+name: String, +state: String, +url: String) -> Map<&2, String>:
   Map.set(&2, String, Map.set(&2, String, Map.set(&2, String, Map.new(&2, String), "name", name), "state", state), "url", url)
 
+# A row holds what the forge sent: these builders read raw, and the text printer reads the
+# row back through Api.f.
 def check.name(+row: Map<&2, String>, +p: String, s: Source) -> String:
   match s:
     case Gitea{}:
-      Api.f(row, p ++ ".context")
+      Api.raw.f(row, p ++ ".context")
     case GhStatus{}:
-      Api.f(row, p ++ ".context")
+      Api.raw.f(row, p ++ ".context")
     case GhRun{}:
-      Api.f(row, p ++ ".name")
+      Api.raw.f(row, p ++ ".name")
 
 def check.state(+row: Map<&2, String>, +p: String, s: Source) -> String:
   match s:
     case Gitea{}:
-      Api.f(row, p ++ ".status")
+      Api.raw.f(row, p ++ ".status")
     case GhStatus{}:
-      Api.f(row, p ++ ".state")
+      Api.raw.f(row, p ++ ".state")
     case GhRun{}:
-      Ctx.or(Api.f(row, p ++ ".conclusion"), Api.f(row, p ++ ".status"))
+      Ctx.or(Api.raw.f(row, p ++ ".conclusion"), Api.raw.f(row, p ++ ".status"))
 
 def check.url(+row: Map<&2, String>, +p: String, +host: String, s: Source) -> String:
   match s:
     case Gitea{}:
-      abs.url(host, Api.f(row, p ++ ".target_url"))
+      abs.url(host, Api.raw.f(row, p ++ ".target_url"))
     case GhStatus{}:
-      abs.url(host, Api.f(row, p ++ ".target_url"))
+      abs.url(host, Api.raw.f(row, p ++ ".target_url"))
     case GhRun{}:
-      Ctx.or(Api.f(row, p ++ ".html_url"), Api.f(row, p ++ ".details_url"))
+      Ctx.or(Api.raw.f(row, p ++ ".html_url"), Api.raw.f(row, p ++ ".details_url"))
 
 def check.p(+list: String, +i: U32) -> String:
   list ++ "." ++ U32.show(i)
@@ -622,10 +625,25 @@ def diff.url(f: Ctx.Forge, +n: String) -> String:
     case Ctx.GitHub{}:
       "pulls/" ++ n
 
+# a diff redirected to a file or a patch tool keeps the bytes the forge sent; on a
+# terminal the diff is printed without escape sequences, as a file of its own can carry
+# them
+def diff.text(body: Bytes.Bytes, tty: Bool) -> String:
+  match tty:
+    case True{}:
+      Api.text(body)
+    case False{}:
+      Api.raw.text(body)
+
+def diff.write(+env: Cli.Env, body: Bytes.Bytes) -> IO(Unit):
+  match env:
+    case Cli.Env{r, t, +on, j, a}:
+      IO.write(nled(diff.text(body, on)))
+
 def diff.ok(+env: Cli.Env, body: Bytes.Bytes, +status: U32, good: Bool) -> IO(Unit):
   match good:
     case True{}:
-      IO.write(nled(Api.text(body)))
+      diff.write(env, body)
     case False{}:
       Cli.fail(Unit, env, Api.message(status, body))
 
