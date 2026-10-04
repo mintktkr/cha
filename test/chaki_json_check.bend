@@ -115,6 +115,36 @@ def nest.path(n: Nat) -> String:
   zeros(Nat.sub(n, 1n), "0")
 
 # one issue of the generated page
+# n copies of one character
+def nest.of(n: Nat, +ch: String, acc: String) -> String:
+  match n:
+    case 0n: acc
+    case 1n+p: nest.of(p, ch, ch ++ acc)
+
+# an unbroken run of n 'a' characters
+def nest.row(n: Nat, acc: String) -> String:
+  match n:
+    case 0n: acc
+    case 1n+p: nest.row(p, "a" ++ acc)
+
+# {"a":{"a":...1...}} with n objects
+def nest.obj.open(n: Nat, acc: String) -> String:
+  match n:
+    case 0n: acc
+    case 1n+p: nest.obj.open(p, "{\"a\":" ++ acc)
+
+def nest.obj(+n: Nat) -> String:
+  nest.obj.open(n, "1" ++ nest.of(n, "}", ""))
+
+def nest.dots(k: Nat, acc: String) -> String:
+  match k:
+    case 0n: acc
+    case 1n+p: nest.dots(p, "a." ++ acc)
+
+# the key the scalar of nest.obj(n) lands under
+def nest.obj.key(n: Nat) -> String:
+  nest.dots(Nat.sub(n, 1n), "a")
+
 def gen.item(+i: Nat) -> String:
   "{\"id\":" ++ Nat.show(i) ++ ",\"name\":\"n" ++ Nat.show(i) ++ "\"}"
 
@@ -276,6 +306,16 @@ def main() -> IO(Unit):
     IO.print(bad.hex("raw newline in a string", "22 0a 22"))
     IO.print(bad.hex("raw control byte in a string", "22 01 22"))
     IO.print(bad.hex("raw NUL in a string", "22 00 22"))
+
+    # the edges: one byte, huge numbers, an unbroken string, depth on both sides
+    IO.print(flat.is("one byte, a number", "1", [""], "=1|@1"))
+    IO.print(flat.is("U32 and beyond as written", "{\"a\":4294967295,\"b\":12345678901234567890}", ["a", "b"], "a=4294967295|b=12345678901234567890|@2"))
+    IO.print(flat.is("one character string", "\"a\"", [""], "=a|@1"))
+    IO.print(T.eq("a 60000 character string, its length",
+      Nat.show(String.length(at(Json.obj(b("{\"s\":\"" ++ nest.row(60000n, "") ++ "\"}")), "s"))), "60000"))
+    IO.print(T.eq("2000 nested objects, the innermost scalar",
+      at(Json.obj(b(nest.obj(2000n))), nest.obj.key(2000n)), "1"))
+    IO.print(T.eq("2000 nested objects, one key", Nat.show(Map.size(&2, String, Json.obj(b(nest.obj(2000n))))), "1"))
 
     # nesting depth: one pass and an explicit stack, so this must not overflow
     IO.print(T.ok("2000 nested arrays are valid", Bool.not(String.eq(flat.of(Nil{}, Json.flat(b(nest.text(2000n)))), "none"))))
