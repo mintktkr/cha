@@ -121,7 +121,9 @@ def records.start(+buf: List<&2, U32>, +have: Nat) -> Maybe<&1, List<&2, Rec> & 
 
 # the whole records at the front of buf, and the rest. None when a header is malformed: a
 # bad type, a bad version, or a length past 2^14 + 256. A buffer that stops inside a record
-# answers what it holds so far and hands the cut record back as the rest.
+# answers what it holds so far and hands the cut record back as the rest. The pair makes
+# the Maybe affine: Bend's `A & B` is Pair, Sigma<&1, &1, ..>, so `Maybe<&2, A & B>` is
+# not a type a module can write down.
 def records(+buf: List<&2, U32>) -> Maybe<&1, List<&2, Rec> & List<&2, U32>>:
   records.start(buf, U32.to_nat(Bytes.len(buf)))
 
@@ -245,7 +247,8 @@ def scan.go(fuel: Nat, st: Scan) -> Maybe<&2, Seen>:
 def scan.start(+buf: List<&2, U32>, +have: Nat) -> Maybe<&2, Seen>:
   scan.go(have, Scan.more{ext.of(buf, have), buf, have, Seen{Nil{}, Nil{}, Nil{}}})
 
-# the three extensions of a block, None when one of them is malformed
+# the three extensions of a block, None when the block doesn't parse
+# (the walk uses a byte count as fuel: every step eats an extension, so it ends)
 def seen(+buf: List<&2, U32>) -> Maybe<&2, Seen>:
   scan.start(buf, U32.to_nat(Bytes.len(buf)))
 
