@@ -56,13 +56,58 @@ def refused.said(+name: String, r: Result<&1, &1, U32 & String, Unit>) -> String
     case Fail{(c, m)}:
       "ok   " ++ name ++ ": " ++ U32.show(c) ++ " " ++ m
 
-# a site that must answer 200: resolve, connect, handshake, ask, read
+# reading on to the peer's close: Done{[]} is what the close has to be
+type Drain is Type:
+  Reading{sock: Socket}
+  Closing{sock: Socket, +line: String}
+
+def drain.closed(+host: String, s: Socket, empty: Bool) -> Drain:
+  match empty:
+    case True{}:
+      Closing{s, "ok   " ++ host ++ " closed"}
+    case False{}:
+      Reading{s}
+
+def drain.of(+host: String, c: Socket & Result<&1, &1, U32 & String, List<&2, U32>>) -> Drain:
+  (s, g) = c
+  match g:
+    case Done{+bs}:
+      drain.closed(host, s, List.is_empty(&2, U32, bs))
+    case Fail{(c, m)}:
+      Closing{s, "FAIL " ++ host ++ " reading to the close: " ++ U32.show(c) ++ " " ++ m}
+
+def drain.end(+host: String, s: Socket, +line: String) -> IO(Unit):
+  do IO<Unit>:
+    u : Unit <- Ossl.close(s)
+    IO.print(line)
+
+def drain.give(+host: String, st: Drain) -> IO(Unit):
+  match st:
+    case Reading{sock}:
+      drain.end(host, sock, "FAIL " ++ host ++ " never closed")
+    case Closing{sock, +line}:
+      drain.end(host, sock, line)
+
+# read until the peer's close, a few reads at most
+def drain(fuel: Nat, +host: String, st: Drain) -> IO(Unit):
+  match fuel:
+    case 0n:
+      drain.give(host, st)
+    case 1n+p:
+      match st:
+        case Reading{sock}:
+          do IO<Unit>:
+            r : Socket & Result<&1, &1, U32 & String, List<&2, U32>> <- Ossl.recv(sock, 65536, 10000)
+            drain(p, host, drain.of(host, r))
+        case Closing{sock, +line}:
+          drain.end(host, sock, line)
+
+# a site that must answer 200: resolve, connect, handshake, ask, read, close
 def gets.last(+host: String, r: Socket & Result<&1, &1, U32 & String, List<&2, U32>>) -> IO(Unit):
   (s, g) = r
   do IO<Unit>:
     IO.print(gets.said(host ++ " answers", g))
-    u : Unit <- Ossl.close(s)
-    IO.print("ok   " ++ host ++ " closed")
+    drain(8n, host, Reading{s})
 
 def gets.read(+host: String, s: Socket) -> IO(Unit):
   do IO<Unit>:
