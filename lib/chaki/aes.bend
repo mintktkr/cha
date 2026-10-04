@@ -520,11 +520,11 @@ def open.size(+key: List<&2, U32>, nonce: List<&2, U32>, aad: List<&2, U32>, ct:
 # The API
 # -------
 
-def ok.len(+key: U32, nonce: U32) -> Bool:
+def size.ok(+key: U32, nonce: U32) -> Bool:
   Bool.and(Bool.or(U32.is_eq(key, 16), U32.is_eq(key, 32)), U32.is_eq(nonce, 12))
 
-def ok.open(sealed: U32, key: U32, nonce: U32) -> Bool:
-  Bool.and(U32.is_le(16, sealed), ok.len(key, nonce))
+def open.ok(sealed: U32, key: U32, nonce: U32) -> Bool:
+  Bool.and(U32.is_le(16, sealed), size.ok(key, nonce))
 
 def encrypt.block(r: Array<U32> & List<&2, U32>) -> List<&2, U32>:
   match r:
@@ -551,10 +551,10 @@ def encrypt(+key: List<&2, U32>, +block: List<&2, U32>) -> List<&2, U32>:
 # the ciphertext followed by the 16-byte tag. An empty answer means the key is not 16
 # or 32 bytes, or the nonce is not 12.
 def seal(+key: List<&2, U32>, +nonce: List<&2, U32>, aad: List<&2, U32>, plain: List<&2, U32>) -> List<&2, U32>:
-  seal.size(key, nonce, aad, plain, ok.len(Bytes.len(key), Bytes.len(nonce)))
+  seal.size(key, nonce, aad, plain, size.ok(Bytes.len(key), Bytes.len(nonce)))
 
 # the plaintext, None when the tag does not match, the sealed message is shorter than
 # a tag, or the key or nonce is a length this module does not take
 def open(+key: List<&2, U32>, +nonce: List<&2, U32>, aad: List<&2, U32>, +sealed: List<&2, U32>) -> Maybe<&2, List<&2, U32>>:
   +n = Nat.sub(U32.to_nat(Bytes.len(sealed)), 16n)
-  open.size(key, nonce, aad, Bytes.take(sealed, n), Bytes.drop(sealed, n), ok.open(Bytes.len(sealed), Bytes.len(key), Bytes.len(nonce)))
+  open.size(key, nonce, aad, Bytes.take(sealed, n), Bytes.drop(sealed, n), open.ok(Bytes.len(sealed), Bytes.len(key), Bytes.len(nonce)))
