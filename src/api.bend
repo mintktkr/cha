@@ -179,6 +179,10 @@ def json.bool(on: Bool) -> String:
 def Row() -> Type:
   Map<&2, String>
 
+# a flat key: prefix.k, or k at the root
+def key(+prefix: String, +k: String) -> String:
+  Ctx.or.if(prefix ++ "." ++ k, k, String.is_empty(prefix))
+
 # the objects of a JSON array body, flattened; none when it isn't an array
 def rows(b: List<&2, U32>) -> List<&2, Map<&2, String>>:
   Json.rows(b)
