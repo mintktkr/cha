@@ -19,14 +19,39 @@ def got(+name: String, r: Result<&1, &1, String, Http.Res>, +want: String) -> St
 def ua() -> List<&2, Http1.Field()>:
   [("user-agent", "chaki")]
 
+def refused.said(+name: String, +host: String, +said: String) -> String:
+  T.ok(name ++ " is refused (" ++ said ++ ")", String.starts_with(said, "fail: tls with " ++ host))
+
+def refused(+name: String, +host: String, r: Result<&1, &1, String, Http.Res>) -> String:
+  refused.said(name, host, status.of(r))
+
+# the same requests over one transport
+def round(+tag: String, +c: Http.Client) -> IO(Unit):
+  do IO<Unit>:
+    r1 : Result<&1, &1, String, Http.Res> <- Http.fetch(c, "GET", "https://api.github.com/zen", ua(), Nil{})
+    IO.print(got(tag ++ " api.github.com/zen", r1, "200 https://api.github.com/zen"))
+    r2 : Result<&1, &1, String, Http.Res> <- Http.fetch(c, "GET", "https://codeberg.org/api/v1/version", ua(), Nil{})
+    IO.print(got(tag ++ " codeberg's version", r2, "200 https://codeberg.org/api/v1/version"))
+    r3 : Result<&1, &1, String, Http.Res> <- Http.fetch(c, "GET", "http://github.com/", ua(), Nil{})
+    IO.print(got(tag ++ " http://github.com/ follows to https", r3, "200 https://github.com/"))
+    r4 : Result<&1, &1, String, Http.Res> <- Http.fetch(c, "GET", "https://expired.badssl.com/", ua(), Nil{})
+    IO.print(refused(tag ++ " an expired certificate", "expired.badssl.com", r4))
+    r5 : Result<&1, &1, String, Http.Res> <- Http.fetch(c, "GET", "https://wrong.host.badssl.com/", ua(), Nil{})
+    IO.print(refused(tag ++ " the wrong host", "wrong.host.badssl.com", r5))
+    r6 : Result<&1, &1, String, Http.Res> <- Http.fetch(c, "GET", "https://self-signed.badssl.com/", ua(), Nil{})
+    IO.print(refused(tag ++ " a self-signed certificate", "self-signed.badssl.com", r6))
+    r7 : Result<&1, &1, String, Http.Res> <- Http.fetch(c, "GET", "https://untrusted-root.badssl.com/", ua(), Nil{})
+    IO.print(refused(tag ++ " an untrusted root", "untrusted-root.badssl.com", r7))
+
+def bend.round(r: Result<&1, &1, U32 & String, Http.Client>) -> IO(Unit):
+  match r:
+    case Done{c}:
+      round("bend:", c)
+    case Fail{(n, w)}:
+      IO.print("FAIL bend: no client: " ++ w)
+
 def main() -> IO(Unit):
   do IO<Unit>:
-    +c : Http.Client = Http.Client{Http.Ossl{}, Nil{}, 20000}
-    r1 : Result<&1, &1, String, Http.Res> <- Http.fetch(c, "GET", "https://api.github.com/zen", ua(), Nil{})
-    IO.print(got("api.github.com/zen over TLS", r1, "200 https://api.github.com/zen"))
-    r2 : Result<&1, &1, String, Http.Res> <- Http.fetch(c, "GET", "https://codeberg.org/api/v1/version", ua(), Nil{})
-    IO.print(got("codeberg's version", r2, "200 https://codeberg.org/api/v1/version"))
-    r3 : Result<&1, &1, String, Http.Res> <- Http.fetch(c, "GET", "http://github.com/", ua(), Nil{})
-    IO.print(got("http://github.com/ follows to https", r3, "200 https://github.com/"))
-    r4 : Result<&1, &1, String, Http.Res> <- Http.fetch(c, "GET", "https://expired.badssl.com/", ua(), Nil{})
-    IO.print(T.ok("an expired certificate is refused", String.starts_with(status.of(r4), "fail: tls with expired.badssl.com")))
+    round("ossl:", Http.Client{Http.Ossl{}, Nil{}, 20000})
+    b : Result<&1, &1, U32 & String, Http.Client> <- Http.client(Http.Bend{}, 20000)
+    bend.round(b)
