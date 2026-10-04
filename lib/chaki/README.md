@@ -29,9 +29,31 @@ hidden state, and has a surface you can read in one sitting.
 | `ecdsa.bend` | ECDSA P-256 and P-384 verification | |
 | `x509v.bend` | chain building, trust anchors, hostname and time checks | BearSSL |
 | `tlsmsg.bend` | TLS 1.3 records and handshake messages, as bytes | |
-| `tls.bend` | the TLS 1.3 client | RFC 8446 |
+| `tls.bend` | the TLS 1.3 client's protocol, with no IO: handshake and records as one state machine | RFC 8446 |
+| `tlsio.bend` | that client on a socket: randomness, the clock, and the trust decision (x509v, then the CertificateVerify signature) | |
 | `ossl.bend` + `effs/ossl.{c,js}` | TLS through the system's OpenSSL 3 (dlopen), the fallback transport | |
 | `http.bend` | the HTTP client: transport, redirects, the one request cha makes | |
+
+## Transports
+
+`http.bend` speaks HTTP/1.1, one request per connection, over:
+
+- **`Ossl{}`**: the system's OpenSSL 3, loaded at run time. This is cha's default.
+- **`Bend{}`**: chaki's own TLS 1.3 (`CHA_TLS=bend`). It handshakes with GitHub, Codeberg and
+  Gitea, and validates their chains itself. It offers x25519 only, with no
+  HelloRetryRequest, so a server that refuses x25519 resets the connection. Azure blob
+  storage, where GitHub serves job logs, is one. Until secp256r1 and HRR are in, and until
+  someone other than its authors has reviewed it, it stays opt-in.
+
+## Known edges
+
+- The JSON writer (`Json.encode`) walks a work list the termination checker can't bound, so it
+  is listed among the defs that rely on unsafe code.
+- `width.bend` counts code points, not grapheme clusters: an emoji ZWJ sequence measures
+  wider than it shows.
+- AES's S-box is a table lookup, so AES isn't constant-time. The client prefers ChaCha20.
+- Big-number work runs at a similar speed on both lanes: a 4096-bit RSA verify is ~0.2 s and
+  a P-384 ECDSA verify ~0.4 s. Loading the system trust store is ~0.25 s.
 
 ## Conventions
 

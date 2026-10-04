@@ -1,6 +1,6 @@
 # live checks for lib/chaki/ossl.bend, against real forges. Run by hand:
-#   rr bend test/chaki_ossl_live.bend
-#   rr bend test/chaki_ossl_live.bend -o out/live && rr bend --run ./out/live
+#   bend test/chaki_ossl_live.bend
+#   bend test/chaki_ossl_live.bend -o out/live && ./out/live
 import Base
 import ../lib/chaki/bytes.bend as Bytes
 import ../lib/chaki/check.bend as T

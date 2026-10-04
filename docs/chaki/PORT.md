@@ -58,8 +58,8 @@ Don't edit it.
 - A check that compared Instants or durations compares U32 seconds now. Keep every case it
   had; keep the expected text the same unless the old value was an artifact of the old
   type (say so in your report).
-- Type-check with `rr bend src/cmd/<file>.bend --check-only`. A run that ends in "N defs
+- Type-check with `bend src/cmd/<file>.bend --check-only`. A run that ends in "N defs
   rely on unsafe or foreign code" plus that list is green (the network and tty effects).
-  Run your tests with `rr bend test/<file>_check.bend`, natively too.
+  Run your tests with `bend test/<file>_check.bend`, natively too.
 - Never run `scripts/check.sh` or `bend main.bend`; the integrator does.
 - Commit as memu, your files only.

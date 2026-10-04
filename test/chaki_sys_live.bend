@@ -1,5 +1,5 @@
 # sys against a real forge: dial example.com:80, ask for / over HTTP/1.0, and read until
-# the peer closes. Run by hand (`rr bend test/chaki_sys_live.bend`); it needs the network.
+# the peer closes. Run by hand (`bend test/chaki_sys_live.bend`); it needs the network.
 import Base
 import ../lib/chaki/bytes.bend as Bytes
 import ../lib/chaki/check.bend as T

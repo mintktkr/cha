@@ -1,5 +1,5 @@
 # live checks for lib/chaki/tlsio.bend, chaki's own TLS 1.3 client, run by hand:
-#   rr bend test/chaki_tlsio_live.bend
+#   bend test/chaki_tlsio_live.bend
 import Base
 import ../lib/chaki/bytes.bend as Bytes
 import ../lib/chaki/sys.bend as Sys
@@ -90,7 +90,7 @@ def all(+anchors: List<&2, X509.Cert>) -> IO(Unit):
     visit("example.com", "/", anchors)
     visit("api.github.com", "/zen", anchors)
     visit("codeberg.org", "/api/v1/version", anchors)
-    visit("tea.muu.space", "/api/v1/version", anchors)
+    visit("gitea.com", "/api/v1/version", anchors)
     refused("api.github.com under another name", "api.github.com", "not-github.example", "isn't for not-github.example", anchors)
     refused("api.github.com with no trust anchors", "api.github.com", "api.github.com", "doesn't lead to a trusted root", Nil{})
 

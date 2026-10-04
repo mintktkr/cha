@@ -73,5 +73,5 @@ check `~/.bend/bend2/effs/tcp_send.{c,js}` and say which in your report.
 `test/chaki_sys_live.bend` (by hand): dial example.com:80, send `GET / HTTP/1.0\r\nHost:
 example.com\r\n\r\n`, read until close; the reply starts with `HTTP/1.`.
 
-Both must pass on the JS lane and natively. `rr bend --run ./out/x` runs the native binary
+Both must pass on the JS lane and natively. `./out/x` runs the native binary
 in a container with host networking.

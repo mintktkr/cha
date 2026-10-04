@@ -1,5 +1,5 @@
 # live checks for lib/chaki/http.bend against real servers, run by hand:
-#   rr bend test/chaki_http_live.bend
+#   bend test/chaki_http_live.bend
 import Base
 import ../lib/chaki/bytes.bend as Bytes
 import ../lib/chaki/http1.bend as Http1

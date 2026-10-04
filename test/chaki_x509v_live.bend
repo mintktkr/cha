@@ -1,5 +1,5 @@
 # live checks for lib/chaki/x509v.bend, run by hand: the system trust store loads
-#   rr bend test/chaki_x509v_live.bend
+#   bend test/chaki_x509v_live.bend
 import Base
 import ../lib/chaki/x509.bend as X509
 import ../lib/chaki/x509v.bend as V

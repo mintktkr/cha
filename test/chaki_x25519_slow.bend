@@ -1,6 +1,6 @@
 # RFC 7748 §5.2's 1,000-round iterated test: about 80 s on the JS lane, so it lives here,
 # run by hand, rather than in chaki_x25519_check.bend, which scripts/check.sh runs:
-#   rr bend test/chaki_x25519_slow.bend
+#   bend test/chaki_x25519_slow.bend
 import Base
 import ../lib/chaki/x25519.bend as X
 import ../lib/chaki/bytes.bend as Bytes

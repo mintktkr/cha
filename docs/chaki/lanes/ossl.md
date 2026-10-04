@@ -62,4 +62,4 @@ crash or a hang.
 - Each of these must FAIL the handshake: expired.badssl.com, wrong.host.badssl.com,
   self-signed.badssl.com, untrusted-root.badssl.com. Also tls-v1-0.badssl.com on port 1010.
 
-Both lanes: the JS lane and native (`rr bend --run ./out/x`; the container has OpenSSL 3).
+Both lanes: the JS lane and native (`./out/x`; the container has OpenSSL 3).

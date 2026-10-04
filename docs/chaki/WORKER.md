@@ -12,25 +12,22 @@ file is what every lane shares. Read both fully before writing code.
   If you need a byte helper they lack, write it in your own module.
 - Don't modify anything under `src/`, `main.bend`, `LAWS.bend`, `PROOF.bend` or `scripts/`.
 
-## Running bend: always through `rr`, never locally
+## Running bend
 
-This machine (erogu) has too little memory for bend. Every bend run goes to a build server
-through `rr`, which syncs your worktree there and runs the command in the same directory:
+bend is memory-hungry (2-3 GB a run on the JS lane), so the build ran on one shared machine,
+with a few slots at a time:
 
 ```bash
-rr bend test/chaki_<module>_check.bend          # check, then run main on the JS lane
-rr bend lib/chaki/<module>.bend --check-only    # type-check only
-rr bend test/chaki_<module>_check.bend -o out/t && rr bend --run ./out/t   # native build, then run it
+bend test/chaki_<module>_check.bend          # check, then run main on the JS lane
+bend lib/chaki/<module>.bend --check-only    # type-check only
+bend test/chaki_<module>_check.bend -o out/t && ./out/t   # native build, then run it
 ```
 
-- Never run `bend` or `~/.bend/bin/bend` directly on this machine.
-- Never run `scripts/check.sh` or `bend main.bend`: the build server is shared and CPU-bound,
-  and the integrator runs the full gate when your lane lands. Run only your own checks.
 - A JS-lane run of a small module takes 10-30 s. A native build takes 1-4 min.
-- The server limits how many bends run at once, so a run may wait for a slot. That's normal.
-  Don't loop a command in parallel with itself.
-- Put native binaries under `out/` (it's in `.gitignore`), never in `/tmp`.
-- `bun scripts/order.ts lib/chaki/<module>.bend` checks def order locally, without bend.
+- Put native binaries under `out/` (it's in `.gitignore`).
+- Never run `scripts/check.sh` or `bend main.bend` from a lane: the integrator runs the full
+  gate when a lane lands. Run only your own checks.
+- `bun scripts/order.ts lib/chaki/<module>.bend` checks def order without bend.
 
 ## The language
 
@@ -62,7 +59,7 @@ The walls everyone hits, with the fix:
   recursive call or expensive work in it; use a match helper instead.
 - **Keywords you can't use as names:** `is`, `where`, `match`, `case`, `def`, `type`, `law`,
   `import`, `as`, `do`, `return`. Base already has types such as `Word`; check
-  `rr bend base --types`.
+  `bend base --types`.
 - **Tail calls for anything body-sized.** Non-tail recursion over a long list (≈30k deep)
   overflows the JS lane. Accumulate and reverse (`Bytes.rev`, `Bytes.cat`).
 - **Keep defs small.** A native build refuses a def that keeps more than 247 words alive across

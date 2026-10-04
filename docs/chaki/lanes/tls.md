@@ -124,6 +124,6 @@ If stage 2 hasn't been called when stage 1 is done, end your run with the stage 
   Also a tampered byte in each encrypted server record gives Failed, and so does
   `hs.trusted(False)`.
 - `test/chaki_tls_live.bend` (by hand, run it and report). `GET /` over `connect` to
-  example.com, api.github.com (`/zen`), codeberg.org and tea.muu.space. Refused:
+  example.com, api.github.com (`/zen`), codeberg.org and gitea.com. Refused:
   expired.badssl.com, wrong.host.badssl.com, self-signed.badssl.com and
   untrusted-root.badssl.com. Say which suite each server picked.
