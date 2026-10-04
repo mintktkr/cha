@@ -251,23 +251,29 @@ static void __attribute__((constructor)) ossl_available_use(void) {
 
 #ifdef CID(connect)
 
-// The answer: the socket, then Done{Unit} or the failure. The session goes away either
-// way: a failed handshake leaves nothing to close, and close(sock) frees the fd.
-static Term ossl_connect_end(Env e, IoWork* w, u32 code, const char* why) {
+// The failure: the socket, then Fail{...}. A handshake that did not answer leaves
+// nothing behind, so its session goes away here; close(sock) then frees the fd.
+static Term ossl_connect_fail(Env e, IoWork* w, u32 code, const char* why) {
   void* s = ossl_take((int)w->hand);
   if (s != NULL) {
     ossl.SSL_free(s);
   }
   free(w->data);
-  Term r = code == 0 ? io_done(e, term_pak(CID(Unit), 0)) : io_fail(e, code, why);
-  return io_tup(e, io_hand(w->hand), r);
+  return io_tup(e, io_hand(w->hand), io_fail(e, code, why));
+}
+
+// The handshake answered: the socket, then Done{Unit}. The session stays for send, recv
+// and close.
+static Term ossl_connect_done(Env e, IoWork* w) {
+  free(w->data);
+  return io_tup(e, io_hand(w->hand), io_done(e, term_pak(CID(Unit), 0)));
 }
 
 // A finished handshake: the chain and the name verified (SSL_set1_host checked it), and
 // nothing below TLS 1.2 was offered.
 static Term ossl_connect_ok(Env e, IoWork* w, void* s) {
-  return ossl_verify_why(s) == NULL ? ossl_connect_end(e, w, 0, NULL)
-    : ossl_connect_end(e, w, EPROTO, ossl_why(s, 0));
+  return ossl_verify_why(s) == NULL ? ossl_connect_done(e, w)
+    : ossl_connect_fail(e, w, EPROTO, ossl_why(s, 0));
 }
 
 // One handshake step; while OpenSSL wants the socket, park on it, and past the deadline
@@ -283,28 +289,29 @@ static Term ossl_connect_step(Env e, IoWork* w) {
   if (what != 0 && io_tick() < (u64)w->time) {
     return io_wait_on(w, (int)w->hand, what, (u64)w->time, ossl_connect_step);
   }
-  return ossl_connect_end(e, w, ossl_code(err, what != 0), ossl_why(s, err));
+  return ossl_connect_fail(e, w, ossl_code(err, what != 0), ossl_why(s, err));
 }
 
 // connect(sock, host, ms)
 Term ossl_connect_run(Env e, Term* f, IoWork* w) {
   int fd = (int)io_hand_v(f[0]);
+  if (ossl_get(fd) != NULL) {
+    return io_tup(e, io_hand((intptr_t)fd),
+      io_fail(e, EALREADY, "this socket already has a TLS session"));
+  }
   w->hand = (intptr_t)fd;
   w->time = io_tick() + (u64)(u32)f[2] * 1000000ull;
   w->data = io_cstr(e, f[1], &w->size);
-  if (ossl_get(fd) != NULL) {
-    return ossl_connect_end(e, w, EALREADY, "this socket already has a TLS session");
-  }
   if (!ossl_load()) {
-    return ossl_connect_end(e, w, ENOENT, "libssl 3 did not load; set CHAKI_LIBSSL to its path");
+    return ossl_connect_fail(e, w, ENOENT, "libssl 3 did not load; set CHAKI_LIBSSL to its path");
   }
   const char* why = NULL;
   if (!ossl_ctx_open(&why)) {
-    return ossl_connect_end(e, w, ENOENT, why);
+    return ossl_connect_fail(e, w, ENOENT, why);
   }
   void* s = ossl.SSL_new(ossl_ctx);
   if (s == NULL) {
-    return ossl_connect_end(e, w, ENOMEM, "SSL_new failed");
+    return ossl_connect_fail(e, w, ENOMEM, "SSL_new failed");
   }
   ossl_put(fd, s);
   bool set = ossl.SSL_set_fd(s, fd) == 1
@@ -312,7 +319,7 @@ Term ossl_connect_run(Env e, Term* f, IoWork* w) {
     && ossl.SSL_ctrl(s, OSSL_SNI, OSSL_SNI_HOST, w->data) == 1
     && ossl.SSL_set_alpn_protos(s, (const unsigned char*)OSSL_ALPN, OSSL_ALPN_LEN) == 0;
   if (!set) {
-    return ossl_connect_end(e, w, EPROTO, ossl_ssl_text());
+    return ossl_connect_fail(e, w, EPROTO, ossl_ssl_text());
   }
   return ossl_connect_step(e, w);
 }
@@ -383,9 +390,8 @@ static Term ossl_recv_fail(Env e, IoWork* w, u32 code, const char* why) {
 }
 
 // One read; while OpenSSL wants the socket, park on it, and past the deadline that is
-// ETIMEDOUT. w->time is the absolute deadline (0 for none), w->made the bytes asked for.
-// Done{[]} is the peer's close: a close_notify, or the plain EOF of a peer that closed
-// without one.
+// ETIMEDOUT. w->time is the absolute deadline, w->made the bytes asked for. Done{[]} is
+// the peer's close: a close_notify, or the plain EOF of a peer that closed without one.
 static Term ossl_recv_more(Env e, IoWork* w) {
   void* s = ossl_get((int)w->hand);
   if (s == NULL) {
@@ -402,7 +408,7 @@ static Term ossl_recv_more(Env e, IoWork* w) {
     return ossl_recv_end(e, w);
   }
   int what = ossl_event(err);
-  if (what != 0 && ((u64)w->time == 0 || io_tick() < (u64)w->time)) {
+  if (what != 0 && io_tick() < (u64)w->time) {
     return io_wait_on(w, (int)w->hand, what, (u64)w->time, ossl_recv_more);
   }
   return ossl_recv_fail(e, w, ossl_code(err, what != 0), ossl_why(s, err));
