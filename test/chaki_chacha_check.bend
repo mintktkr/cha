@@ -142,6 +142,27 @@ def tag.a5() -> List<&2, U32>:
 
 def plain.a5() -> List<&2, U32>:
   Bytes.of_hex("49 6e 74 65 72 6e 65 74 2d 44 72 61 66 74 73 20 61 72 65 20 64 72 61 66 74 20 64 6f 63 75 6d 65 6e 74 73 20 76 61 6c 69 64 20 66 6f 72 20 61 20 6d 61 78 69 6d 75 6d 20 6f 66 20 73 69 78 20 6d 6f 6e 74 68 73 20 61 6e 64 20 6d 61 79 20 62 65 20 75 70 64 61 74 65 64 2c 20 72 65 70 6c 61 63 65 64 2c 20 6f 72 20 6f 62 73 6f 6c 65 74 65 64 20 62 79 20 6f 74 68 65 72 20 64 6f 63 75 6d 65 6e 74 73 20 61 74 20 61 6e 79 20 74 69 6d 65 2e 20 49 74 20 69 73 20 69 6e 61 70 70 72 6f 70 72 69 61 74 65 20 74 6f 20 75 73 65 20 49 6e 74 65 72 6e 65 74 2d 44 72 61 66 74 73 20 61 73 20 72 65 66 65 72 65 6e 63 65 20 6d 61 74 65 72 69 61 6c 20 6f 72 20 74 6f 20 63 69 74 65 20 74 68 65 6d 20 6f 74 68 65 72 20 74 68 61 6e 20 61 73 20 2f e2 80 9c 77 6f 72 6b 20 69 6e 20 70 72 6f 67 72 65 73 73 2e 2f e2 80 9d")
+
+# seal and open round trip at the block boundaries
+def roundtrip.ver(+plain: List<&2, U32>, m: Maybe<&2, List<&2, U32>>) -> Bool:
+  match m:
+    case Some{x}:
+      Bytes.ct_eq(x, plain)
+    case None{}:
+      False{}
+
+def roundtrip(+plain: List<&2, U32>) -> Bool:
+  roundtrip.ver(plain, C.open(key.sun(), nonce.a4(), aad.s8(), C.seal(key.sun(), nonce.a4(), aad.s8(), plain)))
+
+def edges.go(lengths: List<&2, U32>, acc: Bool) -> Bool:
+  match lengths:
+    case Nil{}:
+      acc
+    case Con{n, t}:
+      edges.go(t, Bool.and(acc, roundtrip(Bytes.zeros(U32.to_nat(n)))))
+
+def edges() -> Bool:
+  edges.go([0, 1, 15, 16, 17, 63, 64, 65, 127, 128], True{})
 def main() -> IO(Unit):
   do IO<Unit>:
     # RFC 8439 2.1.1 the quarter round
@@ -193,3 +214,7 @@ def main() -> IO(Unit):
     IO.print(T.hex("RFC 8439 A.4 #3", Bytes.take(C.block(key.a43(), 0, nonce.a43()), 32n), "96 5e 3b c6 f9 ec 7e d9 56 08 08 f4 d2 29 f9 4b 13 7f f2 75 ca 9b 3f cb dd 59 de aa d2 33 10 ae"))
     # RFC 8439 A.5 decrypting a message and checking its tag
     IO.print(T.eq("RFC 8439 A.5 open", open.hex(C.open(Bytes.of_hex("1c 92 40 a5 eb 55 d3 8a f3 33 88 86 04 f6 b5 f0 47 39 17 c1 40 2b 80 09 9d ca 5c bc 20 70 75 c0"), nonce.a5(), aad.a5(), Bytes.cat(ct.a5(), tag.a5()))), Bytes.to_hex(Bytes.of_hex("49 6e 74 65 72 6e 65 74 2d 44 72 61 66 74 73 20 61 72 65 20 64 72 61 66 74 20 64 6f 63 75 6d 65 6e 74 73 20 76 61 6c 69 64 20 66 6f 72 20 61 20 6d 61 78 69 6d 75 6d 20 6f 66 20 73 69 78 20 6d 6f 6e 74 68 73 20 61 6e 64 20 6d 61 79 20 62 65 20 75 70 64 61 74 65 64 2c 20 72 65 70 6c 61 63 65 64 2c 20 6f 72 20 6f 62 73 6f 6c 65 74 65 64 20 62 79 20 6f 74 68 65 72 20 64 6f 63 75 6d 65 6e 74 73 20 61 74 20 61 6e 79 20 74 69 6d 65 2e 20 49 74 20 69 73 20 69 6e 61 70 70 72 6f 70 72 69 61 74 65 20 74 6f 20 75 73 65 20 49 6e 74 65 72 6e 65 74 2d 44 72 61 66 74 73 20 61 73 20 72 65 66 65 72 65 6e 63 65 20 6d 61 74 65 72 69 61 6c 20 6f 72 20 74 6f 20 63 69 74 65 20 74 68 65 6d 20 6f 74 68 65 72 20 74 68 61 6e 20 61 73 20 2f e2 80 9c 77 6f 72 6b 20 69 6e 20 70 72 6f 67 72 65 73 73 2e 2f e2 80 9d"))))
+    # 1 MB of zeros, sealed and opened
+    IO.print(T.ok("1 MB seal and open round trip", roundtrip(Bytes.zeros(1048576n))))
+    # short plaintexts at the block boundaries round trip too
+    IO.print(T.ok("round trip at 0, 1, 15, 16, 17, 63, 64, 65, 127, 128 bytes", edges()))

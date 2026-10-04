@@ -17,11 +17,6 @@ type Ch is Data:
 type Qr is Data:
   Qr{a: U32, b: U32, c: U32, d: U32}
 
-# a limb list beside whatever ran past 2^130
-# (kept together so a call can carry both home without a destructuring let)
-type Cv is Data:
-  Cv{l: List<&2, U32>, ov: U32}
-
 # the four rotations of the quarter round, as constants so each is a shift and an or
 def rot16(+x: U32) -> U32:
   U32.or(U32.shln(x, 16n), U32.shrn(x, 16n))
@@ -161,7 +156,12 @@ def chacha20(+key: List<&2, U32>, +nonce: List<&2, U32>, counter: U32, +data: Li
   chacha20.go(blocks64(Bytes.len(data)), key, nonce, counter, data, Nil{})
 
 # Poly1305
-# -------
+# --------
+
+# a limb list beside whatever ran past 2^130. They travel together so a call can bring
+# both home as a parameter: a destructuring let may not take a call's result.
+type Cv is Data:
+  Cv{l: List<&2, U32>, ov: U32}
 
 # the five little-endian words of a 20-byte string as 13 limbs of 10 bits
 def lim.of(+w0: U32, +w1: U32, +w2: U32, +w3: U32, +w4: U32) -> List<&2, U32>:
@@ -282,7 +282,7 @@ def fold13(c: List<&2, U32>, ov: U32) -> List<&2, U32>:
 
 def cv.limbs(r: Cv) -> List<&2, U32>:
   match r:
-    case Cv{l, ov}:
+    case Cv{l, _}:
       l
 
 def redu.pass(r: Cv) -> Cv:
@@ -319,7 +319,7 @@ def blocks16(+n: U32) -> Nat:
   U32.to_nat(U32.div(U32.add(n, 15), 16))
 
 # h below p: h + 5 carries past 2^130 exactly when h >= p, and then the low 130 bits
-# are h - p. Both sides are cheap, so pick rather than branch: t when c, else f.
+# are h - p. Neither h nor g is secret by the time a tag is out, so a plain branch.
 def sel(+t: List<&2, U32>, +f: List<&2, U32>, c: Bool) -> List<&2, U32>:
   match c:
     case True{}:
@@ -349,7 +349,7 @@ def tag.bytes(xs: List<&2, U32>) -> List<&2, U32>:
 
 def tag.done(r: Cv) -> List<&2, U32>:
   match r:
-    case Cv{t, ov}:
+    case Cv{t, _}:
       tag.bytes(t)
 
 def tag.after(r: Cv, +h: List<&2, U32>, s: List<&2, U32>) -> List<&2, U32>:
@@ -408,7 +408,7 @@ def open.if(+key: List<&2, U32>, +nonce: List<&2, U32>, +aad: List<&2, U32>, +se
     case True{}:
       +n = U32.sub(Bytes.len(sealed), 16)
       +ct = Bytes.take(sealed, U32.to_nat(n))
-      +tag = Bytes.drop(sealed, U32.to_nat(n))
+      tag = Bytes.drop(sealed, U32.to_nat(n))
       open.ver(Bytes.ct_eq(tag, tag.of(key, nonce, aad, ct)), chacha20(key, nonce, 1, ct))
 
 # the plaintext, or None when the tag doesn't match or sealed is shorter than a tag
