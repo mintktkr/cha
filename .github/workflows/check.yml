@@ -34,3 +34,33 @@ jobs:
           key: bend-hub-${{ hashFiles('**/*.bend') }}
           restore-keys: bend-hub-
       - run: scripts/check.sh
+
+  # the native lane has limits the JS lane doesn't (a def wider than 247 words fails
+  # only here), so main gets a native build on every push, not just at release
+  native:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      BEND_VERSION: 2.0.34
+      BEND_SHA256: 78106a97af242429dcc057258eb8d10f69cddebcd5e263022185a52d003e09bf
+      BEND_NO_TELEMETRY: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+      - name: install bend
+        run: |
+          name=bend-$BEND_VERSION-linux-x64.tar.gz
+          curl --proto '=https' --tlsv1.2 -fsSL -o "/tmp/$name" \
+            "https://github.com/bendlang/bend/releases/download/v$BEND_VERSION/$name"
+          echo "$BEND_SHA256  /tmp/$name" | sha256sum -c -
+          tar -xzf "/tmp/$name" -C "$HOME"
+      - uses: actions/cache@v4
+        with:
+          path: ~/.bend/lib
+          key: bend-hub-${{ hashFiles('**/*.bend') }}
+          restore-keys: bend-hub-
+      - name: build
+        run: $HOME/bend/bin/bend main.bend -o out/cha
+      - name: smoke
+        run: out/cha help > /dev/null
