@@ -3,8 +3,9 @@
 # dotted-key rows cha's commands read: {"user": {"login": "a"}, "labels": [{"name": "x"}]}
 # gives user.login = a, labels.0.name = x and labels.# = 1. Strict RFC 8259: any syntax
 # error makes the whole document invalid. Strings are decoded UTF-8, with U+FFFD for
-# anything that isn't. Every loop is a tail call, so a page of a hundred issues (half a
-# megabyte) parses in one pass and no nesting depth can overflow the stack.
+# anything that isn't. The reader's loops are tail calls and its containers an explicit
+# stack, so a page of a hundred issues (half a megabyte) is one pass and no nesting depth
+# can overflow the stack.
 import Base
 import ./bytes.bend as Bytes
 
