@@ -6,6 +6,7 @@
 # exactly one encoding here.
 import Base
 import ./bytes.bend as Bytes
+import ./time.bend as Time
 
 # tag: the identifier octet. value: the element's contents. rest: what follows it.
 type Tlv is Data:
@@ -387,8 +388,8 @@ type Stamp is Data:
 
 def stamp.ok(s: Stamp) -> Bool:
   match s:
-    case Stamp{year, mon, day, hour, minute, second}:
-      Bool.and(in.range(year, 1970, 9999), Bool.and(in.range(mon, 1, 12), Bool.and(in.range(day, 1, 31), Bool.and(in.range(hour, 0, 23), Bool.and(in.range(minute, 0, 59), in.range(second, 0, 59))))))
+    case Stamp{+year, +mon, +day, hour, minute, second}:
+      Bool.and(in.range(year, 1970, 9999), Bool.and(Time.date.valid(year, mon, day), Bool.and(in.range(hour, 0, 23), Bool.and(in.range(minute, 0, 59), in.range(second, 0, 59)))))
 
 # 2106-02-07 06:28:15 is the last second a U32 holds
 def stamp.secs.max.if(+tod: U32, ok: Bool) -> Maybe<&2, U32>:
