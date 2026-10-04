@@ -4,10 +4,12 @@
 # effs/sys.js).
 import Base
 
-# a TCP connection to host:port. host is a name or an IPv4/IPv6 literal; every address
-# getaddrinfo answers (AF_UNSPEC, in its order) is tried until one connects. ms bounds the
-# whole dial. The Socket is Base's, non-blocking, so Base's TCP effects and Socket.close
-# work on it too.
+# a TCP connection to host:port. host is a name or an IPv4/IPv6 literal. getaddrinfo's
+# answer (AF_UNSPEC) is reordered so the families alternate, each family keeping its own
+# order and the first address's family leading (RFC 8305 4), then the addresses are tried
+# in turn; each gets a fair share of what is left of ms, so a black-holed address cannot eat
+# a later family's turn. ms bounds the whole dial. The Socket is Base's, non-blocking, so
+# Base's TCP effects and Socket.close work on it too.
 def dial(host: String, port: U32, ms: U32) -> IO(Result<&1, &1, U32 & String, Socket>):
   import "./effs/sys.c"
   import "./effs/sys.js"

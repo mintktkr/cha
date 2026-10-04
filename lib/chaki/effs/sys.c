@@ -17,7 +17,8 @@
 
 #ifdef CID(dial)
 
-// what is left of the dial in ms, 0 once the deadline passed
+// what is left of the dial in ms, 0 once the deadline passed. Each address of the plan
+// gets left / addresses-left of it, so no one address can eat another family's turn.
 static int chaki_sys_left(IoWork* w) {
   u64 now = io_tick();
   if (now >= w->time) {
@@ -27,22 +28,22 @@ static int chaki_sys_left(IoWork* w) {
   return ms > (u64)INT32_MAX ? INT32_MAX : (int)ms;
 }
 
-// one connect attempt: 0 when it connected, else the errno to remember
-static u32 chaki_sys_connect(int fd, const struct addrinfo* ai, IoWork* w) {
+// one connect attempt: 0 when it connected, else the errno to remember. share is this
+// address's own slice of the dial; the whole dial is still bounded by w->time.
+static u32 chaki_sys_connect(int fd, const struct addrinfo* ai, int share) {
   if (connect(fd, ai->ai_addr, ai->ai_addrlen) == 0) {
     return 0;
   }
   if (errno != EINPROGRESS && errno != EINTR) {
     return (u32)errno;
   }
-  int left = chaki_sys_left(w);
-  if (left == 0) {
+  if (share <= 0) {
     return ETIMEDOUT;
   }
   struct pollfd p = { fd, POLLOUT, 0 };
   int n;
   do {
-    n = poll(&p, 1, left);
+    n = poll(&p, 1, share);
   } while (n < 0 && errno == EINTR);
   if (n == 0) {
     return ETIMEDOUT;
@@ -58,8 +59,47 @@ static u32 chaki_sys_connect(int fd, const struct addrinfo* ai, IoWork* w) {
   return err == 0 ? 0 : (u32)err;
 }
 
-// on the helper thread: resolve, then try every address until one connects. A resolve
-// failure carries its own message, `<host>: <gai_strerror text>`.
+// the order to try: getaddrinfo's answer with its families alternating, so a black-holed
+// v6 address costs at most its share before the v4 one gets its turn (RFC 8305 4). Each
+// family keeps the order getaddrinfo gave it, the first address's family leads, and a third
+// family counts as the other. NULL when there is nothing to try or the plan won't allocate.
+static struct addrinfo** chaki_sys_plan(struct addrinfo* res, u32* n) {
+  u32 len = 0;
+  for (struct addrinfo* ai = res; ai != NULL; ai = ai->ai_next) {
+    len += 1;
+  }
+  *n = len;
+  struct addrinfo** order = len == 0 ? NULL : malloc((size_t)len * sizeof(*order));
+  struct addrinfo** plan = len == 0 ? NULL : malloc((size_t)len * sizeof(*plan));
+  if (order == NULL || plan == NULL) {
+    free(order);
+    free(plan);
+    return NULL;
+  }
+  u32 same = 0;
+  for (struct addrinfo* ai = res; ai != NULL; ai = ai->ai_next) {
+    if (ai->ai_family == res->ai_family) {
+      order[same++] = ai;
+    }
+  }
+  u32 other = 0;
+  for (struct addrinfo* ai = res; ai != NULL; ai = ai->ai_next) {
+    if (ai->ai_family != res->ai_family) {
+      order[same + other++] = ai;
+    }
+  }
+  u32 a = 0;
+  u32 b = 0;
+  for (u32 k = 0; k < len; k += 1) {
+    plan[k] = (k % 2 == 0 ? a < same : b >= other) ? order[a++] : order[same + b++];
+  }
+  free(order);
+  return plan;
+}
+
+// on the helper thread: resolve, then try every address until one connects, each with a
+// fair share of what is left of the dial. A resolve failure carries its own message,
+// `<host>: <gai_strerror text>`.
 static void chaki_sys_dial_call(IoWork* w) {
   struct addrinfo hints;
   struct addrinfo* res = NULL;
@@ -79,8 +119,18 @@ static void chaki_sys_dial_call(IoWork* w) {
     w->code = (u32)rc;
     return;
   }
+  u32 len = 0;
+  struct addrinfo** plan = chaki_sys_plan(res, &len);
+  if (plan == NULL) {
+    freeaddrinfo(res);
+    w->made = -1;
+    w->code = len == 0 ? EADDRNOTAVAIL : ENOMEM;
+    return;
+  }
   u32 last = 0;
-  for (struct addrinfo* ai = res; ai != NULL; ai = ai->ai_next) {
+  for (u32 i = 0; i < len; i += 1) {
+    struct addrinfo* ai = plan[i];
+    int share = chaki_sys_left(w) / (int)(len - i);
     int fd = socket(ai->ai_family, ai->ai_socktype, ai->ai_protocol);
     if (fd < 0) {
       last = (u32)errno;
@@ -91,16 +141,18 @@ static void chaki_sys_dial_call(IoWork* w) {
       close(fd);
       continue;
     }
-    u32 err = chaki_sys_connect(fd, ai, w);
+    u32 err = chaki_sys_connect(fd, ai, share);
     if (err == 0) {
       w->made = fd;
       w->code = 0;
+      free(plan);
       freeaddrinfo(res);
       return;
     }
     last = err;
     close(fd);
   }
+  free(plan);
   freeaddrinfo(res);
   w->made = -1;
   w->code = last != 0 ? last : ETIMEDOUT;
