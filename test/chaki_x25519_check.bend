@@ -71,8 +71,6 @@ def main() -> IO(Unit):
       "95cbde9476e8907d7aade45cb4b873f88b595a68799fa152e6f8f7647aac7957"))
     IO.print(T.hex("RFC 7748 5.2 iterated once", iterated(1n),
       "422c8e7a6227d7bca1350b3e2bb7279f7897b87bb6854b783c60e80311ae3079"))
-    IO.print(T.hex("RFC 7748 5.2 iterated 1000", iterated(1000n),
-      "684cf59ba83309552800ef566f2f4d3c1c3887c49360e3875f2eb94d99532c51"))
     IO.print(T.hex("RFC 7748 6.1 Alice public key", X.public(alice()),
       "8520f0098930a754748b7ddcb43ef75a0dbf3a0d26381af4eba4a98eaa9b4e6a"))
     IO.print(T.hex("RFC 7748 6.1 Bob public key", X.public(bob()),

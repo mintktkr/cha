@@ -115,4 +115,8 @@ def main() -> IO(Unit):
     IO.print(T.eq("UTCTime with a non-digit refused", time.of(Asn1.time(23, Bytes.of_ascii("49123123595AZ"))), "F"))
     IO.print(T.eq("UTCTime with second 60 refused", time.of(Asn1.time(23, Bytes.of_ascii("700101000060Z"))), "F"))
     IO.print(T.eq("UTCTime under the wrong tag refused", time.of(Asn1.time(2, Bytes.of_ascii("700101000000Z"))), "F"))
+    IO.print(T.eq("UTCTime February 31 refused", time.of(Asn1.time(23, Bytes.of_ascii("260231000000Z"))), "F"))
+    IO.print(T.eq("UTCTime April 31 refused", time.of(Asn1.time(23, Bytes.of_ascii("260431000000Z"))), "F"))
+    IO.print(T.eq("GeneralizedTime 2024-02-29 is a leap day", time.of(Asn1.time(24, Bytes.of_ascii("20240229000000Z"))), "1709164800"))
+    IO.print(T.eq("GeneralizedTime 2100-02-29 refused", time.of(Asn1.time(24, Bytes.of_ascii("21000229000000Z"))), "F"))
     IO.print(T.eq("GeneralizedTime of the wrong length refused", time.of(Asn1.time(24, Bytes.of_ascii("204901010000Z"))), "F"))
