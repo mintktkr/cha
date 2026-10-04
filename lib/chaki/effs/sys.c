@@ -261,3 +261,16 @@ static void __attribute__((constructor)) chaki_sys_cols_use(void) {
 }
 
 #endif
+
+#ifdef CID(rows)
+
+Term chaki_sys_rows_run(Env e, Term* f, IoWork* w) {
+  struct winsize ws;
+  return (Term)(u32)(ioctl(STDOUT_FILENO, TIOCGWINSZ, &ws) == 0 ? ws.ws_row : 0);
+}
+
+static void __attribute__((constructor)) chaki_sys_rows_use(void) {
+  io_eff(CID(rows), chaki_sys_rows_run, 0);
+}
+
+#endif

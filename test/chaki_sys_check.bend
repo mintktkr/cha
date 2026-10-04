@@ -291,6 +291,10 @@ def main() -> IO(Unit):
     IO.print(T.ok(Bool.pick(String, U32.is_ne(tty, 0),
       "cols > 0 on a tty", "cols == 0 off a tty"),
       Bool.pick(Bool, U32.is_ne(tty, 0), U32.is_ne(cols, 0), U32.is_eq(cols, 0))))
+    +rows : U32 <- Sys.rows()
+    IO.print(T.ok(Bool.pick(String, U32.is_ne(tty, 0),
+      "rows > 0 on a tty", "rows == 0 off a tty"),
+      Bool.pick(Bool, U32.is_ne(tty, 0), U32.is_ne(rows, 0), U32.is_eq(rows, 0))))
     lp : Listener & U32 <- bind(14711)
     echo.client(lp)
     lp : Listener & U32 <- bind(14721)

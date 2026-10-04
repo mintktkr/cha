@@ -47,3 +47,8 @@ def isatty(fd: U32) -> IO(Bool):
 def cols() -> IO(U32):
   import "./effs/sys.c"
   import "./effs/sys.js"
+
+# the terminal's rows on stdout, 0 when it isn't a terminal or won't say
+def rows() -> IO(U32):
+  import "./effs/sys.c"
+  import "./effs/sys.js"
