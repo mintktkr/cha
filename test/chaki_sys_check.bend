@@ -1,7 +1,7 @@
 # offline checks for lib/chaki/sys.bend: a listener on loopback, a dial to it, and the
-# clock and the terminal. Nothing here leaves this machine. Each scenario reads bottom up,
-# since a def only sees the defs above it: its deep helper comes first, its server and
-# client last.
+# clock and the terminal. Nothing here leaves this machine. The errno numbers it pins are
+# Linux's (110 ETIMEDOUT, 111 ECONNREFUSED). Each scenario reads bottom up, since a def only
+# sees the defs above it: its deep helper comes first, its server and client last.
 import Base
 import ../lib/chaki/bytes.bend as Bytes
 import ../lib/chaki/check.bend as T
