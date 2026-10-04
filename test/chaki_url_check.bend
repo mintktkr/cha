@@ -79,6 +79,8 @@ def main() -> IO(Unit):
     IO.print(T.eq("parse: no authority", shown(Url.parse("http://")), "none"))
     IO.print(T.eq("parse: an empty string", shown(Url.parse("")), "none"))
     IO.print(T.eq("parse: no scheme", shown(Url.parse("/a/b")), "none"))
+    IO.print(T.eq("parse: a port that isn't a number", shown(Url.parse("http://a:b/")), "none"))
+    IO.print(T.eq("parse: an empty port is the default", origined(Url.parse("http://a:/x")), "http://a:80"))
     IO.print(T.eq("parse: a space", shown(Url.parse("http://a b/")), "none"))
     # 9 is the tab character
     IO.print(T.eq("parse: a control character", shown(Url.parse("http://a/" ++ SCon{Chr{9}, SNil{}})), "none"))
@@ -91,6 +93,7 @@ def main() -> IO(Unit):
     IO.print(rfc("RFC 3986 5.4.1", "/g", "http://a/g"))
     IO.print(rfc("RFC 3986 5.4.1", "//g", "http://g/"))
     IO.print(rfc("RFC 3986 5.4.1", "?y", "http://a/b/c/d;p?y"))
+    IO.print(rfc("RFC 3986 5.4.1", "?y#s", "http://a/b/c/d;p?y"))
     IO.print(rfc("RFC 3986 5.4.1", "g?y", "http://a/b/c/g?y"))
     IO.print(rfc("RFC 3986 5.4.1", "#s", "http://a/b/c/d;p?q"))
     IO.print(rfc("RFC 3986 5.4.1", "g#s", "http://a/b/c/g"))
@@ -129,6 +132,8 @@ def main() -> IO(Unit):
     # the RFC's legacy reading of "http:g" is "http://a/b/c/g"; this module refuses an
     # http URI with no authority, so neither applies
     IO.print(rfc.none("RFC 3986 5.4.2", "http:g"))
+    IO.print(T.eq("resolve: a scheme-relative ref with a port", resolved("http://a/b/c/d;p?q", "//g:8080/x"), "http://g:8080/x"))
+    IO.print(T.eq("resolve: a query-only ref over a base with no query", resolved("https://a/b", "?q"), "https://a/b?q"))
     # cha's own case: a path under an API base
     IO.print(T.eq("cha: a relative api path", resolved("https://gitea.example/api/v1/", "repos/o/n/issues?limit=50"), "https://gitea.example/api/v1/repos/o/n/issues?limit=50"))
     IO.print(T.eq("cha: an absolute URL wins", resolved("https://gitea.example/api/v1/", "https://other.example/x"), "https://other.example/x"))

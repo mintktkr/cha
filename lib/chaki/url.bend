@@ -13,6 +13,10 @@ type Url is Data:
 type Query is Data:
   Query{path: String, query: String}
 
+# a host and the port it answers on
+type Host is Data:
+  Host{host: String, port: U32}
+
 # Text
 # ----
 
@@ -162,7 +166,8 @@ def url.split_authority.q(hp: String & String) -> String & String:
   url.split_authority.c(h, rest, url.cut(h, '?'))
 
 # the authority of a URL text after its scheme, and the path plus query that follow
-# it: the authority ends at the first "/", "?" or "#", and the fragment is dropped
+# it: the authority ends at the first "/" or "?". f must be the text with its
+# fragment already dropped
 def url.split_authority(+f: String) -> String & String:
   url.split_authority.q(url.slash(f))
 
@@ -375,10 +380,6 @@ def parse.authority.user(+auth: String, defport: U32, at: Bool) -> Maybe<&2, Hos
 def parse.authority(+auth: String, defport: U32) -> Maybe<&2, Host>:
   parse.authority.user(auth, defport, String.contains(auth, "@"))
 
-# a host and the port it answers on
-type Host is Data:
-  Host{host: String, port: U32}
-
 def parse.host(scheme: String, target: String, hp: Maybe<&2, Host>) -> Maybe<&2, Url>:
   match hp:
     case None{}:
@@ -456,10 +457,10 @@ def resolve.rel(base: Url, ref: String) -> Maybe<&2, Url>:
   +r = url.first(String.split(ref, '#'))
   resolve.rel.at(base, url.split_query(r))
 
-def resolve.query(base: Url, ref: String, q: Bool) -> Maybe<&2, Url>:
+def resolve.query(base: Url, +ref: String, q: Bool) -> Maybe<&2, Url>:
   match q:
     case True{}:
-      resolve.query_url(base, ref)
+      resolve.query_url(base, url.first(String.split(ref, '#')))
     case False{}:
       resolve.rel(base, ref)
 
