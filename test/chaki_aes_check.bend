@@ -121,7 +121,7 @@ def main() -> IO(Unit):
     IO.print(T.hex("GCM, an empty message under AAD", Aes.seal(fx.key128(), fx.iv(), Bytes.of_hex("deadbeef"), Nil{}), "8a0f92ebd7b7fda574cf02963735b22c"))
     IO.print(T.eq("GCM, an empty message under AAD open", plain.of(Aes.open(fx.key128(), fx.iv(), Bytes.of_hex("deadbeef"), Bytes.of_hex("8a0f92ebd7b7fda574cf02963735b22c"))), ""))
     IO.print(T.ok("open, one ciphertext bit flipped", Bool.not(plain.ok(Aes.open(tc4.key(), tc4.iv(), tc4.aad(), flip(tc4.sealed(), 0n))))))
-    IO.print(T.ok("open, one tag bit flipped", Bool.not(plain.ok(Aes.open(tc4.key(), tc4.iv(), tc4.aad(), flip(tc4.sealed(), 60n))))))
+    IO.print(T.ok("open, one tag bit flipped", Bool.not(plain.ok(Aes.open(tc4.key(), tc4.iv(), tc4.aad(), flip(tc4.sealed(), U32.to_nat(Bytes.len(tc4.plain()))))))))
     IO.print(T.ok("open, one AAD bit flipped", Bool.not(plain.ok(Aes.open(tc4.key(), tc4.iv(), flip(tc4.aad(), 0n), tc4.sealed())))))
     IO.print(T.ok("open, a shorter-than-tag message", Bool.not(plain.ok(Aes.open(tc4.key(), tc4.iv(), tc4.aad(), Bytes.take(tc4.sealed(), 10n))))))
     IO.print(T.ok("open, the wrong key length", Bool.not(plain.ok(Aes.open(Bytes.of_hex("000102030405060708090a0b0c0d0e0f1011121314151617"), tc4.iv(), tc4.aad(), tc4.sealed())))))
