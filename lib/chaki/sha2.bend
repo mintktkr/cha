@@ -56,8 +56,8 @@ def pad.need(r: Nat, bs: Nat, whole: Bool) -> Nat:
 def pad.to(+msg: List<&2, U32>, +bs: Nat, +lw: Nat) -> List<&2, U32>:
   +n = U32.to_nat(Bytes.len(msg))
   +r = Nat.mod(Nat.add(Nat.add(n, 1n), lw), bs)
-  +fill = pad.need(r, bs, Nat.is_eq(r, 0n))
-  Bytes.cat(Bytes.cat(Bytes.cat(msg, [128]), Bytes.zeros(fill)), be.nat(Nat.mul(n, 8n), lw))
+  +zeros = pad.need(r, bs, Nat.is_eq(r, 0n))
+  Bytes.cat(Bytes.cat(Bytes.cat(msg, [128]), Bytes.zeros(zeros)), be.nat(Nat.mul(n, 8n), lw))
 
 # The message, as words
 # ---------------------
@@ -422,8 +422,8 @@ def extract.salt.if(+a: Alg, +salt: List<&2, U32>, empty: Bool) -> List<&2, U32>
 def extract(+a: Alg, +salt: List<&2, U32>, ikm: List<&2, U32>) -> List<&2, U32>:
   hmac(a, extract.salt.if(a, salt, U32.is_eq(Bytes.len(salt), 0)), ikm)
 
-def expand.blocks(+hlen: U32, len: U32) -> U32:
-  U32.min(U32.div(U32.add(len, U32.sub(hlen, 1)), hlen), 255)
+def expand.blocks(+hlen: Nat, +len: Nat) -> Nat:
+  Nat.min(Nat.div(Nat.add(len, Nat.sub(hlen, 1n)), hlen), 255n)
 
 def expand.go(+a: Alg, +prk: List<&2, U32>, +info: List<&2, U32>, fuel: Nat, +i: U32, prev: List<&2, U32>, acc: List<&2, U32>) -> List<&2, U32>:
   match fuel:
@@ -437,7 +437,7 @@ def expand.go(+a: Alg, +prk: List<&2, U32>, +info: List<&2, U32>, fuel: Nat, +i:
 # ++ [n]), and the output is their concatenation cut to len. The RFC caps len at
 # 255 * hash size, and so does this: a longer len answers 255 blocks.
 def expand(+a: Alg, prk: List<&2, U32>, info: List<&2, U32>, +len: U32) -> List<&2, U32>:
-  +n = U32.to_nat(expand.blocks(size(a), len))
+  +n = expand.blocks(U32.to_nat(size(a)), U32.to_nat(len))
   Bytes.take(Bytes.rev(expand.go(a, prk, info, n, 1, Nil{}, Nil{})), U32.to_nat(len))
 
 # The TLS 1.3 key schedule (RFC 8446 7.1)

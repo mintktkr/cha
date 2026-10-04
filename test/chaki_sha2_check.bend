@@ -1,7 +1,8 @@
 # offline checks for lib/chaki/sha2.bend. The vectors are from the primary texts:
 # RFC 6234 8.5 (the FIPS 180-3 tests), RFC 4231 4.2-4.8 (HMAC), RFC 5869 A.1-A.3
 # (HKDF) and RFC 8448 3 (the TLS 1.3 key schedule). The digests of the empty,
-# 55, 56, 63, 64 and 65 byte messages and the empty-key MAC come from `openssl dgst`.
+# 55, 56, 63, 64 and 65 byte messages and the MACs of the empty key and of a key
+# exactly one block long come from `openssl dgst`.
 import Base
 import ../lib/chaki/bytes.bend as Bytes
 import ../lib/chaki/check.bend as T
@@ -158,6 +159,12 @@ def main() -> IO(Unit):
       "e37b6a775dc87dbaa4dfa9f96e5e3ffddebd71f8867289865df5a32d20cdc944b6022cac3c4982b10d5eeb55c3e4de15134676fb6de0446065c97440fa8c6a58"))
     IO.print(T.hex("openssl hmac sha256 empty key", mac256(Nil{}, Nil{}),
       "b613679a0814d9ec772f95d778c35fc5ff1697c493715653c6c712144292c5ad"))
+    IO.print(T.hex("openssl hmac sha256 key at the block size", mac256(Sha2.fill(97, 64n), Bytes.of_ascii("block boundary key")),
+      "19f150cc21bef361f841110ca2b36629f96739c58bdfa5bc32c42d06a22aef6c"))
+    IO.print(T.hex("openssl hmac sha384 key at the block size", mac384(Sha2.fill(97, 128n), Bytes.of_ascii("block boundary key")),
+      "c57876c6316a21a4d6e36329832f6e4defebf1f3cf21ee8376e77b8c4606dd9e042d2f23d7663f195be2edd0a4531153"))
+    IO.print(T.hex("openssl hmac sha512 key at the block size", mac512(Sha2.fill(97, 128n), Bytes.of_ascii("block boundary key")),
+      "abd21ffd6af9433c3b263748d1f922e3fd510328c982d08ecb179ca23fb7e81643330f80322a0b25567fe0675c90288a1da339523b01e173023cc8be5914b2ab"))
 
     # RFC 5869 A.1-A.3
 
@@ -177,6 +184,9 @@ def main() -> IO(Unit):
       ""))
     IO.print(T.hex("RFC 5869 A.1 expand one block", Sha2.expand(Sha2.S256{}, Bytes.of_hex("077709362c2e32df0ddc3f0dc47bba6390b6c73bb50f9c3122ec844ad7c2b3e5"), Bytes.of_hex("f0f1f2f3f4f5f6f7f8f9"), 32),
       "3cb25f25faacd57a90434f64d0362f2a2d2d0a90cf1a5a4c5db02d56ecc4c5bf"))
+    IO.print(T.eq("RFC 5869 2.3 len past the cap stops at 255 blocks",
+      U32.show(Bytes.len(Sha2.expand(Sha2.S256{}, Bytes.of_hex("077709362c2e32df0ddc3f0dc47bba6390b6c73bb50f9c3122ec844ad7c2b3e5"), Bytes.of_hex("f0f1f2f3f4f5f6f7f8f9"), 8161))),
+      "8160"))
 
     # RFC 8448 3, the key schedule of the Simple 1-RTT handshake
 
