@@ -61,6 +61,8 @@ jobs:
           key: bend-hub-${{ hashFiles('**/*.bend') }}
           restore-keys: bend-hub-
       - name: build
-        run: $HOME/bend/bin/bend main.bend -o out/cha
+        run: |
+          mkdir -p out
+          $HOME/bend/bin/bend main.bend -o out/cha
       - name: smoke
         run: out/cha help > /dev/null
