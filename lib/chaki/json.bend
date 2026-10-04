@@ -404,12 +404,6 @@ def ubyte.of.ascii(+h: U32, +ascii: Bool) -> UByte:
 def ubyte.of(+h: U32) -> UByte:
   ubyte.of.ascii(h, U32.is_lt(h, 128))
 
-# the class of a byte list's head, UEof when there are no bytes left
-def ubyte.head(xs: List<&2, U32>) -> UByte:
-  match xs:
-    case Nil{}: UEof{}
-    case Con{h, t}: ubyte.of(h)
-
 def utf8.surrogate(+cp: U32) -> Bool:
   Bool.and(U32.is_ge(cp, 55296), U32.is_le(cp, 57343))
 
