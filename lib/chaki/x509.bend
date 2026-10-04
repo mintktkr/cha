@@ -608,52 +608,57 @@ def parse(+der: List<&2, U32>) -> Maybe<&2, Cert>:
 # Keys and signatures
 # -------------------
 
+# two byte strings as one Data value: a tuple A & B is affine (Kind &1), and a Maybe<&2, ..>
+# can only hold Data. (a, b) builds it and destructures it, as a tuple does.
+def Two() -> Data:
+  Sigma<&2, &2, List<&2, U32>, _ => List<&2, U32>>
+
 # the modulus and exponent of a DER RSAPublicKey
-def x509.rsa.exp(modulus: List<&2, U32>, m: Maybe<&2, Asn1.Tlv>) -> Maybe<&2, Sigma<&2, &2, List<&2, U32>, _ => List<&2, U32>>>:
+def x509.rsa.exp(modulus: List<&2, U32>, m: Maybe<&2, Asn1.Tlv>) -> Maybe<&2, Two()>:
   match m:
     case Some{Asn1.Tlv{2, evalue, erest}}:
       Some{(Asn1.uint(modulus), Asn1.uint(evalue))}
     case _:
       None{}
 
-def x509.rsa.ints(m: Maybe<&2, Asn1.Tlv>) -> Maybe<&2, Sigma<&2, &2, List<&2, U32>, _ => List<&2, U32>>>:
+def x509.rsa.ints(m: Maybe<&2, Asn1.Tlv>) -> Maybe<&2, Two()>:
   match m:
     case Some{Asn1.Tlv{2, mvalue, mrest}}:
       x509.rsa.exp(Asn1.uint(mvalue), Asn1.read(mrest))
     case _:
       None{}
 
-def x509.rsa.seq(m: Maybe<&2, Asn1.Tlv>) -> Maybe<&2, Sigma<&2, &2, List<&2, U32>, _ => List<&2, U32>>>:
+def x509.rsa.seq(m: Maybe<&2, Asn1.Tlv>) -> Maybe<&2, Two()>:
   match m:
     case Some{Asn1.Tlv{48, value, rest}}:
       x509.rsa.ints(Asn1.read(value))
     case _:
       None{}
 
-def rsa_key(key: List<&2, U32>) -> Maybe<&2, Sigma<&2, &2, List<&2, U32>, _ => List<&2, U32>>>:
+def rsa_key(key: List<&2, U32>) -> Maybe<&2, Two()>:
   x509.rsa.seq(Asn1.read(key))
 
 # r and s of a DER ECDSA-Sig-Value
-def x509.ecdsa.s(r: List<&2, U32>, m: Maybe<&2, Asn1.Tlv>) -> Maybe<&2, Sigma<&2, &2, List<&2, U32>, _ => List<&2, U32>>>:
+def x509.ecdsa.s(r: List<&2, U32>, m: Maybe<&2, Asn1.Tlv>) -> Maybe<&2, Two()>:
   match m:
     case Some{Asn1.Tlv{2, svalue, srest}}:
       Some{(r, Asn1.uint(svalue))}
     case _:
       None{}
 
-def x509.ecdsa.ints(m: Maybe<&2, Asn1.Tlv>) -> Maybe<&2, Sigma<&2, &2, List<&2, U32>, _ => List<&2, U32>>>:
+def x509.ecdsa.ints(m: Maybe<&2, Asn1.Tlv>) -> Maybe<&2, Two()>:
   match m:
     case Some{Asn1.Tlv{2, rvalue, rrest}}:
       x509.ecdsa.s(Asn1.uint(rvalue), Asn1.read(rrest))
     case _:
       None{}
 
-def x509.ecdsa.seq(m: Maybe<&2, Asn1.Tlv>) -> Maybe<&2, Sigma<&2, &2, List<&2, U32>, _ => List<&2, U32>>>:
+def x509.ecdsa.seq(m: Maybe<&2, Asn1.Tlv>) -> Maybe<&2, Two()>:
   match m:
     case Some{Asn1.Tlv{48, value, rest}}:
       x509.ecdsa.ints(Asn1.read(value))
     case _:
       None{}
 
-def ecdsa_sig(sig: List<&2, U32>) -> Maybe<&2, Sigma<&2, &2, List<&2, U32>, _ => List<&2, U32>>>:
+def ecdsa_sig(sig: List<&2, U32>) -> Maybe<&2, Two()>:
   x509.ecdsa.seq(Asn1.read(sig))

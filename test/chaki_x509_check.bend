@@ -169,7 +169,7 @@ def ok.of(m: Maybe<&2, X509.Cert>) -> String:
     case None{}:
       "F"
 
-def key.text(m: Maybe<&2, Sigma<&2, &2, List<&2, U32>, _ => List<&2, U32>>>) -> String:
+def key.text(m: Maybe<&2, X509.Two()>) -> String:
   match m:
     case Some{(a, b)}:
       Bytes.to_hex(a) ++ ":" ++ Bytes.to_hex(b)
