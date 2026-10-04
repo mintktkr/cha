@@ -2,8 +2,8 @@ import Base
 import ../src/ctx.bend as Ctx
 import ../src/api.bend as Api
 import ../src/cmd/runs.bend as Runs
-import 0x49814d83de8f70993a43e1002be29ecd/bytes.bend as Bytes
-import 0x3bfb4ae4d3b87b90f01bfcd298211455/time.bend as Time
+import ../lib/chaki/utf8.bend as Utf8
+import ../lib/chaki/sys.bend as Sys
 
 def expect.if(+got: String, +want: String, same: Bool) -> IO(Unit):
   match same:
@@ -120,7 +120,7 @@ def main() -> IO(Unit):
     is_true(Runs.want.job("2", "success", "2", False{}))
     is_true(Runs.want.job("2", "success", "", False{}))
     expect(Bool.show(Runs.want.job("2", "success", "3", False{})), "False")
-    +now : Time.Instant <- Time.now()
+    +now : U32 <- Sys.now()
     +src : Map<&2, String> = fake()
     +row : Map<&2, String> = Runs.run.row(src, "workflow_runs.0", Ctx.Gitea{}, now)
     expect(Api.f(row, "workflow"), "ci.yml")
@@ -132,7 +132,7 @@ def main() -> IO(Unit):
     +xs : List<&2, Map<&2, String>> = Runs.rows.of(src, "workflow_runs", Ctx.Gitea{}, now)
     expect(Nat.show(List.length(&2, Map<&2, String>, xs)), "2")
     expect(Nat.show(Api.count(src, "workflow_runs")), "2")
-    +fsrc : Map<&2, String> = Api.obj(Bytes.from_string(fj.body()))
+    +fsrc : Map<&2, String> = Api.obj(Utf8.encode(fj.body()))
     fj.check.finished(Runs.run.row(fsrc, "workflow_runs.0", Ctx.Gitea{}, now))
     fj.check.skipped(Runs.run.row(fsrc, "workflow_runs.1", Ctx.Gitea{}, now))
     fj.check.running(Runs.run.row(fsrc, "workflow_runs.2", Ctx.Gitea{}, now))
