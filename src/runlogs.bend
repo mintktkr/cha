@@ -3,8 +3,7 @@
 import Base
 import ./api.bend as Api
 import ./ctx.bend as Ctx
-import 0x3bfb4ae4d3b87b90f01bfcd298211455/time.bend as Time
-import 0x4eed9d7ac6ece61523d747a9d804e4f0/int.bend as Int
+import ../lib/chaki/time.bend as Time
 
 type Step is Data:
   Step{position: U32, name: String, status: String, conclusion: String, started: String, completed: String}
@@ -83,42 +82,16 @@ def steps.names(xs: List<&2, Step>) -> String:
     case Con{Step{i, name, status, conclusion, a, b}, rest}:
       "  " ++ name ++ "\n" ++ steps.names(rest)
 
-def at.least(c: Cmp) -> Bool:
-  match c:
-    case LT{}:
-      False{}
-    case x:
-      True{}
-
-def at.most(c: Cmp) -> Bool:
-  match c:
-    case GT{}:
-      False{}
-    case x:
-      True{}
-
-def after(c: Cmp) -> Bool:
-  match c:
-    case GT{}:
-      True{}
-    case x:
-      False{}
-
-def whole(i: Time.Instant) -> Time.Instant:
-  match i:
-    case Time.Instant{s, n}:
-      Time.Instant{s, 0}
-
-# Gitea stores step start/stop in whole seconds. Keep the entire final second so
-# the selected step's last lines are not lost. Adjacent steps may share a second;
-# the caller reports this precision limit instead of guessing runner markers.
-def line.in(m: Maybe<&2, Time.Instant>, +start: Time.Instant, +stop: Time.Instant) -> Bool:
+# Gitea stores step start/stop in whole seconds, and an instant here is whole seconds too
+# (Time.parse drops the fraction), so the entire final second is kept and the selected
+# step's last lines are not lost. Adjacent steps may share a second; the caller reports
+# this precision limit instead of guessing runner markers.
+def line.in(m: Maybe<&2, U32>, +start: U32, +stop: U32) -> Bool:
   match m:
     case None{}:
       False{}
-    case Some{i}:
-      +t = whole(i)
-      at.least(Time.Instant.cmp(t, start)) && at.most(Time.Instant.cmp(t, stop))
+    case Some{+t}:
+      U32.is_ge(t, start) && U32.is_le(t, stop)
 
 def line.keep(+line: String, rest: String, keep: Bool) -> String:
   match keep:
@@ -127,29 +100,29 @@ def line.keep(+line: String, rest: String, keep: Bool) -> String:
     case False{}:
       rest
 
-def lines(xs: List<&2, String>, +start: Time.Instant, +stop: Time.Instant) -> String:
+def lines(xs: List<&2, String>, +start: U32, +stop: U32) -> String:
   match xs:
     case Nil{}:
       ""
     case Con{+line, rest}:
-      line.keep(line, lines(rest, start, stop), line.in(Time.rfc3339.parse(Ctx.first(String.split(line, ' '))), start, stop))
+      line.keep(line, lines(rest, start, stop), line.in(Time.parse(Ctx.first(String.split(line, ' '))), start, stop))
 
-def window.valid(+text: String, +start: Time.Instant, +stop: Time.Instant, valid: Bool) -> Maybe<&2, String>:
+def window.valid(+text: String, +start: U32, +stop: U32, valid: Bool) -> Maybe<&2, String>:
   match valid:
     case False{}:
       None{}
     case True{}:
-      Some{lines(split.lines(strip.bom(text)), whole(start), whole(stop))}
+      Some{lines(split.lines(strip.bom(text)), start, stop)}
 
-def window.parsed(+text: String, start: Maybe<&2, Time.Instant>, stop: Maybe<&2, Time.Instant>) -> Maybe<&2, String>:
+def window.parsed(+text: String, start: Maybe<&2, U32>, stop: Maybe<&2, U32>) -> Maybe<&2, String>:
   match start stop:
     case Some{+a} Some{+b}:
-      window.valid(text, a, b, after(Time.Instant.cmp(a, Time.Instant.epoch())) && at.least(Time.Instant.cmp(b, a)))
+      window.valid(text, a, b, U32.is_gt(a, 0) && U32.is_ge(b, a))
     case _ _:
       None{}
 
 def window(+text: String, +start: String, +stop: String) -> Maybe<&2, String>:
-  window.parsed(text, Time.rfc3339.parse(start), Time.rfc3339.parse(stop))
+  window.parsed(text, Time.parse(start), Time.parse(stop))
 
 
 # GitHub
@@ -221,20 +194,13 @@ def step.position(+s: Step) -> U32:
     case Step{position, n, status, conclusion, started, completed}:
       position
 
-# A stamp the forge did not give lands on the epoch, which no log line reaches.
-def stamp(m: Maybe<&2, Time.Instant>) -> Time.Instant:
-  Maybe.default(&2, Time.Instant, m, Time.Instant.epoch())
-
-# A stamp as whole seconds since the epoch, the grain the forge times a step with; 0 when
-# the forge gave none. Windows compare these U32s, not Instants: an Instant is wide on the
-# native lane, and a def holding four of them is past its 247-word limit.
-def secs(i: Time.Instant) -> U32:
-  match i:
-    case Time.Instant{s, n}:
-      Int.I64.to_u32(s)
+# A stamp as whole seconds since the epoch, the grain the forge times a step with; 0 (the
+# epoch, which no log line reaches) when the forge gave none.
+def stamp(m: Maybe<&2, U32>) -> U32:
+  Maybe.default(&2, U32, m, 0)
 
 def second.of(+s: String) -> U32:
-  secs(stamp(Time.rfc3339.parse(s)))
+  stamp(Time.parse(s))
 
 # A log line's time, as a whole second.
 def line.second(+line: String) -> U32:

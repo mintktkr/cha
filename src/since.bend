@@ -1,16 +1,11 @@
 # the --since window: a span like 1d, 6h or 30m, or an explicit RFC 3339 date-time.
 # moved and issue list both parse --since here, so there is one parser.
 import Base
-import 0x3bfb4ae4d3b87b90f01bfcd298211455/time.bend as Time
+import ../lib/chaki/time.bend as Time
 
-def whole(i: Time.Instant) -> Time.Instant:
-  match i:
-    case Time.Instant{s, n}:
-      Time.Instant{s, 0}
-
-# an instant as RFC 3339 in UTC, without a fraction, "" when it is out of range
-def rfc(i: Time.Instant) -> String:
-  Maybe.default(&2, String, Time.rfc3339(whole(i)), "")
+# an instant (Unix seconds) as RFC 3339 in UTC
+def rfc(+t: U32) -> String:
+  Time.show(t)
 
 # the seconds one unit of --since is worth: d, h, m; 0 when it is none of them
 def unit.secs(+u: String) -> U32:
@@ -22,27 +17,32 @@ def without.last(+s: String) -> String:
 def last(+s: String) -> String:
   String.drop(s, Nat.sub(String.length(s), 1n))
 
-def span.mul.at(n: Maybe<&2, U32>, +secs: U32) -> Maybe<&2, Time.Duration>:
+# k units of secs, or none when the unit is unknown or the product won't fit a U32
+def span.mul.at(+k: U32, +secs: U32) -> Maybe<&2, U32>:
+  Bool.pick(Maybe<&2, U32>, Bool.or(U32.is_eq(secs, 0), U32.is_gt(k, U32.div(4294967295, secs))), None{}, Some{(k * secs : U32)})
+
+def span.mul(n: Maybe<&2, U32>, +secs: U32) -> Maybe<&2, U32>:
   match n:
-    case Some{k}:
-      Some{Time.Duration.of_secs(Time.i64((k * secs : U32)))}
+    case Some{+k}:
+      span.mul.at(k, secs)
     case None{}:
       None{}
 
-# a span like 1d, 6h or 30m, as the duration it covers
-def span.mul(n: Maybe<&2, U32>, +secs: U32) -> Maybe<&2, Time.Duration>:
-  Bool.pick(Maybe<&2, Time.Duration>, U32.is_eq(secs, 0), None{}, span.mul.at(n, secs))
-
-def span(+arg: String) -> Maybe<&2, Time.Duration>:
+# a span like 1d, 6h or 30m, as the seconds it covers
+def span(+arg: String) -> Maybe<&2, U32>:
   span.mul(U32.read(without.last(arg)), unit.secs(last(arg)))
 
-def pick(back: Maybe<&2, Time.Duration>, +now: Time.Instant, +arg: String) -> Maybe<&2, Time.Instant>:
-  match back:
-    case Some{d}:
-      Some{Time.Instant.add(now, Time.Duration.neg(d))}
+# now less d, held at the epoch
+def back(+now: U32, +d: U32) -> U32:
+  Bool.pick(U32, U32.is_lt(now, d), 0, (now - d : U32))
+
+def pick(got: Maybe<&2, U32>, +now: U32, +arg: String) -> Maybe<&2, U32>:
+  match got:
+    case Some{+d}:
+      Some{back(now, d)}
     case None{}:
-      Time.rfc3339.parse(arg)
+      Time.parse(arg)
 
 # the window --since names: a span back from now, or an explicit RFC 3339 date-time
-def of(now: Time.Instant, +arg: String) -> Maybe<&2, Time.Instant>:
+def of(+now: U32, +arg: String) -> Maybe<&2, U32>:
   pick(span(arg), now, arg)

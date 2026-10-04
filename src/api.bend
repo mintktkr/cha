@@ -1,17 +1,17 @@
 # api: requests to a forge's REST API, decoded replies, and pagination.
 import Base
-import bend-kit-hairpin@0.1.0.0/hairpin.bend as Hairpin
-import bend-kit-http@0.23.0.1/http.bend as Http
-import 0x584fc27920487ceab242392391418d7f/json.bend as Json
-import 0x49814d83de8f70993a43e1002be29ecd/bytes.bend as Bytes
-import 0xcfc8be7b076f41f95c8e118383892d55/encoding.bend as Enc
+import ../lib/chaki/utf8.bend as Utf8
+import ../lib/chaki/json.bend as Json
+import ../lib/chaki/url.bend as Url
+import ../lib/chaki/http1.bend as Http1
+import ../lib/chaki/http.bend as Http
 import ./ctx.bend as Ctx
 import ./clean.bend as Clean
 
 # A finished request: the status, the next page's URL ("" when last) and the body.
 # Broke is a request that never got a status; why never holds the token.
 type Reply is Type:
-  Reply{status: U32, next: String, body: Bytes.Bytes}
+  Reply{status: U32, next: String, body: List<&2, U32>}
   Broke{why: String}
 
 def base(f: Ctx.Forge, +host: String) -> String:
@@ -27,19 +27,6 @@ def scheme(f: Ctx.Forge) -> String:
       "token "
     case Ctx.GitHub{}:
       "Bearer "
-
-def authed(c: Hairpin.Client, f: Ctx.Forge, +tok: String, none: Bool) -> Hairpin.Client:
-  match none:
-    case True{}:
-      c
-    case False{}:
-      Hairpin.header(c, "authorization", scheme(f) ++ tok)
-
-def client(repo: Ctx.Repo, +tok: String) -> Hairpin.Client:
-  match repo:
-    case Ctx.Repo{+f, +h, o, n}:
-      c = Hairpin.header(Hairpin.header(Hairpin.base(Hairpin.new(), base(f, h)), "accept", "application/json"), "user-agent", "cha")
-      authed(c, f, tok, String.is_empty(tok))
 
 # repos/<owner>/<name>/ + rest
 def path(repo: Ctx.Repo, +rest: String) -> String:
@@ -68,76 +55,93 @@ def link.scan(ps: List<&2, String>) -> String:
 def link.next(+h: String) -> String:
   link.scan(String.split(h, ','))
 
-# Errors
-# ------
-
-def why(e: Http.Err) -> String:
-  match e:
-    case Http.ErrUrl{}:
-      "bad url"
-    case Http.ErrDns{}:
-      "dns lookup failed"
-    case Http.ErrConnect{c, w}:
-      "can't connect: " ++ w
-    case Http.ErrTls{c, w}:
-      "tls failed: " ++ w
-    case Http.ErrRead{c, w}:
-      "read failed: " ++ w
-    case Http.ErrWrite{c, w}:
-      "write failed: " ++ w
-    case Http.ErrTimeout{}:
-      "timed out"
-    case Http.ErrRedirect{}:
-      "too many redirects"
-    case Http.ErrBad{}:
-      "malformed response"
-
-def reply.of(got: Result<&1, &1, Http.Err, Http.Res>) -> Reply:
-  match got:
-    case Done{Http.Res{+status, +headers, body}}:
-      Reply{status, link.next(Http.header(headers, "link")), body}
-    case Fail{e}:
-      Broke{why(e)}
-
-def reply(r: Hairpin.Client & Result<&1, &1, Http.Err, Http.Res>) -> IO(Reply):
-  (c, got) = r
-  do IO<Reply>:
-    Hairpin.close(c)
-    return reply.of(got)
-
 # Requests
 # --------
 
-def json.headers() -> Map<&2, List<&2, String>>:
-  Map.set(&2, List<&2, String>, Map.new(&2, List<&2, String>), "content-type", ["application/json"])
+def auth.if(f: Ctx.Forge, +tok: String, rest: List<&2, Http1.Field()>, none: Bool) -> List<&2, Http1.Field()>:
+  match none:
+    case True{}:
+      rest
+    case False{}:
+      ("authorization", scheme(f) ++ tok) <> rest
 
-# one request header, as a client takes them
+# what every request carries, then the caller's own headers
+def headers(+repo: Ctx.Repo, +tok: String, +accept: String, extra: List<&2, Http1.Field()>) -> List<&2, Http1.Field()>:
+  match repo:
+    case Ctx.Repo{+f, h, o, n}:
+      ("accept", accept) <> (("user-agent", "cha") <> auth.if(f, tok, extra, String.is_empty(tok)))
 
-def header.one(+k: String, +v: String) -> Map<&2, List<&2, String>>:
-  Http.set(Http.empty(), k, v)
+# one request header, as send.raw takes them
+def header.one(+k: String, +v: String) -> List<&2, Http1.Field()>:
+  [(k, v)]
 
-# one request; url is relative to the forge's API root, or absolute
-def send(repo: Ctx.Repo, +tok: String, +method: String, url: String, body: Maybe<&1, Json.Val>) -> IO(Reply):
+def target.of(m: Maybe<&2, Url.Url>, +url: String) -> String:
+  match m:
+    case Some{u}:
+      Url.show(u)
+    case None{}:
+      url
+
+def target.at(b: Maybe<&2, Url.Url>, +url: String) -> String:
+  match b:
+    case Some{u}:
+      target.of(Url.resolve(u, url), url)
+    case None{}:
+      url
+
+# url resolved against the forge's API root (an absolute url stays as it is)
+def target(+repo: Ctx.Repo, +url: String) -> String:
+  match repo:
+    case Ctx.Repo{+f, +h, o, n}:
+      target.at(Url.parse(base(f, h)), url)
+
+# https goes through the system's OpenSSL unless CHA_TLS=bend picks chaki's own TLS 1.3
+def transport.of(+v: String) -> Http.Transport:
+  Bool.pick(Http.Transport, String.eq(v, "bend"), Http.Bend{}, Http.Ossl{})
+
+def reply.of(got: Result<&1, &1, String, Http.Res>) -> Reply:
+  match got:
+    case Done{Http.Res{+status, +hs, body, url}}:
+      Reply{status, link.next(Http1.header(Http1.Head{status, hs}, "link")), body}
+    case Fail{w}:
+      Broke{w}
+
+def fetch.with(c: Result<&1, &1, U32 & String, Http.Client>, +method: String, +url: String, hs: List<&2, Http1.Field()>, body: List<&2, U32>) -> IO(Reply):
+  match c:
+    case Done{cl}:
+      do IO<Reply>:
+        got : Result<&1, &1, String, Http.Res> <- Http.fetch(cl, method, url, hs, body)
+        return reply.of(got)
+    case Fail{(code, w)}:
+      IO.pure(Reply, Broke{w})
+
+# one request; url is relative to the forge's API root, or absolute. Two minutes bound it
+# whole: dial, handshake and the body (a job log can be large).
+def request(+repo: Ctx.Repo, +tok: String, +method: String, +url: String, +accept: String, extra: List<&2, Http1.Field()>, body: List<&2, U32>) -> IO(Reply):
+  do IO<Reply>:
+    t : String <- Ctx.env("CHA_TLS")
+    c : Result<&1, &1, U32 & String, Http.Client> <- Http.client(transport.of(t), 120000)
+    fetch.with(c, method, target(repo, url), headers(repo, tok, accept, extra), body)
+
+# a JSON request; the body, when there is one, goes as UTF-8 JSON
+def send(+repo: Ctx.Repo, +tok: String, +method: String, +url: String, body: Maybe<&1, Json.Val>) -> IO(Reply):
   match body:
     case None{}:
-      do IO<Reply>:
-        r : Hairpin.Client & Result<&1, &1, Http.Err, Http.Res> <- Hairpin.request(client(repo, tok), method, url, Map.new(&2, List<&2, String>), Http.from_string(""))
-        reply(r)
+      request(repo, tok, method, url, "application/json", Nil{}, Nil{})
     case Some{v}:
-      do IO<Reply>:
-        r : Hairpin.Client & Result<&1, &1, Http.Err, Http.Res> <- Hairpin.request(client(repo, tok), method, url, json.headers(), Json.encode.bytes(v))
-        reply(r)
+      request(repo, tok, method, url, "application/json", [("content-type", "application/json")], Utf8.encode(Json.encode(v)))
 
 # one request whose body is bytes the caller framed, and whose headers are its own
 # (uploads: GitHub takes the file raw, Gitea a multipart form)
+def send.raw(+repo: Ctx.Repo, +tok: String, +method: String, +url: String, hs: List<&2, Http1.Field()>, body: List<&2, U32>) -> IO(Reply):
+  request(repo, tok, method, url, "application/json", hs, body)
 
-def send.raw(repo: Ctx.Repo, +tok: String, +method: String, url: String, headers: Map<&2, List<&2, String>>, body: Bytes.Bytes) -> IO(Reply):
-  do IO<Reply>:
-    r : Hairpin.Client & Result<&1, &1, Http.Err, Http.Res> <- Hairpin.request(client(repo, tok), method, url, headers, body)
-    reply(r)
-
-def get(repo: Ctx.Repo, +tok: String, url: String) -> IO(Reply):
+def get(+repo: Ctx.Repo, +tok: String, +url: String) -> IO(Reply):
   send(repo, tok, "GET", url, None{})
+
+# a GET asking for another media type: a diff, a raw file
+def get.accept(+repo: Ctx.Repo, +tok: String, +url: String, +accept: String) -> IO(Reply):
+  request(repo, tok, "GET", url, accept, Nil{}, Nil{})
 
 # Decoding
 # --------
@@ -146,17 +150,17 @@ def ok(+status: U32) -> Bool:
   (status >= 200 : U32) && (status < 300 : U32)
 
 # a reply's body as the forge sent it, for callers that write it to a file
-def raw.text(b: Bytes.Bytes) -> String:
-  Enc.utf8.decode(b)
+def raw.text(b: List<&2, U32>) -> String:
+  Utf8.decode(b)
 
 # a reply's body as text safe for a terminal. A CI job log is full of ANSI colour, so
 # every command that prints a body reads it here; raw.text keeps the bytes byte-exact.
-def text(b: Bytes.Bytes) -> String:
+def text(b: List<&2, U32>) -> String:
   Clean.text(raw.text(b))
 
-# a JSON string as text
+# a JSON string
 def utf8(s: String) -> Json.Val:
-  Json.Str{Json.utf8(s)}
+  Json.Str{s}
 
 # true/false the way JSON spells them, not Bool.show's True/False
 def json.bool(on: Bool) -> String:
@@ -166,112 +170,22 @@ def json.bool(on: Bool) -> String:
     case False{}:
       "false"
 
-def str.of(m: Maybe<&1, Json.Val>) -> String:
-  match m:
-    case Some{Json.Str{s}}:
-      Enc.utf8.decode(s)
-    case Some{Json.Num{s}}:
-      Bytes.to_string(s)
-    case Some{Json.Flag{on}}:
-      json.bool(on)
-    case x:
-      ""
-
-# a string, number or bool field of an object, as text; "" when missing
-def str(v: Json.Val, k: String) -> String:
-  str.of(Json.get(v, k))
-
 # Flat objects
 # ------------
-# A JSON object flattened once into text fields, so a command can read as many as it likes:
+# A JSON body flattened once into text fields, so a command can read as many as it likes:
 # {"user": {"login": "a"}, "labels": [{"name": "x"}]} has user.login = a,
-# labels.0.name = x and labels.# = 1. Strings are decoded UTF-8; null is "".
+# labels.0.name = x and labels.# = 1. Strings are decoded UTF-8; null is "". chaki's
+# json.bend reads the bytes straight into these rows, with no tree in between.
 def Row() -> Type:
   Map<&2, String>
 
-def key(+prefix: String, +k: String) -> String:
-  Ctx.or.if(prefix ++ "." ++ k, k, String.is_empty(prefix))
-
-def push.obj(kvs: List<&1, Bytes.Bytes & Json.Val>, +prefix: String, work: List<&1, String & Json.Val>) -> List<&1, String & Json.Val>:
-  match kvs:
-    case Nil{}:
-      work
-    case (k, v) <> t:
-      Con{(key(prefix, Enc.utf8.decode(k)), v), push.obj(t, prefix, work)}
-
-def push.arr(xs: List<&1, Json.Val>, +prefix: String, +i: U32, work: List<&1, String & Json.Val>) -> List<&1, String & Json.Val>:
-  match xs:
-    case Nil{}:
-      Con{(key(prefix, "#"), Json.Num{Bytes.from_string(U32.show(i))}), work}
-    case Con{x, t}:
-      Con{(key(prefix, U32.show(i)), x), push.arr(t, prefix, (i + 1 : U32), work)}
-
-# one step per value, so fuel = the body's byte count always finishes
-def flat.go(fuel: Nat, work: List<&1, String & Json.Val>, acc: Map<&2, String>) -> Map<&2, String>:
-  match fuel work:
-    case 0n w:
-      acc
-    case 1n+p Nil{}:
-      acc
-    case 1n+p Con{(+k, Json.Null{}), t}:
-      flat.go(p, t, Map.set(&2, String, acc, k, ""))
-    case 1n+p Con{(+k, Json.Flag{on}), t}:
-      flat.go(p, t, Map.set(&2, String, acc, k, json.bool(on)))
-    case 1n+p Con{(+k, Json.Num{n}), t}:
-      flat.go(p, t, Map.set(&2, String, acc, k, Bytes.to_string(n)))
-    case 1n+p Con{(+k, Json.Str{s}), t}:
-      flat.go(p, t, Map.set(&2, String, acc, k, Enc.utf8.decode(s)))
-    case 1n+p Con{(+k, Json.Arr{xs}), t}:
-      flat.go(p, push.arr(xs, k, 0, t), acc)
-    case 1n+p Con{(+k, Json.Obj{kvs}), t}:
-      flat.go(p, push.obj(kvs, k, t), acc)
-
-def flat(+fuel: Nat, v: Json.Val) -> Map<&2, String>:
-  flat.go(fuel, Con{("", v), Nil{}}, Map.new(&2, String))
-
-def rows.go(+fuel: Nat, xs: List<&1, Json.Val>) -> List<&2, Map<&2, String>>:
-  match xs:
-    case Nil{}:
-      Nil{}
-    case Con{x, t}:
-      flat(fuel, x) <> rows.go(fuel, t)
-
-def rows.of(+fuel: Nat, m: Maybe<&1, Json.Val>) -> List<&2, Map<&2, String>>:
-  match m:
-    case Some{Json.Arr{xs}}:
-      rows.go(fuel, xs)
-    case x:
-      Nil{}
-
-def obj.of(+fuel: Nat, m: Maybe<&1, Json.Val>) -> Map<&2, String>:
-  match m:
-    case Some{v}:
-      flat(fuel, v)
-    case None{}:
-      Map.new(&2, String)
-
-def fuel.of(r: Bytes.Bytes & U32) -> Bytes.Bytes & Nat:
-  (b, +n) = r
-  (b, U32.to_nat((n + 1 : U32)))
-
-def fuel(b: Bytes.Bytes) -> Bytes.Bytes & Nat:
-  fuel.of(Bytes.length(b))
-
-def rows.fueled(r: Bytes.Bytes & Nat) -> List<&2, Map<&2, String>>:
-  (b, +n) = r
-  rows.of(n, Json.parse.bytes(b))
-
-def obj.fueled(r: Bytes.Bytes & Nat) -> Map<&2, String>:
-  (b, +n) = r
-  obj.of(n, Json.parse.bytes(b))
-
 # the objects of a JSON array body, flattened; none when it isn't an array
-def rows(b: Bytes.Bytes) -> List<&2, Map<&2, String>>:
-  rows.fueled(fuel(b))
+def rows(b: List<&2, U32>) -> List<&2, Map<&2, String>>:
+  Json.rows(b)
 
 # a JSON object body, flattened; empty when it isn't JSON
-def obj(b: Bytes.Bytes) -> Map<&2, String>:
-  obj.fueled(fuel(b))
+def obj(b: List<&2, U32>) -> Map<&2, String>:
+  Json.obj(b)
 
 def f.of(r: Map<&2, String> & String) -> String:
   (m, v) = r
@@ -320,21 +234,14 @@ def join(+row: Map<&2, String>, +list: String, +field: String, +sep: String) -> 
 def message.text(+s: String) -> String:
   Ctx.or.if(": " ++ s, "", String.is_empty(s))
 
-def message.of(m: Maybe<&1, Json.Val>) -> String:
-  match m:
-    case Some{v}:
-      message.text(str(v, "message"))
-    case None{}:
-      ""
-
 # the error message a forge put in a failed reply's body
-def message(+status: U32, b: Bytes.Bytes) -> String:
-  "HTTP " ++ U32.show(status) ++ message.of(Json.parse.bytes(b))
+def message(+status: U32, b: List<&2, U32>) -> String:
+  "HTTP " ++ U32.show(status) ++ message.text(f(obj(b), "message"))
 
 # Pagination
 # ----------
 
-def all.step.ok(+status: U32, +next: String, body: Bytes.Bytes, acc: List<&2, Map<&2, String>>, good: Bool) -> Result<&1, &1, String, List<&2, Map<&2, String>> & String>:
+def all.step.ok(+status: U32, +next: String, body: List<&2, U32>, acc: List<&2, Map<&2, String>>, good: Bool) -> Result<&1, &1, String, List<&2, Map<&2, String>> & String>:
   match good:
     case True{}:
       Done{(List.append(&2, Map<&2, String>, acc, rows(body)), next)}

@@ -1,8 +1,6 @@
 # cli: what every command gets (Env), argument helpers and --json output.
 import Base
-import 0x584fc27920487ceab242392391418d7f/json.bend as Json
-import 0xcfc8be7b076f41f95c8e118383892d55/encoding.bend as Enc
-import 0x49814d83de8f70993a43e1002be29ecd/bytes.bend as Bytes
+import ../lib/chaki/json.bend as Json
 import ./ctx.bend as Ctx
 import ./api.bend as Api
 import ./ui.bend as Ui
@@ -113,16 +111,16 @@ def arg(args: List<&2, String>, n: Nat) -> String:
 # one row as a JSON object of the given flat fields, all values strings, exactly as the
 # forge sent them: the JSON writer escapes a control character as \uXXXX, so --json keeps
 # the data instead of losing what Clean drops from the printed text
-def json.obj(+row: Map<&2, String>, fields: List<&2, String>) -> List<&1, Bytes.Bytes & Json.Val>:
+def json.obj(+row: Map<&2, String>, fields: List<&2, String>) -> List<&2, Json.Member()>:
   match fields:
     case Nil{}:
       Nil{}
     case Con{+k, rest}:
-      Con{(Json.utf8(k), Api.utf8(Api.raw.f(row, k))), json.obj(row, rest)}
+      Con{(k, Json.Str{Api.raw.f(row, k)}), json.obj(row, rest)}
 
 # one row as a JSON object of the given flat fields, all values strings
 def json.row(+row: Map<&2, String>, +fields: List<&2, String>) -> String:
-  Enc.utf8.decode(Json.encode.bytes(Json.Obj{json.obj(row, fields)}))
+  Json.encode(Json.Obj{json.obj(row, fields)})
 
 def json.rows.go(xs: List<&2, Map<&2, String>>, +fields: List<&2, String>) -> List<&2, String>:
   match xs:
