@@ -24,4 +24,5 @@ def main() -> IO(Unit):
     IO.print(T.hex("be32", Bytes.be32(3735928559), "deadbeef"))
     IO.print(T.eq("get.be", U32.show(Bytes.get.be(Bytes.of_hex("deadbeef"), 4n)), "3735928559"))
     IO.print(T.eq("get.be short", U32.show(Bytes.get.be(Bytes.of_hex("01"), 2n)), "256"))
+    IO.print(T.ok("eq on a megabyte", Bytes.eq(Bytes.zeros(1000000n), Bytes.zeros(1000000n))))
     IO.print(T.eq("big list stays flat", U32.show(Bytes.len(Bytes.cat(Bytes.zeros(200000n), Bytes.zeros(200000n)))), "400000"))

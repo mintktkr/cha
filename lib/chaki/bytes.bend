@@ -17,14 +17,17 @@ def len.go(xs: List<&2, U32>, n: U32) -> U32:
 def len(xs: List<&2, U32>) -> U32:
   len.go(xs, 0)
 
-def eq(a: List<&2, U32>, b: List<&2, U32>) -> Bool:
+def eq.go(a: List<&2, U32>, b: List<&2, U32>, same: Bool) -> Bool:
   match a b:
     case Nil{} Nil{}:
-      True{}
+      same
     case Con{x, s} Con{y, t}:
-      Bool.and(U32.is_eq(x, y), eq(s, t))
+      eq.go(s, t, Bool.and(same, U32.is_eq(x, y)))
     case _ _:
       False{}
+
+def eq(a: List<&2, U32>, b: List<&2, U32>) -> Bool:
+  eq.go(a, b, True{})
 
 def ct.go(a: List<&2, U32>, b: List<&2, U32>, acc: U32) -> U32:
   match a b:
