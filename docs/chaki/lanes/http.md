@@ -28,11 +28,11 @@ type Client is Data:
 def client(t: Transport, ms: U32) -> IO(Result<&1, &1, U32 & String, Client>)
 
 type Res is Data:
-  Res{status: U32, headers: List<&2, String & String>, body: List<&2, U32>, url: String}
+  Res{status: U32, headers: List<&2, Http1.Field()>, body: List<&2, U32>, url: String}
 
 # one request, following redirects. headers are lowercase names. Fail{reason} for anything
 # that isn't an HTTP response: dns, connect, tls, timeout, too many redirects, malformed.
-def fetch(c: Client, method: String, url: String, headers: List<&2, String & String>, body: List<&2, U32>) -> IO(Result<&1, &1, String, Res>)
+def fetch(c: Client, method: String, url: String, headers: List<&2, Http1.Field()>, body: List<&2, U32>) -> IO(Result<&1, &1, String, Res>)
 ```
 
 ## Rules

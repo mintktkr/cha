@@ -68,6 +68,10 @@ The walls everyone hits, with the fix:
   Long straight-line code (a hash round, a field multiply) goes in several small defs, with
   state packed into a constructor of a few fields. Run a native build of your check before
   you call the lane done. The JS lane doesn't catch this.
+- **A tuple `A & B` is affine** (Kind &1), even when A and B are Data, so `List<&2, A & B>`
+  and `Maybe<&2, A & B>` don't typecheck. Name a Data pair instead:
+  `def Field() -> Data: Sigma<&2, &2, String, _ => String>`, then `List<&2, Field()>`. Tuples
+  `(a, b)` still build and destructure it.
 - **Arrays** (`Array<U32>`) are mutable in place but affine: every read hands the array back.
   Prefer lists and constructors unless a table lookup is on the hot path.
 - `bend PROOF.bend` is the project's proof gate and has nothing to do with your lane. Don't
