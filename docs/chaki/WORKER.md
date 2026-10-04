@@ -24,6 +24,8 @@ rr bend test/chaki_<module>_check.bend -o out/t && rr bend --run ./out/t   # nat
 ```
 
 - Never run `bend` or `~/.bend/bin/bend` directly on this machine.
+- Never run `scripts/check.sh` or `bend main.bend`: the build server is shared and CPU-bound,
+  and the integrator runs the full gate when your lane lands. Run only your own checks.
 - A JS-lane run of a small module takes 10-30 s. A native build takes 1-4 min.
 - The server limits how many bends run at once, so a run may wait for a slot. That's normal.
   Don't loop a command in parallel with itself.
