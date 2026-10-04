@@ -262,6 +262,7 @@ def main() -> IO(Unit):
 
     # content-length
     IO.print(T.eq("200 with content-length, whole", whole(False{}, resp.len()), "status 200 | content-length=5 | body 68656c6c6f"))
+    IO.print(T.eq("bytes after a complete response are ignored", whole(False{}, resp.len() ++ "HTTP/1.1 200 OK\r\n\r\n"), "status 200 | content-length=5 | body 68656c6c6f"))
     IO.print(T.eq("200 with content-length, whole = drip", whole(False{}, resp.len()), drip(False{}, resp.len())))
     IO.print(T.eq("200 with content-length, drip = seven", drip(False{}, resp.len()), seven(False{}, resp.len())))
 
