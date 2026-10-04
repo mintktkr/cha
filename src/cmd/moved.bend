@@ -1,7 +1,7 @@
 # cha moved: what happened in a repo since a window, in one sweep.
 import Base
-import 0x3bfb4ae4d3b87b90f01bfcd298211455/time.bend as Time
-import 0x49814d83de8f70993a43e1002be29ecd/bytes.bend as Bytes
+import ../../lib/chaki/time.bend as Time
+import ../../lib/chaki/sys.bend as Sys
 import ../ctx.bend as Ctx
 import ../api.bend as Api
 import ../ui.bend as Ui
@@ -26,23 +26,16 @@ type Part is Data:
 # Windows
 # -------
 
-def cmp.at.least(c: Cmp) -> Bool:
-  match c:
-    case LT{}:
-      False{}
-    case x:
-      True{}
-
 # whether a parsed timestamp is at or after the window's start; False when it doesn't parse
-def at.least(m: Maybe<&2, Time.Instant>, bound: Time.Instant) -> Bool:
+def at.least(m: Maybe<&2, U32>, +bound: U32) -> Bool:
   match m:
-    case Some{i}:
-      cmp.at.least(Time.Instant.cmp(i, bound))
+    case Some{+t}:
+      U32.is_ge(t, bound)
     case None{}:
       False{}
 
-def at.least.text(+text: String, bound: Time.Instant) -> Bool:
-  at.least(Time.rfc3339.parse(text), bound)
+def at.least.text(+text: String, +bound: U32) -> Bool:
+  at.least(Time.parse(text), bound)
 
 # Sections
 # --------
@@ -188,7 +181,7 @@ def run.row(+flat: Map<&2, String>, +pre: String) -> Map<&2, String>:
   +r5 = Map.set(&2, String, r4, "updated", run.updated(flat, pre))
   Map.set(&2, String, r5, "html_url", Api.raw.f(flat, pre ++ "html_url"))
 
-def run.recent(+row: Map<&2, String>, +bound: Time.Instant) -> Bool:
+def run.recent(+row: Map<&2, String>, +bound: U32) -> Bool:
   Bool.or(at.least.text(Api.raw.f(row, "created"), bound), at.least.text(Api.raw.f(row, "updated"), bound))
 
 def run.rows(+n: Nat, +flat: Map<&2, String>, +i: U32, acc: List<&2, Map<&2, String>>) -> List<&2, Map<&2, String>>:
@@ -207,7 +200,7 @@ def run.mark(keep: Bool, +row: Map<&2, String>) -> Maybe<&2, Map<&2, String>>:
 
 # each run paired with whether it belongs in the window
 # classify, then match: the Bool must be read before the list can be walked
-def run.marked(xs: List<&2, Map<&2, String>>, +bound: Time.Instant) -> List<&2, Maybe<&2, Map<&2, String>>>:
+def run.marked(xs: List<&2, Map<&2, String>>, +bound: U32) -> List<&2, Maybe<&2, Map<&2, String>>>:
   match xs:
     case Nil{}:
       Nil{}
@@ -225,7 +218,7 @@ def run.kept(ms: List<&2, Maybe<&2, Map<&2, String>>>) -> List<&2, Map<&2, Strin
       run.kept(t)
 
 # the runs endpoint answers with an object holding workflow_runs, which Api.rows can't read
-def run.section(+flat: Map<&2, String>, +bound: Time.Instant) -> Section:
+def run.section(+flat: Map<&2, String>, +bound: U32) -> Section:
   Section{head.runs(), run.kept(run.marked(run.rows(Api.count(flat, "workflow_runs"), flat, 0, Nil{}), bound)), ""}
 
 # Fetching
@@ -280,21 +273,21 @@ def commits.of(+repo: Ctx.Repo, +tok: String, +since: String) -> IO(Section):
         s : Section <- fetch.section(repo, tok, head.commits(branch), Api.path(repo, commit.query(f, branch, since)))
         return commit.section(s)
 
-def runs.status(ok: Bool, +status: U32, body: Bytes.Bytes, +bound: Time.Instant) -> Section:
+def runs.status(ok: Bool, +status: U32, body: List<&2, U32>, +bound: U32) -> Section:
   match ok:
     case True{}:
       run.section(Api.obj(body), bound)
     case False{}:
       Section{head.runs(), Nil{}, Api.message(status, body)}
 
-def runs.reply(rep: Api.Reply, +bound: Time.Instant) -> Section:
+def runs.reply(rep: Api.Reply, +bound: U32) -> Section:
   match rep:
     case Api.Broke{w}:
       Section{head.runs(), Nil{}, w}
     case Api.Reply{+status, next, body}:
       runs.status(Api.ok(status), status, body, bound)
 
-def runs.of(+repo: Ctx.Repo, +tok: String, +bound: Time.Instant) -> IO(Section):
+def runs.of(+repo: Ctx.Repo, +tok: String, +bound: U32) -> IO(Section):
   match repo:
     case Ctx.Repo{+f, h, o, n}:
       do IO<Section>:
@@ -403,7 +396,7 @@ def out(+env: Cli.Env, +label: String, +s: Sections) -> IO(Unit):
   decide(String.is_empty(sections.error(s)), env, label, s)
 
 # the four sections are independent requests, so they run at the same time
-def sweep(+env: Cli.Env, +bound: Time.Instant, +label: String) -> IO(Unit):
+def sweep(+env: Cli.Env, +bound: U32, +label: String) -> IO(Unit):
   match env:
     case Cli.Env{+repo, +tok, on, json, args}:
       do IO<Unit>:
@@ -418,7 +411,7 @@ def sweep(+env: Cli.Env, +bound: Time.Instant, +label: String) -> IO(Unit):
         +s : Sections = Sections{si, sc, sm, sr}
         out(env, label, s)
 
-def start(+env: Cli.Env, +since: Maybe<&2, Time.Instant>) -> IO(Unit):
+def start(+env: Cli.Env, +since: Maybe<&2, U32>) -> IO(Unit):
   match since:
     case Some{bound}:
       sweep(env, bound, Since.rfc(bound))
@@ -429,6 +422,6 @@ def run(+env: Cli.Env) -> IO(Unit):
   match env:
     case Cli.Env{repo, tok, on, json, +args}:
       do IO<Unit>:
-        now : Time.Instant <- Time.now()
-        +m : Maybe<&2, Time.Instant> = Since.of(now, Cli.flag(args, "--since", "1d"))
+        now : U32 <- Sys.now()
+        +m : Maybe<&2, U32> = Since.of(now, Cli.flag(args, "--since", "1d"))
         start(env, m)

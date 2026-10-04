@@ -1,6 +1,5 @@
 # cha auth status: which host, which login, and where the token came from. Never the token.
 import Base
-import 0x49814d83de8f70993a43e1002be29ecd/bytes.bend as Bytes
 import ../ctx.bend as Ctx
 import ../api.bend as Api
 import ../ui.bend as Ui
@@ -48,7 +47,7 @@ def verdict(+env: Cli.Env, +why: String, ok: Bool) -> IO(Unit):
 
 # The login is a row field, so it is read the way a row is built: raw. The text printer
 # reads it back through Api.f.
-def login.of(+status: U32, body: Bytes.Bytes, good: Bool) -> String:
+def login.of(+status: U32, body: List<&2, U32>, good: Bool) -> String:
   match good:
     case True{}:
       Api.raw.f(Api.obj(body), "login")

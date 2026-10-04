@@ -1,6 +1,5 @@
 # cha runners: a repo's or an org's self-hosted runners. Read-only.
 import Base
-import 0x49814d83de8f70993a43e1002be29ecd/bytes.bend as Bytes
 import ../ctx.bend as Ctx
 import ../api.bend as Api
 import ../ui.bend as Ui
@@ -35,8 +34,12 @@ def url.of(+repo: Ctx.Repo, +org: String, +page: U32) -> String:
 # field k of an object flattened under prefix; "" when missing. Raw: this reads only to
 # build a row, which holds what the forge sent, so the text printer reads the row back
 # through Api.f (clean) and --json through Api.raw.f (exact).
+# prefix.k, or just k at the root: the old Api.key, kept here since Api no longer has it
+def key(+prefix: String, +k: String) -> String:
+  Ctx.or.if(prefix ++ "." ++ k, k, String.is_empty(prefix))
+
 def g(+src: Map<&2, String>, +prefix: String, +k: String) -> String:
-  Api.raw.f(src, Api.key(prefix, k))
+  Api.raw.f(src, key(prefix, k))
 
 def prefix.of(+root: String, i: U32) -> String:
   root ++ "." ++ U32.show(i)
@@ -50,7 +53,7 @@ def runner.row(+src: Map<&2, String>, +prefix: String) -> Map<&2, String>:
   m = Map.set(&2, String, m, "status", g(src, prefix, "status"))
   m = Map.set(&2, String, m, "busy", g(src, prefix, "busy"))
   m = Map.set(&2, String, m, "os", g(src, prefix, "os"))
-  Map.set(&2, String, m, "labels", Api.raw.join(src, Api.key(prefix, "labels"), "name", ","))
+  Map.set(&2, String, m, "labels", Api.raw.join(src, key(prefix, "labels"), "name", ","))
 
 def rows.go(n: Nat, +i: U32, +src: Map<&2, String>) -> List<&2, Map<&2, String>>:
   match n:
@@ -126,19 +129,19 @@ def page.next(+next: String, +fallback: String, +seen: Nat, +total: String, empt
   Ctx.or(next, Ctx.or.if(fallback, "", empty || Bool.not(Nat.is_gt(Api.count.of(U32.read(total)), seen))))
 
 # a reply's body, or the command fails with the forge's error
-def ok.body(+env: Cli.Env, +status: U32, body: Bytes.Bytes, good: Bool) -> IO(Bytes.Bytes):
+def ok.body(+env: Cli.Env, +status: U32, body: List<&2, U32>, good: Bool) -> IO(List<&2, U32>):
   match good:
     case True{}:
-      IO.pure(Bytes.Bytes, body)
+      IO.pure(List<&2, U32>, body)
     case False{}:
-      Cli.fail(Bytes.Bytes, env, Api.message(status, body))
+      Cli.fail(List<&2, U32>, env, Api.message(status, body))
 
 type Pages is Type:
   FetchRunners{url: String, acc: List<&2, Map<&2, String>>}
   ReadRunners{reply: Api.Reply, acc: List<&2, Map<&2, String>>}
   NextRunners{done: Bool, url: String, seen: Nat, acc: List<&2, Map<&2, String>>}
 
-def page.of(+repo: Ctx.Repo, +org: String, +page: U32, +next: String, +seen: Nat, body: Bytes.Bytes, acc: List<&2, Map<&2, String>>) -> Pages:
+def page.of(+repo: Ctx.Repo, +org: String, +page: U32, +next: String, +seen: Nat, body: List<&2, U32>, acc: List<&2, Map<&2, String>>) -> Pages:
   +src = Api.obj(body)
   +rows = rows.of(src)
   +count = Nat.add(seen, List.length(&2, Map<&2, String>, rows))
@@ -157,7 +160,7 @@ def walk(fuel: Nat, +env: Cli.Env, +repo: Ctx.Repo, +tok: String, +org: String, 
       Cli.fail(List<&2, Map<&2, String>>, env, w)
     case 1n+p ReadRunners{Api.Reply{+status, +next, body}, acc}:
       do IO<List<&2, Map<&2, String>>>:
-        b : Bytes.Bytes <- ok.body(env, status, body, Api.ok(status))
+        b : List<&2, U32> <- ok.body(env, status, body, Api.ok(status))
         walk(p, env, repo, tok, org, page, seen, page.of(repo, org, page, next, seen, b, acc))
     case 1n+p NextRunners{True{}, url, n, acc}:
       IO.pure(List<&2, Map<&2, String>>, acc)
