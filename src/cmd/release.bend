@@ -343,13 +343,19 @@ def create(+env: Cli.Env) -> IO(Unit):
 # Multipart (RFC 7578), the framing Gitea's asset endpoint takes
 # --------------------------------------------------------------
 
-# The boundary comes from the wall clock, so it is new for every upload and, unlike a fixed
-# literal, cannot be sitting in the bytes of the file being uploaded (cha's own binary, at that).
-# Seconds are all Sys.now answers, which is all a boundary needs: it only has to be absent
-# from this one file.
+# The boundary is the wall clock plus 32 random bits, so it is new for every upload and,
+# unlike a fixed literal, can't be sitting in the bytes of the file being uploaded (cha's
+# own binary, at that), or be guessed by whoever made the file.
 
-def mp.boundary(+now: U32) -> String:
-  "----cha-" ++ U32.show(now)
+def mp.boundary(+now: U32, +salt: U32) -> String:
+  "----cha-" ++ U32.show(now) ++ "-" ++ U32.show(salt)
+
+def mp.salt(r: Result<&1, &1, U32 & String, U32>) -> U32:
+  match r:
+    case Done{n}:
+      n
+    case Fail{e}:
+      0
 
 # a filename sits inside a quoted header, so `"`, `\` and a line break would break out of it
 
@@ -522,7 +528,8 @@ def upload.file(+env: Cli.Env, +repo: Ctx.Repo, +tok: String, +release: Map<&2, 
     +name : String = base.name(path)
     +f : Ctx.Forge = forge.of(repo)
     now : U32 <- Sys.now()
-    +b : String = mp.boundary(now)
+    salt : Result<&1, &1, U32 & String, U32> <- IO.random_u32()
+    +b : String = mp.boundary(now, mp.salt(salt))
     data : List<&2, U32> <- read.bytes(env, path)
     r : Api.Reply <- Api.send.raw(repo, tok, "POST", upload.url(f, repo, release, name), upload.headers(f, b), upload.body(f, b, name, data))
     got : List<&2, U32> <- body.reply(env, r)
