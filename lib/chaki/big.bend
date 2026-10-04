@@ -17,7 +17,6 @@ def carry(+v: U32) -> U32:
   U32.shrn(v, 16n)
 
 # the two bytes of a limb
-
 def byte.lo(+h: U32) -> U32:
   U32.and(h, 255)
 
@@ -97,29 +96,6 @@ def fit.go(n: Nat, xs: List<&2, U32>, acc: List<&2, U32>) -> List<&2, U32>:
 def fit(xs: List<&2, U32>, n: Nat) -> List<&2, U32>:
   fit.go(n, xs, Nil{})
 
-def fit.top.fill(n: Nat, acc: List<&2, U32>) -> List<&2, U32> & U32:
-  match n:
-    case 0n:
-      (Bytes.rev(acc), 0)
-    case 1n+p:
-      fit.top.fill(p, 0 <> acc)
-
-def fit.top.go(n: Nat, xs: List<&2, U32>, acc: List<&2, U32>, top: U32) ->
-  List<&2, U32> & U32:
-  match n:
-    case 0n:
-      (Bytes.rev(acc), top)
-    case 1n+p:
-      match xs:
-        case Nil{}:
-          fit.top.fill(p, acc)
-        case Con{+h, t}:
-          fit.top.go(p, t, h <> acc, h)
-
-# exactly n limbs, with the limb at position n - 1
-def fit.top(xs: List<&2, U32>, n: Nat) -> List<&2, U32> & U32:
-  fit.top.go(n, xs, Nil{}, 0)
-
 # t + a*s + c, everything low first and exact. Every limb product fits in a U32, and so
 # does each sum: 65535 + 65535*65535 + 65535 = 2^32 - 1.
 def amul.ta(a: List<&2, U32>, +s: U32, c: U32) -> List<&2, U32>:
@@ -188,6 +164,7 @@ def bits.go(xs: List<&2, U32>, +k: Nat, acc: Nat) -> Nat:
 def bits(xs: List<&2, U32>) -> U32:
   U32.from_nat(bits.go(xs, 0n, 0n))
 
+# n == 0
 def is_zero(xs: List<&2, U32>) -> Bool:
   match xs:
     case Nil{}:
@@ -251,6 +228,7 @@ def to_bytes.low(xs: List<&2, U32>, acc: List<&2, U32>) -> List<&2, U32>:
 def to_bytes(n: List<&2, U32>, len: U32) -> List<&2, U32>:
   Bytes.rev(fit(Bytes.rev(to_bytes.low(n, Nil{})), U32.to_nat(len)))
 
+# x in one limb, or two when it needs them
 def of_u32(+x: U32) -> List<&2, U32>:
   norm([limb(x), carry(x)])
 
@@ -281,6 +259,7 @@ def cmp(a: List<&2, U32>, b: List<&2, U32>) -> Cmp:
 # Addition and subtraction
 # ------------------------
 
+# a + b; both must be normalized
 def add(a: List<&2, U32>, b: List<&2, U32>) -> List<&2, U32>:
   match a:
     case Nil{}:
@@ -328,6 +307,7 @@ def mul.go(+a: List<&2, U32>, b: List<&2, U32>, t: List<&2, U32>,
       +t1 = amul(t, a, s, 0)
       mul.go(a, r, tail(t1), head(t1) <> out)
 
+# a * b
 def mul(a: List<&2, U32>, b: List<&2, U32>) -> List<&2, U32>:
   match b:
     case Nil{}:
@@ -347,6 +327,7 @@ def shl.bits.go(xs: List<&2, U32>, hi: U32, +s: Nat) -> List<&2, U32>:
       +hi2 = U32.shrn(h, (16n - s : Nat))
       v <> shl.bits.go(t, hi2, s)
 
+# xs << s, and xs >> s
 def shl.bits(xs: List<&2, U32>, s: Nat) -> List<&2, U32>:
   shl.bits.go(xs, 0, s)
 
@@ -368,6 +349,7 @@ def shr.bits(xs: List<&2, U32>, s: Nat) -> List<&2, U32>:
 # Division
 # --------
 
+# a divided by a single limb d, walking a from the top; hi is a high first
 def divmod.small.go(hi: List<&2, U32>, +d: U32, r: U32, acc: List<&2, U32>) ->
   List<&2, U32> & U32:
   match hi:
@@ -455,6 +437,7 @@ def mod.if(p: List<&2, U32> & List<&2, U32>) -> List<&2, U32>:
   (q, r) = p
   r
 
+# a mod m
 def mod(a: List<&2, U32>, m: List<&2, U32>) -> List<&2, U32>:
   mod.if(divmod(a, m))
 
@@ -550,6 +533,7 @@ def mont(+m: List<&2, U32>) -> Mont:
   +one = mod(Bytes.rev(1 <> Bytes.zeros(U32.to_nat(n))), m)
   Mont{m, nprime(head(m)), mod(mul(one, one), m), one}
 
+# a * b mod m, for a and b below m
 def mont.mul(+c: Mont, a: List<&2, U32>, b: List<&2, U32>) -> List<&2, U32>:
   Mont{m, mp, r2, one} = c
   mont.raw(a, b, m, mp)
