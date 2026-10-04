@@ -1,6 +1,6 @@
 # offline checks for lib/chaki/big.bend. The random operands and their expected values
-# come from scripts/chaki-big-vectors.ts, which computes them with BigInt; paste its
-# output between the markers. The last line reports the 4096-bit modexp wall time.
+# come from scripts/chaki-big-vectors.ts, which computes them with BigInt; its output is
+# pasted into main below. The line after the 4096-bit modexp reports how long it took.
 import Base
 import ../lib/chaki/bytes.bend as Bytes
 import ../lib/chaki/big.bend as Big
