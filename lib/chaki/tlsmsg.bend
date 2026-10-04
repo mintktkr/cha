@@ -66,6 +66,12 @@ def record(ctype: U32, +payload: List<&2, U32>) -> List<&2, U32>:
 type Rec is Data:
   Rec{ctype: U32, body: List<&2, U32>}
 
+# the records at the front of a buffer, and the rest of it. A named pair: Bend's `A & B` is
+# Pair, Sigma<&1, &1, ..>, which is Type, so `Maybe<&2, List<&2, Rec> & List<&2, U32>>` is
+# not a type a module can write down. Tuples still build and open it.
+def Split() -> Data:
+  Sigma<&2, &2, List<&2, Rec>, _ => List<&2, U32>>
+
 # the record at the front of a buffer, when the buffer holds all of it
 type First is Data:
   First.rec{rec: Rec, after: List<&2, U32>, have: Nat}
@@ -96,7 +102,7 @@ def first.of(+buf: List<&2, U32>, +have: Nat) -> First:
 type Recs is Data:
   Recs.more{first: First, rest: List<&2, U32>, left: Nat, acc: List<&2, Rec>}
 
-def records.give(st: Recs) -> Maybe<&1, List<&2, Rec> & List<&2, U32>>:
+def records.give(st: Recs) -> Maybe<&2, Split()>:
   match st:
     case Recs.more{First.rec{rec, after, have}, rest, left, acc}:
       Some{(List.reverse(&2, Rec, rec <> acc), after)}
@@ -105,7 +111,7 @@ def records.give(st: Recs) -> Maybe<&1, List<&2, Rec> & List<&2, U32>>:
     case Recs.more{First.bad{}, rest, left, acc}:
       None{}
 
-def records.go(fuel: Nat, st: Recs) -> Maybe<&1, List<&2, Rec> & List<&2, U32>>:
+def records.go(fuel: Nat, st: Recs) -> Maybe<&2, Split()>:
   match fuel st:
     case 0n s:
       records.give(s)
@@ -116,15 +122,13 @@ def records.go(fuel: Nat, st: Recs) -> Maybe<&1, List<&2, Rec> & List<&2, U32>>:
     case 1n+p Recs.more{First.rec{rec, +after, +have}, rest, left, acc}:
       records.go(p, Recs.more{first.of(after, have), after, have, rec <> acc})
 
-def records.start(+buf: List<&2, U32>, +have: Nat) -> Maybe<&1, List<&2, Rec> & List<&2, U32>>:
+def records.start(+buf: List<&2, U32>, +have: Nat) -> Maybe<&2, Split()>:
   records.go(have, Recs.more{first.of(buf, have), buf, have, Nil{}})
 
 # the whole records at the front of buf, and the rest. None when a header is malformed: a
 # bad type, a bad version, or a length past 2^14 + 256. A buffer that stops inside a record
-# answers what it holds so far and hands the cut record back as the rest. The pair makes
-# the Maybe affine: Bend's `A & B` is Pair, Sigma<&1, &1, ..>, so `Maybe<&2, A & B>` is
-# not a type a module can write down.
-def records(+buf: List<&2, U32>) -> Maybe<&1, List<&2, Rec> & List<&2, U32>>:
+# answers what it holds so far and hands the cut record back as the rest.
+def records(+buf: List<&2, U32>) -> Maybe<&2, Split()>:
   records.start(buf, U32.to_nat(Bytes.len(buf)))
 
 # Handshake messages

@@ -191,21 +191,21 @@ def notify() -> List<&2, U32>:
 # Digging out of the types the module answers with
 # ------------------------------------------------
 
-def recs(m: Maybe<&1, List<&2, Tls.Rec> & List<&2, U32>>) -> List<&2, Tls.Rec>:
+def recs(m: Maybe<&2, Tls.Split()>) -> List<&2, Tls.Rec>:
   match m:
     case None{}:
       Nil{}
     case Some{(rs, rest)}:
       rs
 
-def rest.of(m: Maybe<&1, List<&2, Tls.Rec> & List<&2, U32>>) -> List<&2, U32>:
+def rest.of(m: Maybe<&2, Tls.Split()>) -> List<&2, U32>:
   match m:
     case None{}:
       Nil{}
     case Some{(rs, rest)}:
       rest
 
-def maybe.state(m: Maybe<&1, List<&2, Tls.Rec> & List<&2, U32>>) -> String:
+def maybe.state(m: Maybe<&2, Tls.Split()>) -> String:
   match m:
     case Some{v}:
       "some"
@@ -244,7 +244,7 @@ def rec.bodies.go(rs: List<&2, Tls.Rec>, acc: List<&2, U32>) -> List<&2, U32>:
       rec.bodies.go(t, Bytes.cat(acc, body))
 
 # the record bodies of a buffer, concatenated the way the transcript wants them
-def rec.bodies(m: Maybe<&1, List<&2, Tls.Rec> & List<&2, U32>>) -> List<&2, U32>:
+def rec.bodies(m: Maybe<&2, Tls.Split()>) -> List<&2, U32>:
   rec.bodies.go(recs(m), Nil{})
 
 # Tls.messages answers a pair, and a destructuring let may not open a computed value
