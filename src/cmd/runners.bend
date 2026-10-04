@@ -34,12 +34,8 @@ def url.of(+repo: Ctx.Repo, +org: String, +page: U32) -> String:
 # field k of an object flattened under prefix; "" when missing. Raw: this reads only to
 # build a row, which holds what the forge sent, so the text printer reads the row back
 # through Api.f (clean) and --json through Api.raw.f (exact).
-# prefix.k, or just k at the root: the old Api.key, kept here since Api no longer has it
-def key(+prefix: String, +k: String) -> String:
-  Ctx.or.if(prefix ++ "." ++ k, k, String.is_empty(prefix))
-
 def g(+src: Map<&2, String>, +prefix: String, +k: String) -> String:
-  Api.raw.f(src, key(prefix, k))
+  Api.raw.f(src, Api.key(prefix, k))
 
 def prefix.of(+root: String, i: U32) -> String:
   root ++ "." ++ U32.show(i)
@@ -53,7 +49,7 @@ def runner.row(+src: Map<&2, String>, +prefix: String) -> Map<&2, String>:
   m = Map.set(&2, String, m, "status", g(src, prefix, "status"))
   m = Map.set(&2, String, m, "busy", g(src, prefix, "busy"))
   m = Map.set(&2, String, m, "os", g(src, prefix, "os"))
-  Map.set(&2, String, m, "labels", Api.raw.join(src, key(prefix, "labels"), "name", ","))
+  Map.set(&2, String, m, "labels", Api.raw.join(src, Api.key(prefix, "labels"), "name", ","))
 
 def rows.go(n: Nat, +i: U32, +src: Map<&2, String>) -> List<&2, Map<&2, String>>:
   match n:
