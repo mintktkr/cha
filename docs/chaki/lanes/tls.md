@@ -33,7 +33,10 @@ def hs.start(random: List<&2, U32>, session: List<&2, U32>, priv: List<&2, U32>,
 
 type Event is Data:
   Need{}                                     # feed more bytes
-  Chain{certs: List<&2, List<&2, U32>>}      # the server's chain, for the shell to verify
+  # the whole server flight is in and its Finished MAC checked: the shell must now verify the
+  # chain AND that sig is the leaf key's signature (scheme) over signed, the
+  # CertificateVerify content (64 spaces, the context string, 0x00, the transcript hash)
+  Check{certs: List<&2, List<&2, U32>>, scheme: U32, signed: List<&2, U32>, sig: List<&2, U32>}
   Ready{}                                    # handshake done; app data may flow
   Data{bytes: List<&2, U32>}                 # application data
   Closed{}                                   # close_notify
@@ -43,7 +46,8 @@ type Event is Data:
 # KeyUpdate answer, ..), and what happened.
 def hs.input(st: Hs, bytes: List<&2, U32>) -> Hs & List<&2, U32> & List<&2, Event>
 
-# the shell says the chain verified (or not) once it has seen Chain
+# the shell's verdict on Check: True sends the client Finished and answers Ready,
+# False answers Failed. Nothing but Need can come before this.
 def hs.trusted(st: Hs, ok: Bool) -> Hs & List<&2, U32> & List<&2, Event>
 
 # application data to send, as records (chunks of at most 2^14 bytes)
@@ -77,7 +81,7 @@ shell's four defs exactly as written, because the `http` lane is built against t
 - Server flight order: ServerHello, then encrypted EncryptedExtensions, Certificate,
   CertificateVerify and Finished. Anything else, or anything out of order, is Failed. So is a
   HelloRetryRequest, since only x25519 is ever offered.
-- CertificateVerify: 64 spaces, "TLS 1.3, server CertificateVerify", a 0x00 byte, then
+- CertificateVerify (the shell checks it, through Check): 64 spaces, "TLS 1.3, server CertificateVerify", a 0x00 byte, then
   the transcript hash. Allowed schemes: 0x0403 (P-256/SHA-256), 0x0503 (P-384/SHA-384),
   0x0804 (PSS/SHA-256) and 0x0805 (PSS/SHA-384), checked against the leaf's key type. The
   pkcs1 schemes are refused here (§4.4.3).
@@ -88,6 +92,22 @@ shell's four defs exactly as written, because the `http` lane is built against t
   Failed (bad_record_mac).
 - Never put a key, a secret or plaintext in a `why`.
 
+## Two stages
+
+The core doesn't import rsa, ecdsa, x509 or x509v: signature and chain checks reach it only as
+`hs.trusted`. So build it in two stages:
+
+1. Now: the pure core and `test/chaki_tls_check.bend` (offline, RFC 8448). Everything it
+   needs (tlsmsg, x25519, sha2, chacha, aes) is already in your worktree. Commit, and report
+   stage 1 done.
+2. When the integrator says rsa, ecdsa, x509, x509v and sys have landed (merge `memu/chaki`
+   into your branch then): the shell. `connect` turns Check into one verdict: X509v.verify
+   on the chain, then the leaf's key against the scheme: 0x0403/0x0503 via Ecdsa.verify.der
+   with the curve the leaf names, and 0x0804/0x0805 via Rsa.pss with SHA-256/384. Then the
+   live test.
+
+If stage 2 hasn't been called when stage 1 is done, end your run with the stage 1 report.
+
 ## Checks
 
 - `test/chaki_tls_check.bend` (offline): replay RFC 8448 §3 (Simple 1-RTT). Feed `hs.start`
@@ -97,7 +117,8 @@ shell's four defs exactly as written, because the `http` lane is built against t
   as printed. Then:
   - the handshake secrets, the server Finished check, the client Finished bytes, and the
     application traffic keys all equal the RFC's values;
-  - `Chain` carries the RFC's certificate;
+  - `Check` carries the RFC's certificate, scheme 0x0804, and the signed content and
+    signature the RFC's CertificateVerify implies;
   - after `hs.trusted(True)` the state is Ready;
   - the server's encrypted application data decrypts to the RFC's plaintext.
   Also a tampered byte in each encrypted server record gives Failed, and so does
