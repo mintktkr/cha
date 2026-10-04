@@ -291,7 +291,7 @@ def hello.share(+share: List<&2, U32>) -> List<&2, U32>:
 # application_layer_protocol_negotiation (16): "http/1.1" (RFC 7301 3.1)
 def hello.alpn() -> List<&2, U32>:
   +p = Bytes.of_ascii("http/1.1")
-  ext.pair(16, Bytes.cat(Bytes.be16(U32.add(Bytes.len(p), 3)), Bytes.len(p) <> p))
+  ext.pair(16, Bytes.cat(Bytes.be16(U32.add(Bytes.len(p), 1)), Bytes.len(p) <> p))
 
 # legacy_version 0x0303
 def hello.legacy() -> List<&2, U32>:
@@ -433,9 +433,9 @@ def ee.seen(+body: List<&2, U32>, good: Bool) -> Maybe<&2, Seen>:
     case True{}:
       seen(Bytes.drop(body, 2n))
 
-# the list length is the whole extension data
-def alpn.list.ok(+data: List<&2, U32>) -> Bool:
-  Bool.and(U32.is_le(2, Bytes.len(data)), U32.is_eq(Bytes.get.be(data, 2n), U32.sub(Bytes.len(data), 2)))
+# a server that sent no ALPN extension at all, or a list whose length is the data
+def alpn.data.ok(+data: List<&2, U32>) -> Bool:
+  Bool.or(U32.is_eq(Bytes.len(data), 0), Bool.and(U32.is_le(2, Bytes.len(data)), U32.is_eq(Bytes.get.be(data, 2n), U32.sub(Bytes.len(data), 2))))
 
 # a name is its one-byte length and that many bytes, and the list may hold none
 def alpn.name.ok(+entry: List<&2, U32>) -> Bool:
@@ -455,9 +455,9 @@ def alpn.entry(+entry: List<&2, U32>, good: Bool) -> Result<&1, &1, String, Stri
     case True{}:
       alpn.name(entry, alpn.name.ok(entry))
 
-# the first protocol name of an ALPNProtocolList (RFC 7301 3.1), "" when the list is empty
+# the first protocol name of an ALPNProtocolList (RFC 7301 3.1), "" when there is none
 def alpn.first(+data: List<&2, U32>) -> Result<&1, &1, String, String>:
-  alpn.entry(Bytes.drop(data, 2n), alpn.list.ok(data))
+  alpn.entry(Bytes.drop(data, 2n), alpn.data.ok(data))
 
 def ee.alpn(m: Maybe<&2, Seen>) -> Result<&1, &1, String, String>:
   match m:
