@@ -162,7 +162,7 @@ def x509.validity.times(nb: Asn1.Tlv, na: Asn1.Tlv) -> Maybe<&2, Validity>:
 
 def x509.validity.m(m: Maybe<&2, List<&2, Asn1.Tlv>>) -> Maybe<&2, Validity>:
   match m:
-    case Some{Con{nb, Con{na, rest}}}:
+    case Some{Con{nb, Con{na, Nil{}}}}:
       x509.validity.times(nb, na)
     case _:
       None{}
@@ -182,7 +182,7 @@ def x509.spki.make(+alg: Asn1.Tlv, bits: Asn1.Tlv) -> Maybe<&2, Spki>:
 
 def x509.spki.m(m: Maybe<&2, List<&2, Asn1.Tlv>>) -> Maybe<&2, Spki>:
   match m:
-    case Some{Con{alg, Con{bits, rest}}}:
+    case Some{Con{alg, Con{bits, Nil{}}}}:
       x509.spki.make(alg, bits)
     case _:
       None{}
@@ -279,10 +279,12 @@ def x509.ext.basic.path(rest: List<&2, Asn1.Tlv>, +acc: Exts, ca: Bool) -> Maybe
   match rest:
     case Nil{}:
       Some{x509.exts.ca(acc, ca, 4294967295)}
-    case Con{len, others}:
+    case Con{len, Nil{}}:
       do Maybe<&2, Exts>:
         n : U32 <- x509.uint.of(len)
         return x509.exts.ca(acc, ca, n)
+    case Con{len, others}:
+      None{}
 
 def x509.ext.basic.ca(first: Asn1.Tlv, rest: List<&2, Asn1.Tlv>, +acc: Exts) -> Maybe<&2, Exts>:
   do Maybe<&2, Exts>:
@@ -436,7 +438,7 @@ def x509.ext.one.crit(oid: Asn1.Tlv, crit: Asn1.Tlv, t: Asn1.Tlv, +acc: Exts) ->
 
 def x509.ext.one.m(m: Maybe<&2, List<&2, Asn1.Tlv>>, +acc: Exts) -> Maybe<&2, Exts>:
   match m:
-    case Some{Con{oid, Con{crit, Con{value, rest}}}}:
+    case Some{Con{oid, Con{crit, Con{value, Nil{}}}}}:
       x509.ext.one.crit(oid, crit, value, acc)
     case Some{Con{oid, Con{value, Nil{}}}}:
       x509.ext.body(oid, False{}, value, acc)
@@ -562,7 +564,7 @@ def x509.cert.go(der: List<&2, U32>, raw: List<&2, U32>, tbs: Asn1.Tlv, sigalg: 
 # the outer SEQUENCE's three elements: tbsCertificate, signatureAlgorithm, signatureValue
 def x509.cert.parts(der: List<&2, U32>, body: List<&2, U32>, parts: List<&2, Asn1.Tlv>) -> Maybe<&2, Cert>:
   match parts:
-    case Con{+tbs, Con{+sigalg, Con{sig, rest}}}:
+    case Con{+tbs, Con{+sigalg, Con{sig, Nil{}}}}:
       x509.cert.go(der, x509.raw(body, x509.rest.of(tbs)), tbs, sigalg, sig)
     case _:
       None{}
