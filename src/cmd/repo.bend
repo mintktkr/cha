@@ -3,10 +3,7 @@
 # gitea answers a raw file path with bytes; github answers a contents path with base64
 # unless the accept header asks for raw, so a file read carries its own client.
 import Base
-import bend-kit-hairpin@0.1.0.0/hairpin.bend as Hairpin
-import bend-kit-http@0.23.0.1/http.bend as Http
-import 0x584fc27920487ceab242392391418d7f/json.bend as Json
-import 0x49814d83de8f70993a43e1002be29ecd/bytes.bend as Bytes
+import ../../lib/chaki/json.bend as Json
 import ../ctx.bend as Ctx
 import ../api.bend as Api
 import ../ui.bend as Ui
@@ -55,17 +52,17 @@ def arg.of(+env: Cli.Env, +msg: String, +value: String, empty: Bool) -> IO(Strin
 # -------
 
 # the reply's body when the status was ok, failing the command otherwise
-def body.of(+env: Cli.Env, +status: U32, body: Bytes.Bytes, good: Bool) -> IO(Bytes.Bytes):
+def body.of(+env: Cli.Env, +status: U32, body: List<&2, U32>, good: Bool) -> IO(List<&2, U32>):
   match good:
     case True{}:
-      IO.pure(Bytes.Bytes, body)
+      IO.pure(List<&2, U32>, body)
     case False{}:
-      Cli.fail(Bytes.Bytes, env, Api.message(status, body))
+      Cli.fail(List<&2, U32>, env, Api.message(status, body))
 
-def body.reply(+env: Cli.Env, r: Api.Reply) -> IO(Bytes.Bytes):
+def body.reply(+env: Cli.Env, r: Api.Reply) -> IO(List<&2, U32>):
   match r:
     case Api.Broke{why}:
-      Cli.fail(Bytes.Bytes, env, why)
+      Cli.fail(List<&2, U32>, env, why)
     case Api.Reply{+status, +next, body}:
       body.of(env, status, body, Api.ok(status))
 
@@ -234,7 +231,7 @@ def view(+env: Cli.Env) -> IO(Unit):
     case Cli.Env{+repo, +tok, on, json, +args}:
       do IO<Unit>:
         r : Api.Reply <- Api.get(repo, tok, view.url(repo))
-        b : Bytes.Bytes <- body.reply(env, r)
+        b : List<&2, U32> <- body.reply(env, r)
         view.out(on, json, view.row(forge.of(repo), Api.obj(b)))
 
 # labels
@@ -294,12 +291,12 @@ def labels(+env: Cli.Env) -> IO(Unit):
 # ------------
 
 def label.body(+name: String, +color: String, +desc: String) -> Json.Val:
-  Json.Obj{[(Json.utf8("name"), Api.utf8(name)), (Json.utf8("color"), Api.utf8(color)), (Json.utf8("description"), Api.utf8(desc))]}
+  Json.Obj{[("name", Api.utf8(name)), ("color", Api.utf8(color)), ("description", Api.utf8(desc))]}
 
 def label.send(+env: Cli.Env, +repo: Ctx.Repo, +tok: String, +name: String, +args: List<&2, String>) -> IO(Unit):
   do IO<Unit>:
     r : Api.Reply <- Api.send(repo, tok, "POST", Api.path(repo, "labels"), Some{label.body(name, color.arg(forge.of(repo), Cli.flag(args, "--color", "#ff6eb4")), Cli.flag(args, "--description", ""))})
-    b : Bytes.Bytes <- body.reply(env, r)
+    b : List<&2, U32> <- body.reply(env, r)
     created(env, "label " ++ name, repo.web(repo) ++ "/labels")
 
 def create(+env: Cli.Env) -> IO(Unit):
@@ -386,17 +383,9 @@ def file.path(f: Ctx.Forge, +path: String, +ref: String, empty: Bool) -> String:
     case Ctx.GitHub{}:
       "contents/" ++ path ++ ref.query(ref, empty)
 
-# a client whose accept header asks github for the file's bytes rather than base64
-def raw.client(+repo: Ctx.Repo, +tok: String) -> Hairpin.Client:
-  match repo:
-    case Ctx.Repo{+f, +h, o, n}:
-      c = Hairpin.header(Hairpin.header(Hairpin.base(Hairpin.new(), Api.base(f, h)), "accept", "application/vnd.github.raw"), "user-agent", "cha")
-      Api.authed(c, f, tok, String.is_empty(tok))
-
+# a GET whose accept header asks github for the file's bytes rather than base64
 def raw.get(+repo: Ctx.Repo, +tok: String, url: String) -> IO(Api.Reply):
-  do IO<Api.Reply>:
-    r : Hairpin.Client & Result<&1, &1, Http.Err, Http.Res> <- Hairpin.request(raw.client(repo, tok), "GET", url, Map.new(&2, List<&2, String>), Http.from_string(""))
-    Api.reply(r)
+  Api.get.accept(repo, tok, url, "application/vnd.github.raw")
 
 def file.reply(f: Ctx.Forge, +repo: Ctx.Repo, +tok: String, url: String) -> IO(Api.Reply):
   match f:
@@ -408,21 +397,21 @@ def file.reply(f: Ctx.Forge, +repo: Ctx.Repo, +tok: String, url: String) -> IO(A
 # A file's contents are the file, so a pipe or a redirect keeps them byte-exact: the body
 # is printed as it came. A terminal gets the text without escape sequences, so a file whose
 # bytes are a title screen cannot draw on it.
-def file.text(body: Bytes.Bytes, tty: Bool) -> String:
+def file.text(body: List<&2, U32>, tty: Bool) -> String:
   match tty:
     case True{}:
       Api.text(body)
     case False{}:
       Api.raw.text(body)
 
-def file.write(body: Bytes.Bytes) -> IO(Unit):
+def file.write(body: List<&2, U32>) -> IO(Unit):
   do IO<Unit>:
     # the stream decides, not the colour flag: NO_COLOR in a terminal still means a human
     # is reading the bytes, and only a pipe or a redirect needs them exact
     tty : Bool <- Ui.tty()
     IO.write(file.text(body, tty))
 
-def file.print(+env: Cli.Env, +status: U32, body: Bytes.Bytes, good: Bool) -> IO(Unit):
+def file.print(+env: Cli.Env, +status: U32, body: List<&2, U32>, good: Bool) -> IO(Unit):
   match good:
     case True{}:
       file.write(body)
@@ -496,7 +485,7 @@ def tree.print(+on: Bool, json: Cli.Json, +x: Map<&2, String>) -> IO(Unit):
     case j:
       Cli.json.emit(on, j, tree.rows(Api.count(x, "tree"), x, 0), ["path", "type", "sha"])
 
-def tree.out(+env: Cli.Env, b: Bytes.Bytes) -> IO(Unit):
+def tree.out(+env: Cli.Env, b: List<&2, U32>) -> IO(Unit):
   match env:
     case Cli.Env{r, t, +on, json, a}:
       do IO<Unit>:
@@ -511,7 +500,7 @@ def tree(+env: Cli.Env) -> IO(Unit):
       do IO<Unit>:
         +ref : String = tree.ref(Cli.flag(args, "--ref", ""))
         r : Api.Reply <- Api.get(repo, tok, Api.path(repo, tree.query(forge.of(repo), ref)))
-        b : Bytes.Bytes <- body.reply(env, r)
+        b : List<&2, U32> <- body.reply(env, r)
         tree.out(env, b)
 
 # dispatch
