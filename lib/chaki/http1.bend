@@ -234,12 +234,12 @@ def line.blank(xs: List<&2, U32>) -> Bool:
       ws.ch(h)
 
 # True when the bytes hold one that a field value may not
-def val.check(xs: List<&2, U32>, bad: Bool) -> Bool:
+def val.bad(xs: List<&2, U32>, bad: Bool) -> Bool:
   match xs:
     case Nil{}:
       bad
     case Con{h, t}:
-      val.check(t, Bool.or(bad, Bool.not(vchar.ch(h))))
+      val.bad(t, Bool.or(bad, Bool.not(vchar.ch(h))))
 
 # up to n bytes from the front of xs, reversed onto acc, and what the body still needs: one
 # pass, and a count of zero means the slice is complete
@@ -578,28 +578,25 @@ def head.framed.te(+head: Head, rest: List<&2, U32>) -> Mv:
     case Head{status, +headers}:
       head.framed.te.go(Head{status, headers}, rest, body.chunked(val.text(hdr.val.val(headers, "transfer-encoding"))))
 
-def head.framed.skip(skip: Bool, +status: U32, head: Head, rest: List<&2, U32>) -> Mv:
-  match skip:
-    case True{}:
-      Cont{StHead{65536n, False{}, Nil{}}, rest}
-    case False{}:
-      End{StDone{Resp{head, Nil{}}}}
-
-def head.framed.none(none: Bool, +status: U32, head: Head, rest: List<&2, U32>) -> Mv:
+# the body's framing, in RFC 9112 6.3 order: an interim 1xx is skipped and the response
+# after it is parsed, then no body for HEAD, 204 and 304, then transfer-encoding whose last
+# coding is chunked, then content-length, then everything to eof
+def head.framed.none(none: Bool, head: Head, rest: List<&2, U32>) -> Mv:
   match none:
+    case True{}:
+      End{StDone{Resp{head, Nil{}}}}
     case False{}:
       head.framed.te(head, rest)
-    case True{}:
-      head.framed.skip(body.interim(status), status, head, rest)
 
-# the body's framing, in RFC 9112 6.3 order: none for HEAD, 1xx, 204 and 304, then
-# transfer-encoding whose last coding is chunked, then content-length, then to eof
-def head.framed(one: Bool, +status: U32, head: Head, rest: List<&2, U32>) -> Mv:
-  match one:
+def head.framed.skip(skip: Bool, one: Bool, +status: U32, head: Head, rest: List<&2, U32>) -> Mv:
+  match skip:
     case True{}:
-      End{StDone{Resp{head, Nil{}}}}
+      Cont{StHead{65536n, one, Nil{}}, rest}
     case False{}:
-      head.framed.none(body.none(status), status, head, rest)
+      head.framed.none(Bool.or(one, body.none(status)), head, rest)
+
+def head.framed(one: Bool, +status: U32, head: Head, rest: List<&2, U32>) -> Mv:
+  head.framed.skip(body.interim(status), one, status, head, rest)
 
 # The head's lines
 # ----------------
@@ -669,16 +666,16 @@ def status.parse(xs: List<&2, U32>) -> Stat:
     case _:
       SpBad{"bad status line"}
 
-def hdr.value.go(name: String, vb: List<&2, U32>, good: Bool) -> Hd:
-  match good:
-    case False{}:
-      HdBad{"bad header value"}
+def hdr.value.go(name: String, vb: List<&2, U32>, bad: Bool) -> Hd:
+  match bad:
     case True{}:
+      HdBad{"bad header value"}
+    case False{}:
       HdOk{name, Bytes.to_ascii(ws.trim(vb))}
 
 # the value: SP and HTAB trimmed, and a byte that isn't a field value is Bad
 def hdr.value(name: String, +vb: List<&2, U32>) -> Hd:
-  hdr.value.go(name, vb, val.check(vb, False{}))
+  hdr.value.go(name, vb, val.bad(vb, False{}))
 
 def hdr.name.go(xs: List<&2, U32>, st: U32, acc: String, vb: List<&2, U32>) -> Hd:
   match xs st:

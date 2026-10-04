@@ -188,6 +188,9 @@ def resp.head.body() -> String:
   "HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nhello"
 
 # an interim 100, then the real 200
+def resp.head.cont() -> String:
+  "HTTP/1.1 100 Continue\r\n\r\nHTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\n"
+
 def resp.cont() -> String:
   "HTTP/1.1 100 Continue\r\n\r\nHTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nhi"
 
@@ -279,6 +282,7 @@ def main() -> IO(Unit):
     IO.print(T.eq("HEAD, whole = drip", whole(True{}, resp.head()), drip(True{}, resp.head())))
     IO.print(T.eq("HEAD, drip = seven", drip(True{}, resp.head()), seven(True{}, resp.head())))
     IO.print(T.eq("HEAD ignores a body that arrived", whole(True{}, resp.head.body()), "status 200 | content-length=5 | body "))
+    IO.print(T.eq("HEAD skips an interim 100", whole(True{}, resp.head.cont()), "status 200 | content-length=5 | body "))
 
     # 100 Continue, then the real response
     IO.print(T.eq("100 then 200, whole", whole(False{}, resp.cont()), "status 200 | content-length=2 | body 6869"))
