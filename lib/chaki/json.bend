@@ -9,11 +9,11 @@
 import Base
 import ./bytes.bend as Bytes
 
-# One member of a written object. A pair is always affine in this Bend (Base's
-# Pair(-A: Type, -B: Type) -> Type), so a member of a Data list needs a Data type of its
-# own: the lane's Obj{List<&2, String & Val>} doesn't type-check, this does.
-type Field is Data:
-  Field{key: String, value: Val}
+# One member of a written object: a key and its value. A tuple A & B is affine in this
+# Bend (Base's Pair(-A: Type, -B: Type) -> Type), so a member of a Data list has to be a
+# Sigma; callers still write ("k", v), and destructure the same way.
+def Member() -> Data:
+  Sigma<&2, &2, String, _ => Val>
 
 # A value to write. Text is decoded; a number keeps the digits it was written with, so a
 # number read and written back is unchanged.
@@ -23,7 +23,7 @@ type Val is Data:
   Num{text: String}
   Str{text: String}
   Arr{xs: List<&2, Val>}
-  Obj{kvs: List<&2, Field>}
+  Obj{kvs: List<&2, Member()>}
 
 # the writer's work list: a value to expand, punctuation to copy, a string to quote
 type Job is Type:
@@ -1751,15 +1751,15 @@ def encode.arr.items(xs: List<&2, Val>, acc: List<&1, Job>) -> List<&1, Job>:
     case Con{x, t}: encode.items.more(t, Con{JVal{x}, acc})
 
 # an object's members with the comma before each but the first, built backwards
-def encode.obj.more(kvs: List<&2, Field>, acc: List<&1, Job>) -> List<&1, Job>:
+def encode.obj.more(kvs: List<&2, Member()>, acc: List<&1, Job>) -> List<&1, Job>:
   match kvs:
     case Nil{}: acc
-    case Field{k, v} <> t: encode.obj.more(t, Con{JVal{v}, Con{JText{":"}, Con{JStr{k}, Con{JText{","}, acc}}}})
+    case (k, v) <> t: encode.obj.more(t, Con{JVal{v}, Con{JText{":"}, Con{JStr{k}, Con{JText{","}, acc}}}})
 
-def encode.obj.items(kvs: List<&2, Field>, acc: List<&1, Job>) -> List<&1, Job>:
+def encode.obj.items(kvs: List<&2, Member()>, acc: List<&1, Job>) -> List<&1, Job>:
   match kvs:
     case Nil{}: acc
-    case Field{k, v} <> t: encode.obj.more(t, Con{JVal{v}, Con{JText{":"}, Con{JStr{k}, acc}}})
+    case (k, v) <> t: encode.obj.more(t, Con{JVal{v}, Con{JText{":"}, Con{JStr{k}, acc}}})
 
 # the jobs of a bracketed body: close it, reverse what was built backwards, then the work
 def encode.body(jobs: List<&1, Job>, close: String, work: List<&1, Job>) -> List<&1, Job>:

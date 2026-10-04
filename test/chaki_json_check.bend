@@ -172,13 +172,13 @@ def gen.text(n: Nat) -> String:
 # a value with every escape the writer knows, an array and a nested object
 def every() -> Json.Val:
   Json.Obj{[
-    Json.Field{"s", Json.Str{SCon{Chr{34}, SCon{Chr{92}, SCon{Chr{10}, SCon{Chr{9}, SCon{Chr{8}, SCon{Chr{12}, SCon{Chr{13}, SCon{Chr{1}, SCon{Chr{31}, SNil{}}}}}}}}}}}},
-    Json.Field{"n", Json.Num{"-1.5e+3"}},
-    Json.Field{"t", Json.Flag{True{}}},
-    Json.Field{"f", Json.Flag{False{}}},
-    Json.Field{"z", Json.Null{}},
-    Json.Field{"a", Json.Arr{[Json.Num{"1"}, Json.Str{"two"}]}},
-    Json.Field{"o", Json.Obj{[Json.Field{"k", Json.Str{"v"}}]}}
+    ("s", Json.Str{SCon{Chr{34}, SCon{Chr{92}, SCon{Chr{10}, SCon{Chr{9}, SCon{Chr{8}, SCon{Chr{12}, SCon{Chr{13}, SCon{Chr{1}, SCon{Chr{31}, SNil{}}}}}}}}}}}),
+    ("n", Json.Num{"-1.5e+3"}),
+    ("t", Json.Flag{True{}}),
+    ("f", Json.Flag{False{}}),
+    ("z", Json.Null{}),
+    ("a", Json.Arr{[Json.Num{"1"}, Json.Str{"two"}]}),
+    ("o", Json.Obj{[("k", Json.Str{"v"})]})
   ]}
 
 # the text every() writes
@@ -340,8 +340,8 @@ def main() -> IO(Unit):
     IO.print(T.eq("encode a number as written", Json.encode(Json.Num{"-0.5e-2"}), "-0.5e-2"))
     IO.print(T.eq("encode null", Json.encode(Json.Null{}), "null"))
     IO.print(T.eq("encode flags", Json.encode(Json.Arr{[Json.Flag{True{}}, Json.Flag{False{}}]}), "[true,false]"))
-    IO.print(T.eq("encode nested", Json.encode(Json.Obj{[Json.Field{"a", Json.Arr{[Json.Obj{Nil{}}]}}]}), "{\"a\":[{}]}"))
-    IO.print(T.eq("encode keys in the order given", Json.encode(Json.Obj{[Json.Field{"b", Json.Num{"1"}}, Json.Field{"a", Json.Num{"2"}}]}), "{\"b\":1,\"a\":2}"))
+    IO.print(T.eq("encode nested", Json.encode(Json.Obj{[("a", Json.Arr{[Json.Obj{Nil{}}]})]}), "{\"a\":[{}]}"))
+    IO.print(T.eq("encode keys in the order given", Json.encode(Json.Obj{[("b", Json.Num{"1"}), ("a", Json.Num{"2"})]}), "{\"b\":1,\"a\":2}"))
 
     # and the writer's text read back by the reader
     IO.print(cps.at("round trip: the escaped string", encoded(), "s", "34 92 10 9 8 12 13 1 31 "))
