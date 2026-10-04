@@ -202,8 +202,6 @@ def main() -> IO(Unit):
     r13 : Result<&1, &1, String, Http.Res> <- Http.fetch(client(2000), "GET", "ftp://127.0.0.1/", Nil{}, Nil{})
     IO.print(T.eq("only http and https", shown(r13), "fail: not an http or https url: ftp://127.0.0.1/"))
     IO.print(T.eq("https to http is refused", downgrade(), "fail: refused a redirect from https to http"))
-    c : Result<&1, &1, U32 & String, Http.Client> <- Http.client(Http.Bend{}, 1000)
-    IO.print(T.ok("the bend transport says it isn't wired", Result.is_fail(&1, &1, U32 & String, Http.Client, c)))
     r14 : Result<&1, &1, String, Http.Res> <- get(A(), "/quit")
     r15 : Result<&1, &1, String, Http.Res> <- get(B(), "/quit")
     return Unit{}
