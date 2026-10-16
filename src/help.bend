@@ -229,7 +229,7 @@ def top.at(+on: Bool, anim: Bool) -> IO(Unit):
 # --------------
 
 def issue.rows() -> List<&2, Row>:
-  [Row{"list [--state S] [--label L] [--assignee U] [--since 1d] [--with-prs] [--all] [--json]", "list issues", "cha issue list --since 1d"},
+  [Row{"list [--state S] [--label L] [--assignee U] [--since 1d] [--with-prs] [--all] [--limit N] [--json]", "list issues", "cha issue list --since 1d"},
    Row{"view N [--comments]", "one issue", "cha issue view 42 --comments"},
    Row{"create --title T [--body B|--body-file F] [--label a,b] [--assignee u]", "open an issue", "cha issue create --title \"kettle is empty\" --label bug"},
    Row{"comment N --body B|--body-file F", "comment on an issue", "cha issue comment 42 --body \"still empty\""},
@@ -245,6 +245,7 @@ def issue.flags() -> List<&2, Row>:
    Row{"--since 1d|6h|ISO", "list: only issues updated since then", ""},
    Row{"--with-prs", "list: keep pull requests in the list", ""},
    Row{"--all", "every page, not just the first", ""},
+   Row{"--limit N", "list: at most N issues (1-1000)", ""},
    Row{"--json [FIELDS]", "machine-readable rows, optionally only FIELDS", ""},
    Row{"--comments", "include comments (view)", ""},
    Row{"--title T", "the title", ""},
@@ -268,7 +269,7 @@ def issue.page() -> Page:
 # -----------
 
 def pr.rows() -> List<&2, Row>:
-  [Row{"list [--state] [--json]", "list pull requests", "cha pr list"},
+  [Row{"list [--state S] [--all] [--limit N] [--json]", "list pull requests", "cha pr list"},
    Row{"view N [--comments]", "one pull request", "cha pr view 7 --comments"},
    Row{"diff N", "the diff", "cha pr diff 7"},
    Row{"create --head H [--base main] --title T [--body B|--body-file F]", "open a pull request", "cha pr create --head kettle --title \"steam\""},
@@ -279,6 +280,8 @@ def pr.rows() -> List<&2, Row>:
 
 def pr.flags() -> List<&2, Row>:
   [Row{"--state open|closed|all", "which pull requests (default open)", ""},
+   Row{"--all", "every page, not just the first", ""},
+   Row{"--limit N", "list: at most N pull requests (1-1000)", ""},
    Row{"--json [FIELDS]", "machine-readable rows, optionally only FIELDS", ""},
    Row{"--comments", "include comments (view)", ""},
    Row{"--head H", "the branch with the changes", ""},
@@ -604,6 +607,7 @@ def comp.issue() -> List<&2, String>:
    "complete -c cha -n '__cha_using_sub issue list' -l assignee -x -d 'only issues assigned to this user'",
    "complete -c cha -n '__cha_using_sub issue list' -l since -x -a '1d 6h 30m' -d 'only issues updated since then'",
    "complete -c cha -n '__cha_using_sub issue list' -l with-prs -d 'keep pull requests'",
+   "complete -c cha -n '__cha_using_sub issue list' -l limit -x -d 'at most N issues'",
    "complete -c cha -n '__cha_using_sub issue list' -l json -d 'machine-readable rows, optionally only FIELDS'",
    "complete -c cha -n '__cha_using_sub issue view' -l comments -d 'include comments'",
    "complete -c cha -n '__cha_using_sub issue create' -l title -x -d 'the title'",
@@ -628,6 +632,8 @@ def comp.pr() -> List<&2, String>:
    "complete -c cha -n '__cha_sub_command pr' -a comment -d 'comment on a pull request'",
    "complete -c cha -n '__cha_sub_command pr' -a checks -d 'the checks'",
    "complete -c cha -n '__cha_using_sub pr list' -l state -x -a 'open closed all' -d 'which pull requests'",
+   "complete -c cha -n '__cha_using_sub pr list' -l all -d 'every page'",
+   "complete -c cha -n '__cha_using_sub pr list' -l limit -x -d 'at most N pull requests'",
    "complete -c cha -n '__cha_using_sub pr list' -l json -d 'machine-readable rows, optionally only FIELDS'",
    "complete -c cha -n '__cha_using_sub pr view' -l comments -d 'include comments'",
    "complete -c cha -n '__cha_using_sub pr create' -l head -x -d 'the branch with the changes'",
