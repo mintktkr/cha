@@ -89,12 +89,12 @@ def param.q(+pre: String, +v: String) -> String:
 
 # the list endpoint: the four filters, the since bound, and whether pull requests join in.
 # gitea drops them with type=issues; github lists them as issues and real() drops them after
-def query(f: Ctx.Forge, +state: String, +label: String, +assignee: String, +since: String, prs: Bool) -> String:
+def query(f: Ctx.Forge, +size: Nat, +state: String, +label: String, +assignee: String, +since: String, prs: Bool) -> String:
   match f:
     case Ctx.Gitea{}:
-      "issues?" ++ Ctx.or.if("type=issues&", "", prs) ++ "limit=50&state=" ++ Url.encode(state) ++ param.q("&labels=", label) ++ param.q("&assigned_by=", assignee) ++ param.q("&since=", since)
+      "issues?" ++ Ctx.or.if("type=issues&", "", prs) ++ "limit=" ++ Nat.show(size) ++ "&state=" ++ Url.encode(state) ++ param.q("&labels=", label) ++ param.q("&assigned_by=", assignee) ++ param.q("&since=", since)
     case Ctx.GitHub{}:
-      "issues?per_page=100&state=" ++ Url.encode(state) ++ param.q("&labels=", label) ++ param.q("&assignee=", assignee) ++ param.q("&since=", since)
+      "issues?per_page=" ++ Nat.show(size) ++ "&state=" ++ Url.encode(state) ++ param.q("&labels=", label) ++ param.q("&assignee=", assignee) ++ param.q("&since=", since)
 
 # --since as the RFC 3339 text a forge query takes, "" when the flag wasn't given
 def since.text(+env: Cli.Env, m: Maybe<&2, Time.Instant>) -> IO(String):
@@ -124,10 +124,18 @@ def list.print(+on: Bool, json: Cli.Json, +xs: List<&2, Map<&2, String>>) -> IO(
     case j:
       Cli.json.emit(on, j, xs, ["number", "title", "state", "user.login", "labels", "html_url"])
 
-def list.show(+env: Cli.Env, r: Result<&1, &1, String, List<&2, Map<&2, String>>>) -> IO(Unit):
+# --limit cuts the list to its first N; without it the list is what the pages held
+def list.cut(xs: List<&2, Map<&2, String>>, +limit: Nat, given: Bool) -> List<&2, Map<&2, String>>:
+  match given:
+    case True{}:
+      List.take(&2, Map<&2, String>, xs, limit)
+    case False{}:
+      xs
+
+def list.show(+env: Cli.Env, r: Result<&1, &1, String, List<&2, Map<&2, String>>>, +limit: Nat, given: Bool) -> IO(Unit):
   match env r:
     case Cli.Env{repo, tok, +on, json, args} Done{xs}:
-      list.print(on, json, with_labels(prs.keep(xs, Cli.has(args, "--with-prs"))))
+      list.print(on, json, with_labels(list.cut(prs.keep(xs, Cli.has(args, "--with-prs")), limit, given)))
     case e Fail{w}:
       Cli.fail(Unit, e, w)
 
@@ -138,16 +146,53 @@ def list.pages(all: Bool) -> Nat:
     case False{}:
       1n
 
+# --limit reads the pages its N fill; without it, one page, or a hundred with --all
+def list.pages.of(all: Bool, +limit: Nat, +size: Nat, given: Bool) -> Nat:
+  match given:
+    case True{}:
+      Nat.div(Nat.add(limit, Nat.sub(size, 1n)), size)
+    case False{}:
+      list.pages(all)
+
+# a page as each forge caps it, and the list's size without --limit
+def list.size(f: Ctx.Forge) -> Nat:
+  match f:
+    case Ctx.Gitea{}:
+      50n
+    case Ctx.GitHub{}:
+      100n
+
+def require.limit(+env: Cli.Env, v: U32, valid: Bool) -> IO(Nat):
+  match valid:
+    case True{}:
+      IO.pure(Nat, U32.to_nat(v))
+    case False{}:
+      Cli.fail(Nat, env, "issue list: --limit must be an integer from 1 to 1000")
+
+def list.limit(+env: Cli.Env, n: Maybe<&2, U32>) -> IO(Nat):
+  match n:
+    case Some{+v}:
+      require.limit(env, v, (v > 0 : U32) && (v <= 1000 : U32))
+    case None{}:
+      Cli.fail(Nat, env, "issue list: --limit must be an integer from 1 to 1000")
+
+def list.flags() -> List<&2, String>:
+  ["--state", "--label", "--assignee", "--since", "--with-prs", "--all", "--limit", "--json"]
+
 def list(+env: Cli.Env) -> IO(Unit):
   match env:
     case Cli.Env{+repo, +tok, on, json, +args}:
       do IO<Unit>:
+        Cli.check(env, "issue list", args, list.flags())
         +f : Ctx.Forge = forge.of(repo)
+        +size : Nat = list.size(f)
+        +given : Bool = Bool.not(String.is_empty(Cli.flag(args, "--limit", "")))
+        +limit : Nat <- list.limit(env, U32.read(Cli.flag(args, "--limit", Nat.show(size))))
         +assignee : String = Cli.flag(args, "--assignee", "")
         assignee.check(env, assignee.bad(f, assignee))
         bound : String <- since.bound(env, Cli.flag(args, "--since", ""))
-        r : Result<&1, &1, String, List<&2, Map<&2, String>>> <- Api.all(list.pages(Cli.has(args, "--all")), repo, tok, Api.path(repo, query(f, Cli.flag(args, "--state", "open"), Cli.flag(args, "--label", ""), assignee, bound, Cli.has(args, "--with-prs"))))
-        list.show(env, r)
+        r : Result<&1, &1, String, List<&2, Map<&2, String>>> <- Api.all(list.pages.of(Cli.has(args, "--all"), limit, size, given), repo, tok, Api.path(repo, query(f, size, Cli.flag(args, "--state", "open"), Cli.flag(args, "--label", ""), assignee, bound, Cli.has(args, "--with-prs"))))
+        list.show(env, r, limit, given)
 
 # replies
 # -------
@@ -543,6 +588,7 @@ def view(+env: Cli.Env) -> IO(Unit):
   match env:
     case Cli.Env{+repo, +tok, +on, json, +args}:
       do IO<Unit>:
+        Cli.check(env, "issue view", args, ["--comments", "--json"])
         +n : String = Cli.arg(args, 1n)
         num.need(env, n, "view")
         r : Result<&1, &1, String, Map<&2, String>> <- issue.get(repo, tok, n)
@@ -572,6 +618,7 @@ def create(+env: Cli.Env) -> IO(Unit):
   match env:
     case Cli.Env{+repo, +tok, +on, json, +args}:
       do IO<Unit>:
+        Cli.check(env, "issue create", args, ["--title", "--body", "--body-file", "--label", "--assignee"])
         +title : String = Cli.flag(args, "--title", "")
         need(env, String.is_empty(title), "issue create: --title is required")
         got : Maybe<&2, String> <- text.args(args)
@@ -597,6 +644,7 @@ def comment(+env: Cli.Env) -> IO(Unit):
   match env:
     case Cli.Env{+repo, +tok, +on, json, +args}:
       do IO<Unit>:
+        Cli.check(env, "issue comment", args, ["--body", "--body-file"])
         +n : String = Cli.arg(args, 1n)
         num.need(env, n, "comment")
         got : Maybe<&2, String> <- text.args(args)
@@ -611,6 +659,7 @@ def edit(+env: Cli.Env) -> IO(Unit):
   match env:
     case Cli.Env{+repo, +tok, +on, json, +args}:
       do IO<Unit>:
+        Cli.check(env, "issue edit", args, ["--title", "--body", "--body-file"])
         +n : String = Cli.arg(args, 1n)
         num.need(env, n, "edit")
         +title_on : Bool = Cli.has(args, "--title")
@@ -650,6 +699,7 @@ def close(+env: Cli.Env) -> IO(Unit):
   match env:
     case Cli.Env{+repo, +tok, +on, json, +args}:
       do IO<Unit>:
+        Cli.check(env, "issue close", args, ["--comment"])
         +n : String = Cli.arg(args, 1n)
         num.need(env, n, "close")
         set.state(env, "closed", n, Cli.flag(args, "--comment", ""), "issue close")
@@ -658,6 +708,7 @@ def reopen(+env: Cli.Env) -> IO(Unit):
   match env:
     case Cli.Env{+repo, +tok, +on, json, +args}:
       do IO<Unit>:
+        Cli.check(env, "issue reopen", args, [])
         +n : String = Cli.arg(args, 1n)
         num.need(env, n, "reopen")
         set.state(env, "open", n, "", "issue reopen")
@@ -740,6 +791,7 @@ def labels(+env: Cli.Env) -> IO(Unit):
   match env:
     case Cli.Env{+repo, +tok, +on, json, +args}:
       do IO<Unit>:
+        Cli.check(env, "issue labels", args, [])
         +n : String = Cli.arg(args, 1n)
         +op : String = Cli.arg(args, 2n)
         +names : List<&2, String> = split.names(Cli.arg(args, 3n))

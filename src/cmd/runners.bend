@@ -171,6 +171,7 @@ def list(+env: Cli.Env) -> IO(Unit):
   match env:
     case Cli.Env{+repo, +tok, on, json, +args}:
       do IO<Unit>:
+        Cli.check(env, "runners", args, ["--org", "--json"])
         +org : String = Cli.flag(args, "--org", "")
         xs : List<&2, Map<&2, String>> <- walk(301n, env, repo, tok, org, 1, 0n, FetchRunners{url.of(repo, org, 1), Nil{}})
         emit(on, json, xs)

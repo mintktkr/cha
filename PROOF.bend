@@ -120,6 +120,15 @@ def Laws.has_nil(name):
 def Laws.flag_empty(name, dflt):
   {==}
 
+def Laws.unknown_flag():
+  {==}
+
+def Laws.unknown_flag_eq():
+  {==}
+
+def Laws.unknown_flag_help():
+  {==}
+
 # Concrete examples
 # -----------------
 

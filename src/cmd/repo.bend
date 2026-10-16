@@ -233,6 +233,7 @@ def view(+env: Cli.Env) -> IO(Unit):
   match env:
     case Cli.Env{+repo, +tok, on, json, +args}:
       do IO<Unit>:
+        Cli.check(env, "repo view", args, ["--json"])
         r : Api.Reply <- Api.get(repo, tok, view.url(repo))
         b : Bytes.Bytes <- body.reply(env, r)
         view.out(on, json, view.row(forge.of(repo), Api.obj(b)))
@@ -287,6 +288,7 @@ def labels(+env: Cli.Env) -> IO(Unit):
   match env:
     case Cli.Env{+repo, +tok, on, json, +args}:
       do IO<Unit>:
+        Cli.check(env, "repo labels", args, ["--json"])
         r : Result<&1, &1, String, List<&2, Map<&2, String>>> <- Api.all(10n, repo, tok, Api.path(repo, label.query(forge.of(repo))))
         label.show(env, r)
 
@@ -306,6 +308,7 @@ def create(+env: Cli.Env) -> IO(Unit):
   match env:
     case Cli.Env{+repo, +tok, on, json, +args}:
       do IO<Unit>:
+        Cli.check(env, "repo label-create", args, ["--color", "--description"])
         +raw : String = Cli.arg(args, 1n)
         name : String <- arg.of(env, "label-create: a name is required", raw, String.is_empty(raw))
         label.send(env, repo, tok, name, args)
@@ -365,6 +368,7 @@ def branches(+env: Cli.Env) -> IO(Unit):
   match env:
     case Cli.Env{+repo, +tok, on, json, +args}:
       do IO<Unit>:
+        Cli.check(env, "repo branches", args, ["--json"])
         r : Result<&1, &1, String, List<&2, Map<&2, String>>> <- Api.all(10n, repo, tok, Api.path(repo, branch.query(forge.of(repo))))
         branch.show(env, r)
 
@@ -440,6 +444,7 @@ def file(+env: Cli.Env) -> IO(Unit):
   match env:
     case Cli.Env{+repo, +tok, on, json, +args}:
       do IO<Unit>:
+        Cli.check(env, "repo file", args, ["--ref"])
         +raw : String = Cli.arg(args, 1n)
         path : String <- arg.of(env, "file: a path is required", raw, String.is_empty(raw))
         +ref : String = Cli.flag(args, "--ref", "")
@@ -509,6 +514,7 @@ def tree(+env: Cli.Env) -> IO(Unit):
   match env:
     case Cli.Env{+repo, +tok, on, json, +args}:
       do IO<Unit>:
+        Cli.check(env, "repo tree", args, ["--ref", "--json"])
         +ref : String = tree.ref(Cli.flag(args, "--ref", ""))
         r : Api.Reply <- Api.get(repo, tok, Api.path(repo, tree.query(forge.of(repo), ref)))
         b : Bytes.Bytes <- body.reply(env, r)
