@@ -651,10 +651,20 @@ def create.labels.gitea(+env: Cli.Env, +repo: Ctx.Repo, +tok: String, +names: Li
     ids : List<&2, String> <- label.check(env, repo, tok, names, "issue create")
     return nums.items(ids)
 
+# github creates a label it doesn't know, so the names are resolved first, when there are any
+def create.labels.github(+env: Cli.Env, +repo: Ctx.Repo, +tok: String, +names: List<&2, String>, some: Bool) -> IO(Json.Val):
+  match some:
+    case True{}:
+      do IO<Json.Val>:
+        known : List<&2, String> <- label.check.names(env, repo, tok, names, "issue create")
+        return strs.items(known)
+    case False{}:
+      IO.pure(Json.Val, strs.items(names))
+
 def create.labels.by(github: Bool, +env: Cli.Env, +repo: Ctx.Repo, +tok: String, +names: List<&2, String>) -> IO(Json.Val):
   match github:
     case True{}:
-      IO.pure(Json.Val, strs.items(names))
+      create.labels.github(env, repo, tok, names, Bool.not(List.is_empty(&2, String, names)))
     case False{}:
       create.labels.gitea(env, repo, tok, names)
 
