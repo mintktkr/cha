@@ -153,6 +153,13 @@ def forge.of(r: Ctx.Repo) -> Ctx.Forge:
     case Ctx.Repo{f, h, o, n}:
       f
 
+def forge.github(+forge: Ctx.Forge) -> Bool:
+  match forge:
+    case Ctx.Gitea{}:
+      False{}
+    case Ctx.GitHub{}:
+      True{}
+
 def param.q(+pre: String, +v: String) -> String:
   Ctx.or.if(pre ++ Url.encode(v), "", String.is_empty(v))
 
@@ -214,6 +221,11 @@ def completed.at(+src: Map<&2, String>, +prefix: String, done: Bool) -> String:
       time.nonzero(Ctx.or(g.raw(src, prefix, "completed_at"), g.raw(src, prefix, "stopped")))
     case False{}:
       ""
+
+# when the run appeared: GitHub stamps created_at, Forgejo created, and Gitea 1.25
+# neither, so a run that has started stands in for one that is still queued
+def created.at(+src: Map<&2, String>, +prefix: String) -> String:
+  time.nonzero(Ctx.or(g.raw(src, prefix, "created_at"), Ctx.or(g.raw(src, prefix, "created"), Ctx.or(g.raw(src, prefix, "started_at"), g.raw(src, prefix, "started")))))
 
 def elapsed.valid(+ms: Int.I64, bad: Bool) -> String:
   match bad:
@@ -958,8 +970,20 @@ def input.pairs(xs: List<&2, String>) -> List<&1, Bytes.Bytes & Json.Val>:
     case Con{+kv, rest}:
       Con{(Json.utf8(input.key(kv)), Api.utf8(input.val(kv))), input.pairs(rest)}
 
-def dispatch.body(+ref: String, xs: List<&2, String>) -> Json.Val:
-  Json.Obj{[(Json.utf8("ref"), Api.utf8(ref)), (Json.utf8("inputs"), Json.Obj{input.pairs(xs)})]}
+def dispatch.pairs(+ref: String, xs: List<&2, String>) -> List<&1, Bytes.Bytes & Json.Val>:
+  [(Json.utf8("ref"), Api.utf8(ref)), (Json.utf8("inputs"), Json.Obj{input.pairs(xs)})]
+
+# GitHub names the run it made when asked; Gitea and Forgejo have no such field,
+# and are not sent one
+def dispatch.detail.pairs(details: Bool) -> List<&1, Bytes.Bytes & Json.Val>:
+  match details:
+    case True{}:
+      [(Json.utf8("return_run_details"), Json.Flag{True{}})]
+    case False{}:
+      Nil{}
+
+def dispatch.body(+ref: String, xs: List<&2, String>, details: Bool) -> Json.Val:
+  Json.Obj{List.append(&1, Bytes.Bytes & Json.Val, dispatch.pairs(ref, xs), dispatch.detail.pairs(details))}
 
 def inputs.go(ms: List<&2, Cli.Arg>) -> List<&2, String>:
   match ms:
@@ -986,34 +1010,175 @@ def done.url(+env: Cli.Env, +rest: String) -> IO(Unit):
     case Cli.Env{+repo, +tok, on, json, a}:
       IO.print(repo.url(repo, rest))
 
-def dispatch.url.pick(+env: Cli.Env, +url: String, empty: Bool) -> IO(Unit):
-  match empty:
-    case True{}:
-      done.url(env, "actions")
-    case False{}:
-      IO.print(url)
+# the run a dispatch made belongs to the workflow it named: the same file, path
+# or display name
+def dispatch.workflow(+row: Map<&2, String>, +wf: String) -> Bool:
+  +path = Ctx.first(String.split(Api.f(row, "path"), '@'))
+  String.eq(wf, path) || String.eq(wf, Ctx.last(String.split(path, '/'))) || String.eq(wf, Api.f(row, "workflow")) || String.eq(wf, Api.f(row, "name"))
 
-# the run the dispatch just made: the newest one on that branch
-def dispatch.url(+env: Cli.Env, +ref: String) -> IO(Unit):
+# the ref a run records, whole (refs/heads/main) or short (main), against the one
+# asked for
+def ref.same(+a: String, +b: String) -> Bool:
+  String.is_empty(a) || String.eq(a, b) || String.eq(a, "refs/heads/" ++ b) || String.eq(a, "refs/tags/" ++ b) || String.eq("refs/heads/" ++ a, b) || String.eq("refs/tags/" ++ a, b)
+
+# a run of the dispatch's workflow, from a dispatch, on the ref asked for
+def dispatch.mine(+row: Map<&2, String>, +wf: String, +ref: String) -> Bool:
+  String.eq(Api.f(row, "event"), "workflow_dispatch") && dispatch.workflow(row, wf) && ref.same(Api.f(row, "branch"), ref)
+
+# at or after t0, compared as instants: Gitea stamps carry a local offset
+def since.after(m: Maybe<&2, Time.Instant>, +t0: Time.Instant) -> Bool:
+  match m:
+    case None{}:
+      False{}
+    case Some{then}:
+      Bool.not(Int.I64.is_neg(Time.Duration.to_ms(Time.Instant.since(then, t0))))
+
+# the run this dispatch made: same workflow, a dispatch event, the ref asked for,
+# and it appeared at or after the instant noted before the POST
+def dispatch.hit(+row: Map<&2, String>, +when: String, +wf: String, +ref: String, +t0: Time.Instant) -> Bool:
+  dispatch.mine(row, wf, ref) && since.after(Time.rfc3339.parse(when), t0)
+
+# one look's outcome: the url of the run the dispatch made, or none yet
+type Search is Data:
+  Found{url: String}
+  Missing{}
+
+def dispatch.take(hit: Bool, +row: Map<&2, String>, rest: Search) -> Search:
+  match hit:
+    case True{}:
+      Found{Api.f(row, "html_url")}
+    case False{}:
+      rest
+
+# the newest run the dispatch made, Missing{} while none has appeared. A forge
+# lists the newest run first, so the first hit wins.
+def dispatch.scan(n: Nat, +i: U32, +src: Map<&2, String>, +forge: Ctx.Forge, +now: Time.Instant, +wf: String, +ref: String, +t0: Time.Instant) -> Search:
+  match n:
+    case 0n:
+      Missing{}
+    case 1n+p:
+      +prefix = prefix.of("workflow_runs", i)
+      +row = run.row(src, prefix, forge, now)
+      dispatch.take(dispatch.hit(row, created.at(src, prefix), wf, ref, t0), row, dispatch.scan(p, (i + 1 : U32), src, forge, now, wf, ref, t0))
+
+# the url a look found, "" when it found none
+def dispatch.url.of(s: Search) -> String:
+  match s:
+    case Found{+url}:
+      url
+    case Missing{}:
+      ""
+
+# where the forge lists a workflow's runs in its web UI
+def dispatch.page(+forge: Ctx.Forge, +wf: String) -> String:
+  match forge:
+    case Ctx.Gitea{}:
+      "actions?workflow=" ++ Url.encode(wf)
+    case Ctx.GitHub{}:
+      "actions/workflows/" ++ Url.encode(wf)
+
+# the dispatch was accepted but no run of it is listed yet: say so, and point at
+# the workflow's runs instead of naming a run that may belong to someone else
+def dispatch.none(+env: Cli.Env, +wf: String) -> IO(Unit):
   match env:
     case Cli.Env{+repo, +tok, on, json, a}:
       do IO<Unit>:
-        r : Api.Reply <- Api.get(repo, tok, Api.path(repo, runs.url(forge.of(repo), ref, "", "1")))
+        Ui.info(on, "runs dispatch: accepted; its run isn't listed yet")
+        done.url(env, dispatch.page(forge.of(repo), wf))
+
+# Gitea and Forgejo have no per-workflow run list, so the repo's dispatch runs,
+# newest first, are where the new one shows up
+def dispatch.runs(+forge: Ctx.Forge) -> String:
+  runs.url(forge, "", "", "20") ++ "&event=workflow_dispatch"
+
+# one look for the run the dispatch made
+def dispatch.look(+env: Cli.Env, +wf: String, +ref: String, +t0: Time.Instant) -> IO(Search):
+  match env:
+    case Cli.Env{+repo, +tok, on, json, a}:
+      do IO<Search>:
+        r : Api.Reply <- Api.get(repo, tok, Api.path(repo, dispatch.runs(forge.of(repo))))
         body : Bytes.Bytes <- fetch.body(env, r)
+        now : Time.Instant <- Time.now()
         +src : Map<&2, String> = Api.obj(body)
-        dispatch.url.pick(env, g(src, "workflow_runs.0", "html_url"), String.is_empty(g(src, "workflow_runs.0", "html_url")))
+        IO.pure(Search, dispatch.scan(Api.count(src, "workflow_runs"), 0, src, forge.of(repo), now, wf, ref, t0))
+
+def dispatch.polls() -> Nat:
+  5n
+
+# one step per look, so fuel = the looks left. A missing run costs a short wait and
+# another look; the run the dispatch made usually shows up by the second.
+def dispatch.poll.go(fuel: Nat, +env: Cli.Env, +wf: String, +ref: String, +t0: Time.Instant, s: Search) -> IO(Unit):
+  match fuel s:
+    case 0n _:
+      dispatch.none(env, wf)
+    case 1n+p Missing{}:
+      do IO<Unit>:
+        IO.sleep(2000)
+        s : Search <- dispatch.look(env, wf, ref, t0)
+        dispatch.poll.go(p, env, wf, ref, t0, s)
+    case 1n+p Found{+url}:
+      IO.print(url)
+
+# the first look is taken before the loop, so a run already listed prints at once
+def dispatch.poll(+env: Cli.Env, +wf: String, +ref: String, +t0: Time.Instant) -> IO(Unit):
+  do IO<Unit>:
+    s : Search <- dispatch.look(env, wf, ref, t0)
+    dispatch.poll.go(Nat.sub(dispatch.polls(), 1n), env, wf, ref, t0, s)
+
+def dispatch.found(+url: String, empty: Bool) -> Search:
+  match empty:
+    case True{}:
+      Missing{}
+    case False{}:
+      Found{url}
+
+def dispatch.html.of(+src: Map<&2, String>, good: Bool) -> Search:
+  match good:
+    case True{}:
+      +url = Api.f(src, "html_url")
+      dispatch.found(url, String.is_empty(url))
+    case False{}:
+      Missing{}
+
+# the run GitHub names in its reply to a dispatch, Missing{} when it names none
+def dispatch.html(body: Bytes.Bytes, +status: U32) -> Search:
+  dispatch.html.of(Api.obj(body), U32.is_eq(status, 200))
+
+def dispatch.reply.at(+env: Cli.Env, +status: U32, body: Bytes.Bytes, good: Bool) -> IO(Search):
+  match good:
+    case True{}:
+      IO.pure(Search, dispatch.html(body, status))
+    case False{}:
+      Cli.fail(Search, env, Api.message(status, body))
+
+def dispatch.reply(+env: Cli.Env, r: Api.Reply) -> IO(Search):
+  match r:
+    case Api.Broke{w}:
+      Cli.fail(Search, env, w)
+    case Api.Reply{+status, next, body}:
+      dispatch.reply.at(env, status, body, Api.ok(status))
+
+# a run the reply named prints at once; without one, the run has to be looked for
+def dispatch.print(+env: Cli.Env, +wf: String, +ref: String, +t0: Time.Instant, s: Search) -> IO(Unit):
+  match s:
+    case Found{+url}:
+      IO.print(url)
+    case Missing{}:
+      dispatch.poll(env, wf, ref, t0)
 
 def dispatch(+env: Cli.Env) -> IO(Unit):
   match env:
     case Cli.Env{+repo, +tok, on, json, +args}:
       do IO<Unit>:
         Cli.check(env, "runs dispatch", args, ["--ref", "--input"])
-        wf : String <- require.at(env, 1n, "workflow file")
+        +wf : String <- require.at(env, 1n, "workflow file")
         +ref : String = Cli.flag(args, "--ref", "main")
         ks : List<&2, String> = inputs.of(args)
-        r : Api.Reply <- Api.send(repo, tok, "POST", Api.path(repo, "actions/workflows/" ++ wf ++ "/dispatches"), Some{dispatch.body(ref, ks)})
-        check.ok(env, r)
-        dispatch.url(env, ref)
+        +forge : Ctx.Forge = forge.of(repo)
+        t0 : Time.Instant <- Time.now()
+        r : Api.Reply <- Api.send(repo, tok, "POST", Api.path(repo, "actions/workflows/" ++ wf ++ "/dispatches"), Some{dispatch.body(ref, ks, forge.github(forge))})
+        named : Search <- dispatch.reply(env, r)
+        dispatch.print(env, wf, ref, t0, named)
 
 # A selected job uses the job endpoint; --failed uses the run's failed-jobs endpoint.
 def rerun.path(+id: String, +job: String, failed: Bool, specific: Bool) -> String:
