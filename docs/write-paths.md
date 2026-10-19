@@ -1,6 +1,6 @@
 # Exercising the write paths
 
-cha's offline checks cover how requests are built, not whether a forge accepts them. So the write paths get a live run against a throwaway repo before any release that touches them. This page is that procedure, and #22 turns it into a script that runs on cha alone.
+cha's offline checks cover how requests are built, not whether a forge accepts them. So the write paths get a live run against a throwaway repo before any release that touches them. This page is that procedure; with `repo create` and `repo delete`, cha makes and removes the sandbox itself.
 
 `OWNER/cha-sandbox` stands for that repo, and `C` for `cha -R github.com/OWNER/cha-sandbox`. Keep the repo private and delete it when you're done.
 
@@ -14,9 +14,16 @@ The repo needs two workflows and two branches:
 - `slow`: `workflow_dispatch` only, one job that sleeps 15 minutes, for `cancel`.
 - branches `feat-merge` and `feat-delete`, each one commit ahead of `main`, for two pull requests.
 
-The token needs the `repo` scope (`cha auth status` names its source). `repo` covers dispatch, rerun and cancel. Workflow files are pushed with git, so the token never needs the `workflow` scope.
+The token needs the `repo` scope (`cha auth status` names its source). `repo` covers dispatch, rerun and cancel. On GitHub, deleting the sandbox also needs the `delete_repo` scope. Workflow files are pushed with git, so the token never needs the `workflow` scope.
 
-cha can't create or delete a repo yet (#22). Until it can, create the repo with `gh repo create OWNER/cha-sandbox --private` and delete it in the web UI.
+cha makes and removes the sandbox itself. `-R` names the host and the token; its `OWNER/NAME` need not exist yet, since only the host is read from it.
+
+```console
+$ cha -R github.com/OWNER/cha-sandbox repo create cha-sandbox --private --description 'cha write-path sandbox'
+$ cha -R github.com/OWNER/cha-sandbox repo delete OWNER/cha-sandbox --yes
+```
+
+`repo create` makes the repo in the token's own account, or in `--org ORG`'s, and prints its URL. `repo delete` never defaults to the checkout's repo: it deletes the `OWNER/NAME` it is given, on the host `-R` names (or the checkout's origin). It requires `--yes`, because cha never prompts; without it, it exits 1 naming the repo and sends no request. A 403 names the scope the token is missing (`delete_repo` on GitHub, `write:repository` on Gitea).
 
 Never trace these commands with `set -x` in a shell that also reads the token: the trace prints it.
 

@@ -11,6 +11,7 @@ description: Use cha for Gitea, Forgejo and GitHub work from the terminal - issu
 
 - Inside a checkout, nothing is needed.
 - Elsewhere, or for another repo: `-R owner/repo` (same host as the checkout) or `-R host/owner/repo`, for example `-R github.com/bendlang/bend` or `-R codeberg.org/forgejo/forgejo`.
+- `repo create` and `repo delete` act on the name they are given, never on the checkout's repo. They use the checkout's host; outside a checkout, `-R host/OWNER/NAME` picks the host, and its repo need not exist yet for `repo create`.
 - Token order: `CHA_TOKEN`, then `GITHUB_TOKEN`/`GH_TOKEN` on github.com, then `~/.git-credentials`. When a host has several users in the credential store, `CHA_USER=<name>` picks one. Public repos work without a token.
 - cha never prints a token.
 
@@ -22,13 +23,13 @@ description: Use cha for Gitea, Forgejo and GitHub work from the terminal - issu
 - The word after a bare `--json` is the field list unless it starts with `-` or a digit, or is a command name. So `cha issue view --json 7` is issue 7, and `cha issue view --json title 7` selects the title. In scripts, use `--json=a,b`.
 - An unknown field exits 1 with `unknown JSON field X; valid fields: a, b, c`, so `--json nope` is a cheap way to list a command's fields.
 - `issue view --comments`, `runs view` and `moved` print nested records. They take no field list and exit 1 if given one; bare `--json` still works.
-- Write commands print the URL of what they created or changed on stdout; `release upload` prints one line per file, the asset's download URL.
+- Write commands print the URL of what they created or changed on stdout; `release upload` prints one line per file, the asset's download URL. `repo delete` prints nothing on success, only a `✓ deleted OWNER/NAME` line on stderr, because the forge answers 204.
 - `issue labels` and `issue create --label` resolve the names against the repo's labels before they write, so a typo exits 1 instead of applying a label the repo doesn't have (on GitHub the error also names the labels the repo does have).
 - Errors go to stderr with exit code 1. `pr checks` and `runs watch` also exit 1 when something failed.
 - A flag the subcommand doesn't take exits 1 and names the flags it does, for example `unknown flag --bogus for issue list; flags: --state --label ...`. `-h`, `--help` and `-R` are taken everywhere; `-h` or `--help` after a command prints its usage page instead of running it (`cha issue list --help` prints `cha issue`).
 - A flag that takes a value and is given none exits 1 with `--limit needs a value`: at the end of the line, before another flag the command reads, or with nothing after its `=`. A value may start with a dash, or be another command's flag name, so `--body "-1 from me"` and `--title "--limit"` keep their words.
 - Forge text is printed with its control characters and escape sequences removed, on stderr too, so a title, a body, a label, a branch name or a CI log line cannot move the cursor or spoof output. One-line fields (titles, labels, branches, names) also turn a newline or tab into a space, so they can't add rows to a list; bodies, comments and release notes keep their lines. Raw content stays byte-exact when piped: `repo file` and `pr diff` print the bytes unchanged into a redirect, and `--json` keeps the data, escaping control characters as `\uXXXX`.
-- Bodies come from `--body TEXT` or `--body-file PATH`. `--body-file -` reads stdin. cha never opens an editor or prompts.
+- Bodies come from `--body TEXT` or `--body-file PATH`. `--body-file -` reads stdin. cha never opens an editor or prompts, so a destructive command such as `repo delete` requires `--yes`, and without it exits 1 naming the repo it would delete and sends no request.
 
 ## Commands
 
@@ -62,6 +63,8 @@ cha repo labels  /  cha repo label-create NAME [--color HEX] [--description D]
 cha repo branches
 cha repo file PATH [--ref R]          # raw file content, no clone needed
 cha repo tree [--ref R]
+cha repo create NAME [--org O] [--private] [--description D]   # make a repo, prints its URL
+cha repo delete OWNER/NAME --yes      # destructive; --yes is required, cha never prompts
 
 cha release list  /  cha release latest  /  cha release view TAG|latest
 cha release create TAG [--title T] [--notes N | --notes-file F] [--draft] [--prerelease] [--target BRANCH]
