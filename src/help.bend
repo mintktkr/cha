@@ -457,7 +457,7 @@ def search.rows() -> List<&2, Row>:
 def search.flags() -> List<&2, Row>:
   [Row{"--state open|closed|all", "issues and prs: which state (default all)", ""},
    Row{"--owner O", "search one owner instead of the current repo", ""},
-   Row{"--limit N", "results to return (1-100, default 20)", ""},
+   Row{"--limit N", "results to return (1-1000, default 20)", ""},
    Row{"--json [FIELDS]", "machine-readable rows, optionally only FIELDS", ""}]
 
 def search.examples() -> List<&2, String>:
