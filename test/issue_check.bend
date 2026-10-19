@@ -39,6 +39,11 @@ def main() -> IO(Unit):
     IO.print(check("ids.of finds each name", String.join(Issue.ids.of(Con{"ready", Con{"bug", Nil{}}}, rows), ","), "35,34"))
     IO.print(check("ids.of leaves an unknown name blank", String.join(Issue.ids.of(Con{"nope", Con{"bug", Nil{}}}, rows), ","), ",34"))
     IO.print(check("miss names the unknown ones", Issue.miss(Con{"bug", Con{"nope", Con{"x", Nil{}}}}, Con{"34", Con{"", Con{"", Nil{}}}}), "nope, x"))
+    +mixed : List<&2, String> = Con{"bug", Con{"nope", Con{"ready", Nil{}}}}
+    IO.print(check("canons.of matches a name whatever its case", String.join(Issue.canons.of(Con{"BUG", Nil{}}, rows), ","), "bug"))
+    IO.print(check("canons.of: known names resolve, an unknown stays blank", String.join(Issue.canons.of(mixed, rows), ","), "bug,,ready"))
+    IO.print(check("label.msg names the unknown and the known", Issue.label.msg("issue labels", Issue.miss(mixed, Issue.canons.of(mixed, rows)), rows), "issue labels: unknown label: nope; labels: bug, ready"))
+    IO.print(check("label.msg: a repo with no labels says none", Issue.label.msg("issue labels", "nope", Nil{}), "issue labels: unknown label: nope; labels: none"))
     +prs : List<&2, Map<&2, String>> = Con{url.row("https://example.test/pull/1"), Con{url.row(""), Nil{}}}
     IO.print(check("prs.keep drops pull requests", Nat.show(List.length(&2, Map<&2, String>, Issue.prs.keep(prs, False{}))), "1"))
     IO.print(check("prs.keep keeps them with --with-prs", Nat.show(List.length(&2, Map<&2, String>, Issue.prs.keep(prs, True{}))), "2"))
