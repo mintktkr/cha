@@ -22,6 +22,7 @@ $ cha pr view 42 --comments
 $ cha runs logs 1337 --failed
 $ cha runs watch 1337
 $ cha search issues kettle --owner bendlang
+$ cha packages --type container
 $ cha moved --since 1d
 ```
 

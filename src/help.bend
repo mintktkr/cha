@@ -180,6 +180,7 @@ def groups() -> List<&2, Row>:
    Row{"auth", "which login and token source a host uses", "cha auth status"},
    Row{"runners", "self-hosted runners: list, delete", "cha runners"},
    Row{"search", "issues, prs, repos and code across a forge", "cha search issues kettle"},
+   Row{"packages", "a forge's packages and their versions", "cha packages --type container"},
    Row{"help", "this page, or one command's usage", "cha help issue"},
    Row{"version", "print the version", "cha version"},
    Row{"completions", "a fish completion script", "cha completions fish"}]
@@ -464,6 +465,12 @@ def search.examples() -> List<&2, String>:
 def search.page() -> Page:
   Page{"cha search", "cha search issues|prs|repos|code QUERY [flags]", search.rows(), search.flags(), search.examples()}
 
+# cha help packages
+# -----------------
+
+def packages.page() -> Page:
+  Page{"cha packages", "cha packages [list|versions|delete] [flags]", [Row{"list [--type T] [--owner O]", "the owner's packages: name, type, version, created", "cha packages --type container"}, Row{"versions NAME", "one package's versions", "cha packages versions cha --type arch"}, Row{"delete NAME VERSION", "remove one version, for good", "cha packages delete cha 0.1.0 --type arch --yes"}], [Row{"--type T", "arch, debian, container, generic; GitHub requires it", ""}, Row{"--owner O", "whose packages to list; the repo's owner by default", ""}, Row{"--yes", "delete only: go ahead without asking", ""}, Row{"--json [FIELDS]", "name, type, version, created", ""}], ["cha packages", "cha packages --type container --owner sample-org", "cha packages versions cha --type arch", "cha packages delete cha 0.1.0 --type arch --yes"]}
+
 # cha help help, version and completions
 # --------------------------------------
 
@@ -523,7 +530,8 @@ def group(+sub: String) -> Nat:
   pick(String.eq(sub, "completions"), 9n,
   pick(String.eq(sub, "auth"), 10n,
   pick(String.eq(sub, "runners"), 11n,
-  pick(String.eq(sub, "search"), 12n, 0n))))))))))))
+  pick(String.eq(sub, "search"), 12n,
+  pick(String.eq(sub, "packages"), 13n, 0n)))))))))))))
 
 # the word's index in args, or the length when it isn't there
 def idx.at(eq: Bool, i: Nat, later: Nat) -> Nat:
@@ -588,8 +596,10 @@ def show(+on: Bool, +sub: String, k: Nat) -> IO(Unit):
       page.show(on, auth.page())
     case 11n:
       page.show(on, runners.page())
-    case 12n+_:
+    case 12n:
       page.show(on, search.page())
+    case 13n+_:
+      page.show(on, packages.page())
 
 # cha, cha help, cha help <command>
 def run(+on: Bool, +args: List<&2, String>) -> IO(Unit):
@@ -645,6 +655,7 @@ def comp.groups() -> List<&2, String>:
    "complete -c cha -n '__cha_in_group auth' -a status -d 'login and token source'",
    "complete -c cha -n '__cha_needs_command' -a runners -d 'self-hosted runners: list, delete'",
    "complete -c cha -n '__cha_needs_command' -a search -d 'issues, prs, repos and code across a forge'",
+   "complete -c cha -n '__cha_needs_command' -a packages -d \"a forge's packages and their versions\"",
    "complete -c cha -n '__cha_needs_command' -a help -d 'help'",
    "complete -c cha -n '__cha_needs_command' -a version -d 'print the version'",
    "complete -c cha -n '__cha_needs_command' -a completions -d 'shell completions'",
@@ -805,8 +816,17 @@ def comp.search() -> List<&2, String>:
    "complete -c cha -n '__cha_using_sub search code' -l limit -x -d 'results to return'",
    ""]
 
+def comp.packages() -> List<&2, String>:
+  ["complete -c cha -n '__cha_sub_command packages' -a list -d \"the owner's packages\"",
+   "complete -c cha -n '__cha_sub_command packages' -a versions -d \"one package's versions\"",
+   "complete -c cha -n '__cha_sub_command packages' -a delete -d 'remove one version'",
+   "complete -c cha -n '__cha_in_group packages' -l type -x -a 'arch debian container generic' -d 'the package type'",
+   "complete -c cha -n '__cha_in_group packages' -l owner -x -d \"whose packages to list\"",
+   "complete -c cha -n '__cha_using_sub packages delete' -l yes -d 'go ahead without asking'",
+   ""]
+
 def comp.all() -> List<&2, String>:
-  List.concat(&2, String, [comp.head(), comp.global(), comp.groups(), comp.issue(), comp.pr(), comp.runs(), comp.repo(), comp.release(), comp.moved(), comp.runners(), comp.search()])
+  List.concat(&2, String, [comp.head(), comp.global(), comp.groups(), comp.issue(), comp.pr(), comp.runs(), comp.repo(), comp.release(), comp.moved(), comp.runners(), comp.search(), comp.packages()])
 
 def comp.body() -> String:
   String.join(comp.all(), "\n") ++ "\n"

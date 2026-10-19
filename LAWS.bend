@@ -9,6 +9,7 @@ import ./src/ctx.bend as Ctx
 import ./src/cli.bend as Cli
 import ./src/api.bend as Api
 import ./src/cmd/runners.bend as Runners
+import ./src/cmd/packages.bend as Packages
 
 # Colour off
 # ----------
@@ -194,3 +195,16 @@ law runner_id_digits:
 # LAW: a path, a letter or a space in a runner id is refused.
 law runner_id_not_digits:
   {Runners.digits("1/registration-token") == False{} : Bool}
+
+# Packages
+# --------
+# A package delete is destructive and cha never prompts, so a pipeline can only delete when
+# it says --yes.
+
+# LAW: a package delete without --yes is refused, and names the version it would remove.
+law packages_refuses_without_yes:
+  {Packages.refusal("cha", "0.1.0", False{}) == "packages delete: would remove cha 0.1.0 for good; rerun with --yes" : String}
+
+# LAW: --yes lets the delete through.
+law packages_allows_with_yes:
+  {Packages.refusal("cha", "0.1.0", True{}) == "" : String}
