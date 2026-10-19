@@ -733,6 +733,66 @@ def create(+env: Cli.Env) -> IO(Unit):
 # merge
 # -----
 
+# the first seven characters of a merge commit, as a run prints its sha
+def short.sha(+s: String) -> String:
+  String.take(s, 7n)
+
+# A merge that has nothing left to do. Both forges close a pull request once merged, so
+# a closed pull request is either merged (1) or closed without a merge (2); an open one
+# (0) is a merge to do.
+def merge.kind(closed: Bool, done: Bool) -> Nat:
+  match closed done:
+    case True{} True{}:
+      1n
+    case True{} False{}:
+      2n
+    case False{} x:
+      0n
+
+# what a merge says instead of merging again; "" when the pull request is still open
+def merge.stop.text(+n: String, +sha: String, +kind: Nat) -> String:
+  match kind:
+    case 0n:
+      ""
+    case 1n:
+      "pr merge: #" ++ n ++ " is already merged" ++ Ctx.or.if(" (commit " ++ short.sha(sha) ++ ")", "", String.is_empty(sha))
+    case k:
+      "pr merge: #" ++ n ++ " is closed"
+
+def merge.stop.if(+env: Cli.Env, +msg: String, empty: Bool) -> IO(Unit):
+  match empty:
+    case True{}:
+      IO.pure(Unit, Unit{})
+    case False{}:
+      Cli.fail(Unit, env, msg)
+
+# Say what the pull request already is instead of asking the forge to merge it again:
+# a second merge answers 405 on GitHub and on Gitea, the same status Gitea uses for a
+# conflicted base, so the state is read first and the merge commit rides along when the
+# forge names one.
+def merge.guard(+env: Cli.Env, +n: String, +row: Map<&2, String>) -> IO(Unit):
+  +msg = merge.stop.text(n, Api.f(row, "merge_commit_sha"), merge.kind(String.eq(Api.f(row, "state"), "closed"), merged.of(row)))
+  merge.stop.if(env, msg, String.is_empty(msg))
+
+def merge.guard.at(+env: Cli.Env, +n: String, body: Bytes.Bytes, +status: U32, good: Bool) -> IO(Unit):
+  match good:
+    case True{}:
+      merge.guard(env, n, Api.obj(body))
+    case False{}:
+      Cli.fail(Unit, env, Api.message(status, body))
+
+def merge.guard.reply(+env: Cli.Env, +n: String, r: Api.Reply) -> IO(Unit):
+  match r:
+    case Api.Broke{w}:
+      Cli.fail(Unit, env, w)
+    case Api.Reply{+status, next, body}:
+      merge.guard.at(env, n, body, status, Api.ok(status))
+
+def merge.guard.get(+env: Cli.Env, +repo: Ctx.Repo, +tok: String, +n: String) -> IO(Unit):
+  do IO<Unit>:
+    r : Api.Reply <- Api.get(repo, tok, Api.path(repo, "pulls/" ++ n))
+    merge.guard.reply(env, n, r)
+
 def merge.pick(squash: Bool, plain: Bool, rebase: Bool) -> String:
   match squash plain rebase:
     case True{} p r:
@@ -857,6 +917,7 @@ def merge(+env: Cli.Env) -> IO(Unit):
         +n : String <- need.number(env, num, number.ok(U32.read(num)))
         +method : String = merge.pick(Cli.has(args, "--squash"), Cli.has(args, "--merge"), Cli.has(args, "--rebase"))
         +del : Bool = Cli.has(args, "--delete-branch")
+        u : Unit <- merge.guard.get(env, repo, tok, n)
         merge.at(forge.of(repo), env, repo, tok, n, method, del)
 
 # edit
@@ -897,6 +958,39 @@ def edit(+env: Cli.Env) -> IO(Unit):
 # comment
 # -------
 
+# `pr comment N` writes through the issue comment endpoint, which GitHub and Gitea share
+# between issues and pull requests, so an issue number would comment on the issue.
+# `pulls/N` answers 404 for a number that is an issue on both forges: one request, and
+# the comment never lands where it wasn't asked to.
+def pull.guard.msg(+n: String) -> String:
+  "pr comment: #" ++ n ++ " is an issue, not a pull request"
+
+def pull.guard.ok(+env: Cli.Env, body: Bytes.Bytes, +status: U32, good: Bool) -> IO(Unit):
+  match good:
+    case True{}:
+      IO.pure(Unit, Unit{})
+    case False{}:
+      Cli.fail(Unit, env, Api.message(status, body))
+
+def pull.guard.at(+env: Cli.Env, +n: String, body: Bytes.Bytes, +status: U32, missing: Bool, good: Bool) -> IO(Unit):
+  match missing:
+    case True{}:
+      Cli.fail(Unit, env, pull.guard.msg(n))
+    case False{}:
+      pull.guard.ok(env, body, status, good)
+
+def pull.guard.reply(+env: Cli.Env, +n: String, r: Api.Reply) -> IO(Unit):
+  match r:
+    case Api.Broke{w}:
+      Cli.fail(Unit, env, w)
+    case Api.Reply{+status, next, body}:
+      pull.guard.at(env, n, body, status, U32.is_eq(status, 404), Api.ok(status))
+
+def pull.guard.get(+env: Cli.Env, +repo: Ctx.Repo, +tok: String, +n: String) -> IO(Unit):
+  do IO<Unit>:
+    r : Api.Reply <- Api.get(repo, tok, Api.path(repo, "pulls/" ++ n))
+    pull.guard.reply(env, n, r)
+
 def comment.body(+body: String) -> Json.Val:
   Json.Obj{[(Json.utf8("body"), Api.utf8(body))]}
 
@@ -909,6 +1003,7 @@ def comment(+env: Cli.Env) -> IO(Unit):
         +n : String <- need.number(env, num, number.ok(U32.read(num)))
         +b : String <- body.text(env, args)
         txt : String <- need.flag(env, "body", b, String.is_empty(b))
+        u : Unit <- pull.guard.get(env, repo, tok, n)
         r : Api.Reply <- Api.send(repo, tok, "POST", Api.path(repo, comment.url(forge.of(repo), n)), Some{comment.body(txt)})
         written(env, web.url(repo, n), r)
 
