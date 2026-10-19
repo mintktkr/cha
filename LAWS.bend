@@ -11,6 +11,7 @@ import ./src/api.bend as Api
 import ./src/cmd/runners.bend as Runners
 import ./src/cmd/packages.bend as Packages
 import ./src/hooks.bend as Hooks
+import ./src/cmd/secrets.bend as Secrets
 
 # Colour off
 # ----------
@@ -155,6 +156,19 @@ law link_no_next:
 # LAW: a Link header with rel="next" yields that URL.
 law link_next_url:
   {Api.link.next("</issues?page=2>; rel=\"next\", </issues?page=5>; rel=\"last\"") == "/issues?page=2" : String}
+
+# A secret's value goes out in one request and never comes back. A failed reply's body can
+# echo it, so the message cha builds for a failed `secrets set` is checked here: no value,
+# then the forge's own message when that leaves the value out.
+
+# LAW: the message for a failed secrets set does not hold the value, even when the forge's
+# message repeats it.
+law secrets_set_hides_value:
+  {String.contains(Secrets.set.message("HTTP 422", "hunter2 is too short", "hunter2"), "hunter2") == False{} : Bool}
+
+# LAW: a forge message that leaves the value out is kept, so the error still says why.
+law secrets_set_keeps_message:
+  {Secrets.set.message("HTTP 422", "is too short", "hunter2") == "HTTP 422: is too short" : String}
 
 # Terminal escape
 # ---------------

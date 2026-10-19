@@ -183,6 +183,8 @@ def groups() -> List<&2, Row>:
    Row{"packages", "a forge's packages and their versions", "cha packages --type container"},
    Row{"mirror", "a repo's pull mirror and push mirrors, and a sync", "cha mirror"},
    Row{"hooks", "a repo's or an org's webhooks: list, create, delete, test", "cha hooks"},
+   Row{"secrets", "actions secrets: list, set, delete", "cha secrets set TOKEN --value-file -"},
+   Row{"variables", "actions variables: list, set, delete", "cha variables set REGION --value eu-west"},
    Row{"help", "this page, or one command's usage", "cha help issue"},
    Row{"version", "print the version", "cha version"},
    Row{"completions", "a fish completion script", "cha completions fish"}]
@@ -490,6 +492,46 @@ def mirror.page() -> Page:
 def hooks.page() -> Page:
   Page{"cha hooks", "cha hooks [list] [--org O] [--json] | create | delete | test", [Row{"hooks [--org O] [--json]", "a repo's or an org's webhooks", "cha hooks"}, Row{"hooks create URL --events E", "add a webhook; prints its id and URL", "cha hooks create https://hooks.example/hook --events push,pull_request"}, Row{"hooks delete ID --yes", "remove a webhook", "cha hooks delete 12 --yes"}, Row{"hooks test ID", "send a test delivery", "cha hooks test 12"}], [Row{"--org O", "the org whose hooks to read or change, instead of the repo's", ""}, Row{"--events a,b", "create: the events to deliver, as the forge names them", ""}, Row{"--secret-file F", "create: the secret, from a file; - is stdin, never printed", ""}, Row{"--content-type json|form", "create: the payload format, json by default", ""}, Row{"--yes", "delete: required; cha never prompts", ""}, Row{"--json [FIELDS]", "id, url, events, active, content_type", ""}], ["cha hooks", "cha hooks --org sample-org", "cha hooks create https://hooks.example/hook --events push --secret-file .secret", "cha hooks delete 12 --yes"]}
 
+# cha help secrets
+# ----------------
+
+def secrets.rows() -> List<&2, Row>:
+  [Row{"list [--org O]", "the secrets' names and when they last changed", "cha secrets"},
+   Row{"set NAME (--value V | --value-file F) [--org O]", "set a secret", "cha secrets set TOKEN --value-file -"},
+   Row{"delete NAME --yes [--org O]", "delete a secret", "cha secrets delete TOKEN --yes"}]
+
+def actions.flags() -> List<&2, Row>:
+  [Row{"--org O", "the org to read or write, instead of the repo", ""},
+   Row{"--value V", "the value (it stays in the shell's history)", ""},
+   Row{"--value-file F", "the value from a file; - is stdin, a trailing newline dropped", ""},
+   Row{"--yes", "a delete goes ahead; without it cha names what it would delete and exits 1", ""}]
+
+def secrets.examples() -> List<&2, String>:
+  ["cha secrets",
+   "cha secrets set TOKEN --value-file -",
+   "cha secrets --org sample-org --json name,updated",
+   "cha secrets delete TOKEN --yes"]
+
+def secrets.page() -> Page:
+  Page{"cha secrets", "cha secrets [list|set|delete] [flags]", secrets.rows(), actions.flags(), secrets.examples()}
+
+# cha help variables
+# ------------------
+
+def variables.rows() -> List<&2, Row>:
+  [Row{"list [--org O]", "the variables' names and values", "cha variables"},
+   Row{"set NAME (--value V | --value-file F) [--org O]", "create a variable, or update it", "cha variables set REGION --value eu-west"},
+   Row{"delete NAME --yes [--org O]", "delete a variable", "cha variables delete REGION --yes"}]
+
+def variables.examples() -> List<&2, String>:
+  ["cha variables",
+   "cha variables set REGION --value eu-west",
+   "cha variables set REGION --value-file - --org sample-org",
+   "cha variables delete REGION --yes"]
+
+def variables.page() -> Page:
+  Page{"cha variables", "cha variables [list|set|delete] [flags]", variables.rows(), actions.flags(), variables.examples()}
+
 # cha help help, version and completions
 # --------------------------------------
 
@@ -552,7 +594,9 @@ def group(+sub: String) -> Nat:
   pick(String.eq(sub, "search"), 12n,
   pick(String.eq(sub, "packages"), 13n,
   pick(String.eq(sub, "mirror"), 14n,
-  pick(String.eq(sub, "hooks"), 15n, 0n)))))))))))))))
+  pick(String.eq(sub, "hooks"), 15n,
+  pick(String.eq(sub, "secrets"), 16n,
+  pick(String.eq(sub, "variables"), 17n, 0n)))))))))))))))))
 
 # the word's index in args, or the length when it isn't there
 def idx.at(eq: Bool, i: Nat, later: Nat) -> Nat:
@@ -623,8 +667,12 @@ def show(+on: Bool, +sub: String, k: Nat) -> IO(Unit):
       page.show(on, packages.page())
     case 14n:
       page.show(on, mirror.page())
-    case 15n+_:
+    case 15n:
       page.show(on, hooks.page())
+    case 16n:
+      page.show(on, secrets.page())
+    case 17n+_:
+      page.show(on, variables.page())
 
 # cha, cha help, cha help <command>
 def run(+on: Bool, +args: List<&2, String>) -> IO(Unit):
@@ -686,6 +734,8 @@ def comp.groups() -> List<&2, String>:
    "complete -c cha -n '__cha_in_group mirror' -a sync -d 'sync the pull mirror now'",
    "complete -c cha -n '__cha_in_group mirror' -a push-sync -d 'push to the push mirrors now'",
    "complete -c cha -n '__cha_needs_command' -a hooks -d \"a repo's or an org's webhooks\"",
+   "complete -c cha -n '__cha_needs_command' -a secrets -d 'actions secrets: list, set, delete'",
+   "complete -c cha -n '__cha_needs_command' -a variables -d 'actions variables: list, set, delete'",
    "complete -c cha -n '__cha_needs_command' -a help -d 'help'",
    "complete -c cha -n '__cha_needs_command' -a version -d 'print the version'",
    "complete -c cha -n '__cha_needs_command' -a completions -d 'shell completions'",
@@ -871,8 +921,30 @@ def comp.hooks() -> List<&2, String>:
    "complete -c cha -n '__cha_using_sub hooks delete' -l yes -d 'confirm the delete'",
    ""]
 
+def comp.secrets() -> List<&2, String>:
+  ["complete -c cha -n '__cha_sub_command secrets' -a list -d \"the secrets' names and when they last changed\"",
+   "complete -c cha -n '__cha_sub_command secrets' -a set -d 'set a secret'",
+   "complete -c cha -n '__cha_sub_command secrets' -a delete -d 'delete a secret'",
+   "complete -c cha -n '__cha_in_group secrets' -l org -x -d \"the org whose secrets to read or write\"",
+   "complete -c cha -n '__cha_in_group secrets' -l value -x -d 'the value'",
+   "complete -c cha -n '__cha_in_group secrets' -l value-file -r -F -d 'the value from a file; - is stdin'",
+   "complete -c cha -n '__cha_in_group secrets' -l yes -d 'go ahead with a delete'",
+   "complete -c cha -n '__cha_in_group secrets' -l json -d 'machine-readable rows, optionally only FIELDS'",
+   ""]
+
+def comp.variables() -> List<&2, String>:
+  ["complete -c cha -n '__cha_sub_command variables' -a list -d \"the variables' names and values\"",
+   "complete -c cha -n '__cha_sub_command variables' -a set -d 'create a variable, or update it'",
+   "complete -c cha -n '__cha_sub_command variables' -a delete -d 'delete a variable'",
+   "complete -c cha -n '__cha_in_group variables' -l org -x -d \"the org whose variables to read or write\"",
+   "complete -c cha -n '__cha_in_group variables' -l value -x -d 'the value'",
+   "complete -c cha -n '__cha_in_group variables' -l value-file -r -F -d 'the value from a file; - is stdin'",
+   "complete -c cha -n '__cha_in_group variables' -l yes -d 'go ahead with a delete'",
+   "complete -c cha -n '__cha_in_group variables' -l json -d 'machine-readable rows, optionally only FIELDS'",
+   ""]
+
 def comp.all() -> List<&2, String>:
-  List.concat(&2, String, [comp.head(), comp.global(), comp.groups(), comp.issue(), comp.pr(), comp.runs(), comp.repo(), comp.release(), comp.moved(), comp.runners(), comp.search(), comp.packages(), comp.mirror(), comp.hooks()])
+  List.concat(&2, String, [comp.head(), comp.global(), comp.groups(), comp.issue(), comp.pr(), comp.runs(), comp.repo(), comp.release(), comp.moved(), comp.runners(), comp.search(), comp.packages(), comp.mirror(), comp.hooks(), comp.secrets(), comp.variables()])
 
 def comp.body() -> String:
   String.join(comp.all(), "\n") ++ "\n"
