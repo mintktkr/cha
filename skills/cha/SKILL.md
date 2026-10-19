@@ -100,7 +100,7 @@ cha completions fish
 
 - Forgejo (Codeberg) answers Actions with its own schema: `workflow_id`, `prettyref`, `commit_sha`, `started`/`stopped` and one status field. `runs list` and `runs view` map it onto the same columns. Its job listing carries no runner, timings or steps, so those stay empty there.
 - Gitea's 405 on merge means a conflict or a moved base. cha says so. `pr merge` reads the pull request first, so an already merged one exits 1 naming the merge commit (when the forge gives it) and a closed unmerged one exits 1 saying it is closed; a merge is never a silent no-op.
-- `pr comment N` checks that N is a pull request first. Both forges share the comment endpoint between issues and pull requests, so a number that is an issue exits 1 with `#N is an issue, not a pull request` instead of commenting on the issue.
+- `pr comment N` checks that N is a pull request first. Both forges share the comment endpoint between issues and pull requests, so a number that is an issue (or none at all) exits 1 with `#N is not a pull request (an issue, or no such number)` instead of commenting on the issue.
 - Label names are checked before any write, because Gitea silently ignores unknown names, or wipes the set on replace.
 - Gitea 1.25 has no API to rerun or cancel an Actions run. `cha runs rerun|cancel` exit 1 with a hint: push a commit, or use the web UI.
 - GitHub's issue list includes pull requests. `cha issue list` drops them.
