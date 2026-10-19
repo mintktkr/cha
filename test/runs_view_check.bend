@@ -28,7 +28,19 @@ def jobs.body() -> String:
 def fake.run() -> Map<&2, String>:
   m = Map.new(&2, String)
   m = Map.set(&2, String, m, "kind", "run")
-  Map.set(&2, String, m, "id", "7")
+  m = Map.set(&2, String, m, "id", "7")
+  m = Map.set(&2, String, m, "state", "failure")
+  m = Map.set(&2, String, m, "workflow", "ci")
+  Map.set(&2, String, m, "attempt", "2")
+
+# the same run with an attempt value the header hides
+def fake.first(attempt: String) -> Map<&2, String>:
+  m = Map.new(&2, String)
+  m = Map.set(&2, String, m, "kind", "run")
+  m = Map.set(&2, String, m, "id", "7")
+  m = Map.set(&2, String, m, "state", "success")
+  m = Map.set(&2, String, m, "workflow", "ci")
+  Map.set(&2, String, m, "attempt", attempt)
 
 # Decode JSON structurally: every record must be an object of string values.
 def flat.values(xs: List<&1, Bytes.Bytes & Json.Val>) -> Bool:
@@ -62,6 +74,7 @@ def check.rows(xs: List<&2, Map<&2, String>>) -> IO(Unit):
       do IO<Unit>:
         expect(Api.f(run, "id"), "7")
         expect(Api.f(run, "kind"), "run")
+        expect(Api.f(run, "attempt"), "2")
         expect(Api.f(job, "kind"), "job")
         expect(Api.f(job, "id"), "101")
         expect(Api.f(job, "runner_name"), "runner-a")
@@ -164,10 +177,14 @@ def main() -> IO(Unit):
     check.rows(Api.rows(Bytes.from_string(json)))
     expect(Nat.show(List.length(&2, Map<&2, String>, Api.rows(Bytes.from_string(Runs.view.json.text(fake.run(), Nil{}))))), "1")
     +text : String = Runs.view.text(False{}, fake.run(), jobs)
+    yes(String.contains(text, "#7  failure  ci  attempt 2\n"))
     yes(String.contains(text, "  build  success  #101  runner-a  90s\n"))
     yes(String.contains(text, "    success  Compile \"app\" next  12s\n"))
     yes(String.contains(text, "    skipped  Upload  \n"))
     expect(Bool.show(String.contains(text, "\u{1b}[")), "False")
     expect(Runs.step.text(True{}, "skipped", "Upload", "", True{}), Ui.dim(True{}, "    skipped  Upload  "))
     fj.check.jobs(Runs.jrows.of(Api.obj(Bytes.from_string(fj.jobs.body()))))
+    expect(Bool.show(String.contains(Runs.view.text(False{}, fake.first("1"), Nil{}), "attempt")), "False")
+    expect(Bool.show(String.contains(Runs.view.text(False{}, fake.first(""), Nil{}), "attempt")), "False")
+    yes(String.contains(Runs.view.text(False{}, fake.first("3"), Nil{}), "#7  success  ci  attempt 3\n"))
     fj.check.page(Runs.jobs.page("", "fallback-2", Bytes.from_string(fj.jobs.body()), Nil{}))
