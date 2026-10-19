@@ -114,6 +114,7 @@ def main() -> IO(Unit):
     IO.print(check("a tampered signature", [tampered(), fx.int()], "cha.test", NOW(), "the chain doesn't lead to a trusted root"))
     IO.print(check("a missing intermediate", [fx.leaf()], "cha.test", NOW(), "the chain doesn't lead to a trusted root"))
     IO.print(check("an unknown critical extension", [fx.nc()], "nc.cha.test", NOW(), "the server's certificate has a critical extension chaki doesn't know"))
+    IO.print(check("a leaf issued only for clientAuth", [fx.ekuClient()], "eku.cha.test", NOW(), "the server's certificate isn't for TLS servers"))
     IO.print(check("an RSASSA-PSS signature isn't checked, so it isn't trusted", [fx.pss()], "pss.cha.test", NOW(), "the chain doesn't lead to a trusted root"))
     IO.print(check("an empty chain", Nil{}, "cha.test", NOW(), "the server sent no certificate"))
     IO.print(check("garbage for a leaf", [[1, 2, 3]], "cha.test", NOW(), "the server's certificate doesn't parse"))

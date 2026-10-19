@@ -277,21 +277,23 @@ def KEY_CERT_SIGN() -> U32:
 # below is how many issuers sit between it and the leaf
 def inter.why(c: X509.Cert, +below: U32, +now: U32) -> String:
   match c:
-    case X509.Cert{d, t, sa, s, i, su, +nb, +na, ka, kc, k, dns, ca, +pl, +ku, uc, st}:
+    case X509.Cert{d, t, sa, s, i, su, +nb, +na, ka, kc, k, dns, ca, +pl, +ku, uc, +st}:
       Bool.pick(String, Bool.not(ca), "an issuer in the chain isn't a CA",
       Bool.pick(String, Bool.and(U32.is_ne(ku, 4294967295), U32.is_eq(U32.and(ku, KEY_CERT_SIGN()), 0)), "an issuer in the chain may not sign certificates",
+      Bool.pick(String, Bool.not(st), "an issuer in the chain isn't for TLS servers",
       Bool.pick(String, U32.is_lt(now, nb), "an issuer in the chain isn't valid yet",
       Bool.pick(String, U32.is_gt(now, na), "an issuer in the chain has expired",
       Bool.pick(String, uc, "an issuer in the chain has a critical extension chaki doesn't know",
-      Bool.pick(String, U32.is_lt(pl, below), "the chain is longer than an issuer allows", ""))))))
+      Bool.pick(String, U32.is_lt(pl, below), "the chain is longer than an issuer allows", "")))))))
 
 def leaf.why(c: X509.Cert, +host: String, +now: U32, ok: Bool) -> String:
   match c:
-    case X509.Cert{d, t, sa, s, i, su, +nb, +na, ka, kc, k, dns, ca, pl, ku, uc, st}:
+    case X509.Cert{d, t, sa, s, i, su, +nb, +na, ka, kc, k, dns, ca, pl, ku, uc, +st}:
       Bool.pick(String, U32.is_lt(now, nb), "the server's certificate isn't valid yet",
       Bool.pick(String, U32.is_gt(now, na), "the server's certificate has expired",
       Bool.pick(String, uc, "the server's certificate has a critical extension chaki doesn't know",
-      Bool.pick(String, Bool.not(ok), "the server's certificate isn't for " ++ host, ""))))
+      Bool.pick(String, Bool.not(st), "the server's certificate isn't for TLS servers",
+      Bool.pick(String, Bool.not(ok), "the server's certificate isn't for " ++ host, "")))))
 
 type Path is Data:
   At{cur: X509.Cert, below: U32}
