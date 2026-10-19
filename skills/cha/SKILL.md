@@ -1,6 +1,6 @@
 ---
 name: cha
-description: Use cha for Gitea, Forgejo and GitHub work from the terminal - issues, pull requests, Actions runs and logs, releases, packages, repo files, search across a forge, and "what moved since yesterday" sweeps. Prefer it over gh, tea or raw API calls for those. One binary, plain output when piped, --json for scripting.
+description: Use cha for Gitea, Forgejo and GitHub work from the terminal - issues, pull requests, Actions runs and logs, releases, packages, repo files, mirrors, search across a forge, and "what moved since yesterday" sweeps. Prefer it over gh, tea or raw API calls for those. One binary, plain output when piped, --json for scripting.
 ---
 
 # cha
@@ -89,6 +89,7 @@ cha runners delete ID --yes [--org O | --user | --admin]   # deregister one; cha
 cha packages [list] [--type T] [--owner O] [--json]   # name, type, version, created
 cha packages versions NAME [--type T] [--owner O]     # one package's versions
 cha packages delete NAME VERSION --type T [--owner O] --yes
+cha mirror [status|sync|push-sync] [--json]   # pull mirror, push mirrors, a sync on demand
 
 cha help [command]
 cha completions fish
@@ -146,7 +147,8 @@ cha completions fish
 - GitHub's issue list includes pull requests. `cha issue list` drops them.
 - GitHub scopes runners to a repo or an org: `cha runners --user` and `--admin` exit 1 there. On Gitea and Forgejo, `--admin` lists every runner on the site and needs a site-admin token; a 403 says so. A runner id must be digits only, and a delete without `--yes` names the runner and exits 1.
 - GitHub's package endpoints need a token with `read:packages`: an anonymous 401 or 403 says so. Gitea's version list is a name query, so `packages versions NAME` keeps only the rows named exactly.
+- Mirrors are a Gitea and Forgejo feature: GitHub has no mirror API, so every `cha mirror` subcommand exits 1 there before a request. `cha mirror` reads a repo's own JSON and its `push_mirrors`, and a URL that carries credentials is printed with the `user:pass@` stripped. `cha mirror sync` reads the repo first and says `mirror sync: o/r isn't a pull mirror` instead of passing on the forge's bare 400. `repo view` prints `mirror of <original_url>` for a pull mirror, and `--json` carries `mirror` and `original_url`.
 
 ## When cha isn't enough
 
-cha doesn't cover secrets, webhooks, mirrors or tokens yet. Call the forge's REST API directly for those (Gitea: `https://<host>/api/v1/`, GitHub: `https://api.github.com/`). If a missing command keeps coming up, that's worth an issue on cha.
+cha doesn't cover secrets, webhooks or tokens yet. Call the forge's REST API directly for those (Gitea: `https://<host>/api/v1/`, GitHub: `https://api.github.com/`). If a missing command keeps coming up, that's worth an issue on cha.

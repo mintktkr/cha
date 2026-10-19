@@ -115,6 +115,41 @@ def parse_remote(+url: String) -> Maybe<&2, Repo>:
   +u = strip_suffix(strip_suffix(String.trim(url), "/"), ".git")
   repo.at(split.if(u, String.contains(u, "://")))
 
+# u without the user[:password]@ in front of its host: a mirror's original_url or a push
+# mirror's remote_address can carry a token, and a URL cha prints never carries one
+
+def scheme.if(+s: String, has: Bool) -> String:
+  match has:
+    case True{}:
+      s ++ "://"
+    case False{}:
+      ""
+
+def has.scheme(+u: String) -> Bool:
+  String.contains(u, "://")
+
+def scheme(+u: String) -> String:
+  scheme.if(first(String.split(u, ':')), has.scheme(u))
+
+# the part of u after its scheme: the authority, then the path
+def after.scheme(+u: String) -> String:
+  String.drop(u, String.length(scheme(u)))
+
+# the userinfo of an authority is everything before its last @, so it is dropped by
+# keeping what follows it; an authority with no @ is itself
+
+def auth.of(+u: String) -> String:
+  last(String.split(first(String.split(after.scheme(u), '/')), '@'))
+
+def path.of(+u: String) -> String:
+  rest(String.split(after.scheme(u), '/'), "/")
+
+def no_credentials.of(+s: String, +auth: String, +path: String) -> String:
+  s ++ auth ++ or.if("/" ++ path, "", String.is_empty(path))
+
+def no_credentials(+u: String) -> String:
+  no_credentials.of(scheme(u), auth.of(u), path.of(u))
+
 # Git config
 # ----------
 

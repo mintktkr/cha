@@ -208,7 +208,14 @@ def view.row(+f: Ctx.Forge, +x: Map<&2, String>) -> Map<&2, String>:
   +b = Map.set(&2, String, a, "visibility", visibility(f, a))
   +c = Map.set(&2, String, b, "stars", pick(f, b, "stars_count", "stargazers_count"))
   +d = Map.set(&2, String, c, "forks", pick(f, c, "forks_count", "forks_count"))
-  Map.set(&2, String, d, "open_issues", pick(f, d, "open_issues_count", "open_issues_count"))
+  +e = Map.set(&2, String, d, "open_issues", pick(f, d, "open_issues_count", "open_issues_count"))
+  +g = Map.set(&2, String, e, "mirror", Api.raw.f(e, "mirror"))
+  Map.set(&2, String, g, "original_url", Ctx.no_credentials(Api.raw.f(g, "original_url")))
+
+# a pull mirror says what it mirrors; any other repo says nothing
+
+def view.mirror.text(+on: Bool, +x: Map<&2, String>) -> String:
+  Ctx.or.if("mirror of " ++ Ui.fg(on, Ui.aqua(), Api.f(x, "original_url")) ++ "\n", "", Bool.not(bool.f(x, "mirror")))
 
 def view.text(+on: Bool, +x: Map<&2, String>) -> String:
   +desc = Api.f(x, "description")
@@ -216,14 +223,15 @@ def view.text(+on: Bool, +x: Map<&2, String>) -> String:
   Ctx.or.if(Ui.dim(on, desc) ++ "\n", "", String.is_empty(desc)) ++
   "default branch  " ++ Api.f(x, "default_branch") ++ "\n" ++
   "stars  " ++ Api.f(x, "stars") ++ "  forks  " ++ Api.f(x, "forks") ++ "  open issues  " ++ Api.f(x, "open_issues") ++ "\n" ++
-  Ui.fg(on, Ui.aqua(), Api.f(x, "html_url")) ++ "\n"
+  Ui.fg(on, Ui.aqua(), Api.f(x, "html_url")) ++ "\n" ++
+  view.mirror.text(on, x)
 
 def view.out(+on: Bool, json: Cli.Json, +x: Map<&2, String>) -> IO(Unit):
   match json:
     case Cli.Off{}:
       IO.write(view.text(on, x))
     case j:
-      Cli.json.emit(on, j, [x], ["full_name", "forge", "description", "default_branch", "visibility", "stars", "forks", "open_issues", "html_url"])
+      Cli.json.emit(on, j, [x], ["full_name", "forge", "description", "default_branch", "visibility", "stars", "forks", "open_issues", "html_url", "mirror", "original_url"])
 
 def view.url(+repo: Ctx.Repo) -> String:
   match repo:
