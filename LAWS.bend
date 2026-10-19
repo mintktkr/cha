@@ -1,13 +1,14 @@
 # laws: what the pure core must keep. Each law is a claim; PROOF.bend proves it.
-# They cover the three things a wrong turn would break quietly: colour off must leave text
-# unchanged, the string and flag helpers must behave at their edges, and a remote URL must
-# parse to the repo it names.
+# They cover the four things a wrong turn would break quietly: colour off must leave text
+# unchanged, the string and flag helpers must behave at their edges, a remote URL must
+# parse to the repo it names, and a runner id must not reach a path with anything but digits.
 import Base
 import ./src/clean.bend as Clean
 import ./src/ui.bend as Ui
 import ./src/ctx.bend as Ctx
 import ./src/cli.bend as Cli
 import ./src/api.bend as Api
+import ./src/cmd/runners.bend as Runners
 
 # Colour off
 # ----------
@@ -180,3 +181,16 @@ law clean_plain:
 # the escapes are gone, so a title can't start a row of its own.
 law clean_line:
   {Clean.line("a\nb\tc\r\nd\u{1b}[2J") == "a b c d" : String}
+
+# Runner ids
+# ----------
+# A runner id reaches a URL path, so it must be digits only: "1/registration-token"
+# would otherwise name one of the scope's other endpoints.
+
+# LAW: a digit string is a runner id.
+law runner_id_digits:
+  {Runners.digits("1234") == True{} : Bool}
+
+# LAW: a path, a letter or a space in a runner id is refused.
+law runner_id_not_digits:
+  {Runners.digits("1/registration-token") == False{} : Bool}

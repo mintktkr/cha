@@ -178,7 +178,7 @@ def groups() -> List<&2, Row>:
    Row{"release", "releases: list, view, latest, create, upload", "cha release latest"},
    Row{"moved", "what changed in the repo since a time", "cha moved --since 1d"},
    Row{"auth", "which login and token source a host uses", "cha auth status"},
-   Row{"runners", "a repo's or an org's self-hosted runners", "cha runners"},
+   Row{"runners", "self-hosted runners: list, delete", "cha runners"},
    Row{"help", "this page, or one command's usage", "cha help issue"},
    Row{"version", "print the version", "cha version"},
    Row{"completions", "a fish completion script", "cha completions fish"}]
@@ -424,7 +424,15 @@ def auth.page() -> Page:
 # ----------------
 
 def runners.page() -> Page:
-  Page{"cha runners", "cha runners [--org O] [--json]", [Row{"runners [--org O] [--json]", "a repo's or an org's self-hosted runners", "cha runners"}], [Row{"--org O", "the org whose runners to list, instead of the repo's", ""}, Row{"--json [FIELDS]", "id, name, status, busy, labels, os", ""}], ["cha runners", "cha runners --org sample-org --json"]}
+  Page{"cha runners", "cha runners [list] [--org O | --user | --admin] [--json]",
+    [Row{"list [--org O | --user | --admin]", "self-hosted runners of the repo, an org, your user or the site", "cha runners --org sample-org"},
+     Row{"delete ID --yes [--org O | --user | --admin]", "deregister a runner; cha never prompts, so it needs --yes", "cha runners delete 23 --yes"}],
+    [Row{"--org O", "an org's runners, instead of the repo's", ""},
+     Row{"--user", "the token owner's runners (gitea, forgejo)", ""},
+     Row{"--admin", "every runner on the site, with a site-admin token (gitea, forgejo)", ""},
+     Row{"--yes", "really delete; without it cha names the runner and exits 1", ""},
+     Row{"--json [FIELDS]", "id, name, status, busy, labels, os", ""}],
+    ["cha runners", "cha runners --org sample-org --json", "cha runners --admin", "cha runners delete 23 --yes --org sample-org"]}
 
 # cha help help, version and completions
 # --------------------------------------
@@ -602,7 +610,7 @@ def comp.groups() -> List<&2, String>:
    "complete -c cha -n '__cha_needs_command' -a moved -d 'what changed since a time'",
    "complete -c cha -n '__cha_needs_command' -a auth -d 'login and token source'",
    "complete -c cha -n '__cha_in_group auth' -a status -d 'login and token source'",
-   "complete -c cha -n '__cha_needs_command' -a runners -d \"a repo's or an org's self-hosted runners\"",
+   "complete -c cha -n '__cha_needs_command' -a runners -d 'self-hosted runners: list, delete'",
    "complete -c cha -n '__cha_needs_command' -a help -d 'help'",
    "complete -c cha -n '__cha_needs_command' -a version -d 'print the version'",
    "complete -c cha -n '__cha_needs_command' -a completions -d 'shell completions'",
@@ -731,7 +739,16 @@ def comp.moved() -> List<&2, String>:
    ""]
 
 def comp.runners() -> List<&2, String>:
-  ["complete -c cha -n '__cha_in_group runners' -l org -x -d \"the org whose runners to list\"",
+  ["complete -c cha -n '__cha_sub_command runners' -a list -d 'the runners of a scope'",
+   "complete -c cha -n '__cha_sub_command runners' -a delete -d 'deregister a runner'",
+   "complete -c cha -n '__cha_using_sub runners list' -l org -x -d \"an org's runners, instead of the repo's\"",
+   "complete -c cha -n '__cha_using_sub runners list' -l user -d \"the token owner's runners\"",
+   "complete -c cha -n '__cha_using_sub runners list' -l admin -d 'every runner on the site'",
+   "complete -c cha -n '__cha_using_sub runners list' -l json -d 'machine-readable rows, optionally only FIELDS'",
+   "complete -c cha -n '__cha_using_sub runners delete' -l org -x -d \"an org's runner\"",
+   "complete -c cha -n '__cha_using_sub runners delete' -l user -d \"the token owner's runner\"",
+   "complete -c cha -n '__cha_using_sub runners delete' -l admin -d 'a site-wide runner'",
+   "complete -c cha -n '__cha_using_sub runners delete' -l yes -d 'really delete it'",
    ""]
 
 def comp.all() -> List<&2, String>:
