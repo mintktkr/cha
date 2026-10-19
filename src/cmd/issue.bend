@@ -1,4 +1,5 @@
-# cha issue: list, view, create, comment, edit, close, reopen, labels.
+# cha issue: list, view, create, comment, comment-edit, comment-delete, edit, close, reopen,
+# labels.
 import Base
 import 0x49814d83de8f70993a43e1002be29ecd/bytes.bend as Bytes
 import 0x584fc27920487ceab242392391418d7f/json.bend as Json
@@ -6,6 +7,7 @@ import ../ctx.bend as Ctx
 import ../api.bend as Api
 import ../ui.bend as Ui
 import ../cli.bend as Cli
+import ../comment.bend as Comment
 import ../url.bend as Url
 import ../since.bend as Since
 import 0x3bfb4ae4d3b87b90f01bfcd298211455/time.bend as Time
@@ -554,7 +556,7 @@ def issue.fields() -> List<&2, String>:
   ["number", "title", "state", "user.login", "labels", "created_at", "html_url", "body"]
 
 def comment.fields() -> List<&2, String>:
-  ["user.login", "created_at", "body", "html_url"]
+  ["id", "user.login", "created_at", "body", "html_url"]
 
 def comments.path(f: Ctx.Forge, +n: String) -> String:
   match f:
@@ -581,7 +583,7 @@ def view.text(+on: Bool, +x: Map<&2, String>) -> String:
   "#" ++ Api.f(x, "number") ++ "  " ++ Ui.state(on, Api.f(x, "state")) ++ "  " ++ Ui.bold(on, Api.f(x, "title")) ++ "\n" ++ "@" ++ Api.f(x, "user.login") ++ "  " ++ Api.f(x, "created_at") ++ view.labels(on, x) ++ "\n" ++ Ui.dim(on, Api.f(x, "html_url")) ++ "\n\n" ++ Api.f.lines(x, "body")
 
 def comment.text(+on: Bool, +c: Map<&2, String>) -> String:
-  "\n\n@" ++ Api.f(c, "user.login") ++ "  " ++ Ui.dim(on, Api.f(c, "created_at")) ++ "\n" ++ Api.f.lines(c, "body")
+  "\n\n@" ++ Api.f(c, "user.login") ++ "  " ++ Ui.dim(on, Api.f(c, "created_at") ++ "  id " ++ Api.f(c, "id")) ++ "\n" ++ Api.f.lines(c, "body")
 
 def comments.text(+on: Bool, cs: List<&2, Map<&2, String>>) -> String:
   match cs:
@@ -709,6 +711,38 @@ def comment(+env: Cli.Env) -> IO(Unit):
         +body : String <- need.maybe(env, got, "issue comment: can't read the body file")
         need(env, String.is_empty(body), "issue comment: --body or --body-file is required")
         comment.send(env, repo, tok, n, body)
+
+# comment-edit, comment-delete
+# ----------------------------
+# A comment is addressed by its id, the one `issue view N --comments` prints beside each
+# comment; a pull request's conversation comments are the same comments, so pr shares
+# src/comment.bend.
+
+def comment.edit.flags() -> List<&2, String>:
+  ["--body", "--body-file"]
+
+def comment.edit(+env: Cli.Env) -> IO(Unit):
+  match env:
+    case Cli.Env{+repo, +tok, +on, json, +args}:
+      do IO<Unit>:
+        Cli.check(env, "issue comment-edit", args, comment.edit.flags())
+        +id : String <- Comment.id.need(env, Cli.arg(args, 1n), "issue comment-edit")
+        got : Maybe<&2, String> <- text.args(args)
+        +body : String <- need.maybe(env, got, "issue comment-edit: can't read the body file")
+        need(env, String.is_empty(body), "issue comment-edit: --body or --body-file is required")
+        Comment.edit(env, repo, tok, id, body)
+
+def comment.delete.flags() -> List<&2, String>:
+  ["--yes"]
+
+def comment.delete(+env: Cli.Env) -> IO(Unit):
+  match env:
+    case Cli.Env{+repo, +tok, +on, json, +args}:
+      do IO<Unit>:
+        Cli.check(env, "issue comment-delete", args, comment.delete.flags())
+        +id : String <- Comment.id.need(env, Cli.arg(args, 1n), "issue comment-delete")
+        Comment.yes.need(env, Cli.has(args, "--yes"), "issue comment-delete")
+        Comment.delete(env, repo, tok, id)
 
 # edit
 # ----
@@ -863,7 +897,7 @@ def labels(+env: Cli.Env) -> IO(Unit):
 # --------
 
 def subs() -> List<&2, String>:
-  ["list", "view", "create", "comment", "edit", "close", "reopen", "labels"]
+  ["list", "view", "create", "comment", "comment-edit", "comment-delete", "edit", "close", "reopen", "labels"]
 
 def index.at(eq: Bool, +i: Nat, +later: Nat) -> Nat:
   match eq:
@@ -900,14 +934,18 @@ def run.at(+env: Cli.Env, +sub: String, kind: Nat) -> IO(Unit):
     case 3n:
       comment(env)
     case 4n:
-      edit(env)
+      comment.edit(env)
     case 5n:
-      close(env)
+      comment.delete(env)
     case 6n:
-      reopen(env)
+      edit(env)
     case 7n:
+      close(env)
+    case 8n:
+      reopen(env)
+    case 9n:
       labels(env)
-    case 8n+k:
+    case 10n+k:
       Cli.fail(Unit, env, "issue: unknown subcommand " ++ sub)
 
 def run.sub(+env: Cli.Env, +sub: String) -> IO(Unit):
