@@ -72,6 +72,10 @@ type Tok is Data:
   Pos{s: String}
   Opt{takes: Bool}
 
+# a word that reads as a flag: a dash with something after it
+def flag.word(+a: String) -> Bool:
+  String.starts_with(a, "-") && Nat.is_gt(String.length(a), 1n)
+
 def word.one(+a: String, flag: Bool) -> Tok:
   match flag:
     case True{}:
@@ -84,7 +88,7 @@ def words(args: List<&2, String>) -> List<&2, Tok>:
     case Nil{}:
       Nil{}
     case Con{+a, rest}:
-      word.one(a, String.starts_with(a, "-") && Nat.is_gt(String.length(a), 1n)) <> words(rest)
+      word.one(a, flag.word(a)) <> words(rest)
 
 def positional.go(ws: List<&2, Tok>) -> List<&2, String>:
   match ws:
@@ -353,7 +357,7 @@ def said(args: List<&2, String>) -> List<&2, Said>:
     case Nil{}:
       Nil{}
     case Con{+a, rest}:
-      said.one(a, String.starts_with(a, "-") && Nat.is_gt(String.length(a), 1n)) <> said(rest)
+      said.one(a, flag.word(a)) <> said(rest)
 
 # the flag names in args, in order; a flag's value is never judged, so --body "-1" stays a body
 def said.names(ws: List<&2, Said>) -> List<&2, String>:
@@ -393,6 +397,75 @@ def unknown(+known: List<&2, String>, args: List<&2, String>) -> List<&2, String
 def unknown.msg(+cmd: String, +bad: String, +known: List<&2, String>) -> String:
   "unknown flag " ++ bad ++ " for " ++ cmd ++ "; flags: " ++ Ctx.or(String.join(known, " "), "none")
 
+# Values
+# ------
+# A flag that takes a value and got none fails loud too, instead of vanishing with the word
+# it never had. Only the end of the arguments, or a word that is itself a flag the command
+# reads, counts as missing: a value may start with a dash, or be another command's flag.
+
+# a word that names a flag the command reads, or one every command reads (-R)
+def flag.known(+w: String, +known: List<&2, String>) -> Bool:
+  flag.word(w) && (list.has(said.name(w), known) || said.global(said.name(w)))
+
+# a flag the command reads that takes its value from the next word
+def takes.value(+a: String, +known: List<&2, String>) -> Bool:
+  flag.known(a, known) && Bool.not(switch(said.name(a)))
+
+# --limit= : a flag whose inline value is empty
+def inline.blank(+a: String) -> Bool:
+  String.eq(a, said.name(a) ++ "=")
+
+# a bare flag is missing a value at the end, or before another flag the command reads
+def missing.next(rest: List<&2, String>, +known: List<&2, String>) -> Bool:
+  match rest:
+    case Nil{}:
+      True{}
+    case Con{+w, t}:
+      flag.known(w, known)
+
+def missing.inline.if(+a: String, rest: List<&2, String>, +known: List<&2, String>, inline: Bool) -> Bool:
+  match inline:
+    case True{}:
+      inline.blank(a)
+    case False{}:
+      missing.next(rest, known)
+
+def missing.at.if(+a: String, rest: List<&2, String>, +known: List<&2, String>, want: Bool) -> Bool:
+  match want:
+    case True{}:
+      missing.inline.if(a, rest, known, String.contains(a, "="))
+    case False{}:
+      False{}
+
+# a word is a flag that takes a value and was given none
+def missing.at(+a: String, rest: List<&2, String>, +known: List<&2, String>) -> Bool:
+  missing.at.if(a, rest, known, takes.value(a, known))
+
+def missing.keep(+a: String, later: List<&2, String>, bad: Bool) -> List<&2, String>:
+  match bad:
+    case True{}:
+      Con{said.name(a), later}
+    case False{}:
+      later
+
+def missing.go(args: List<&2, String>, +known: List<&2, String>) -> List<&2, String>:
+  match args:
+    case Nil{}:
+      Nil{}
+    case Con{+a, +rest}:
+      missing.keep(a, missing.go(rest, known), missing.at(a, rest, known))
+
+# the first flag in args that takes a value and was given none, "" when every flag has one
+#
+# a value word is never a flag the command reads (that would be its flag's missing value
+# instead), so no word has to be skipped to keep this a plain walk
+def missing(+known: List<&2, String>, args: List<&2, String>) -> String:
+  Ctx.first(missing.go(args, known))
+
+# the error for a flag given no value
+def missing.msg(+bad: String) -> String:
+  bad ++ " needs a value"
+
 def check.if(+env: Env, +msg: String, ok: Bool) -> IO(Unit):
   match ok:
     case True{}:
@@ -400,7 +473,11 @@ def check.if(+env: Env, +msg: String, ok: Bool) -> IO(Unit):
     case False{}:
       fail(Unit, env, msg)
 
-# exit 1 on the first flag in args that cmd ("issue list") doesn't read
-def check(+env: Env, +cmd: String, args: List<&2, String>, +known: List<&2, String>) -> IO(Unit):
-  +bad = Ctx.first(unknown(known, args))
-  check.if(env, unknown.msg(cmd, bad, known), String.is_empty(bad))
+# exit 1 on the first flag in args that cmd ("issue list") doesn't read, or that it reads
+# and was given no value
+def check(+env: Env, +cmd: String, +args: List<&2, String>, +known: List<&2, String>) -> IO(Unit):
+  do IO<Unit>:
+    +bad : String = Ctx.first(unknown(known, args))
+    check.if(env, unknown.msg(cmd, bad, known), String.is_empty(bad))
+    +gone : String = missing(known, args)
+    check.if(env, missing.msg(gone), String.is_empty(gone))

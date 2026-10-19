@@ -261,6 +261,7 @@ def run.row(+src: Map<&2, String>, +prefix: String, +forge: Ctx.Forge, +now: U32
   m = Map.set(&2, String, m, "path", Ctx.or(g.raw(src, prefix, "path"), g.raw(src, prefix, "workflow_id")))
   m = Map.set(&2, String, m, "name", Ctx.or(g.raw(src, prefix, "name"), g.raw(src, prefix, "workflow_id")))
   m = Map.set(&2, String, m, "run_number", Ctx.or(g.raw(src, prefix, "run_number"), g.raw(src, prefix, "index_in_repo")))
+  m = Map.set(&2, String, m, "attempt", g.raw(src, prefix, "run_attempt"))
   m = Map.set(&2, String, m, "status", status)
   m = Map.set(&2, String, m, "conclusion", conclusion)
   m = Map.set(&2, String, m, "state", state.of(status, conclusion, done))
@@ -294,7 +295,7 @@ def run.lines(+on: Bool, xs: List<&2, Map<&2, String>>) -> String:
       run.line(on, x) ++ "\n" ++ run.lines(on, rest)
 
 def run.fields() -> List<&2, String>:
-  ["kind", "id", "run_number", "state", "status", "conclusion", "workflow", "branch", "sha", "title", "event", "age", "started_at", "updated_at", "completed_at", "duration", "html_url"]
+  ["kind", "id", "run_number", "attempt", "state", "status", "conclusion", "workflow", "branch", "sha", "title", "event", "age", "started_at", "updated_at", "completed_at", "duration", "html_url"]
 
 # the runs of a list body, as rows
 def prefix.of(+root: String, i: U32) -> String:
@@ -495,6 +496,26 @@ def keep.rows(xs: List<&2, Map<&2, String>>, +job: String, +only_failed: Bool) -
 # view
 # ----
 
+# GitHub counts a run's attempts and sends run_attempt; Gitea and Forgejo have no
+# such field, so one that is missing reads as no attempt. A first attempt is the
+# normal case and stays out of the header.
+def attempt.label.above(+n: String, above: Bool) -> String:
+  match above:
+    case True{}:
+      "  attempt " ++ n
+    case False{}:
+      ""
+
+def attempt.label.of(m: Maybe<&2, U32>) -> String:
+  match m:
+    case Some{+n}:
+      attempt.label.above(U32.show(n), U32.is_gt(n, 1))
+    case None{}:
+      ""
+
+def attempt.label(+row: Map<&2, String>) -> String:
+  attempt.label.of(U32.read(Api.f(row, "attempt")))
+
 def view.json.jobs(xs: List<&2, Map<&2, String>>) -> List<&2, String>:
   match xs:
     case Nil{}:
@@ -509,7 +530,7 @@ def view.json(+row: Map<&2, String>, +jobs: List<&2, Map<&2, String>>) -> IO(Uni
   IO.print(view.json.text(row, jobs))
 
 def view.text(+on: Bool, +row: Map<&2, String>, +jobs: List<&2, Map<&2, String>>) -> String:
-  "#" ++ Api.f(row, "id") ++ "  " ++ Ui.state(on, Api.f(row, "state")) ++ "  " ++ Api.f(row, "workflow") ++ "\n" ++
+  "#" ++ Api.f(row, "id") ++ "  " ++ Ui.state(on, Api.f(row, "state")) ++ "  " ++ Api.f(row, "workflow") ++ attempt.label(row) ++ "\n" ++
   Api.f(row, "title") ++ "\n" ++
   Ui.dim(on, Api.f(row, "branch") ++ "  " ++ short.sha(Api.f(row, "sha")) ++ "  " ++ Api.f(row, "event") ++ "  " ++ Api.f(row, "age")) ++ "\n" ++
   Api.f(row, "html_url") ++ "\n" ++

@@ -23,8 +23,10 @@ description: Use cha for Gitea, Forgejo and GitHub work from the terminal - issu
 - An unknown field exits 1 with `unknown JSON field X; valid fields: a, b, c`, so `--json nope` is a cheap way to list a command's fields.
 - `issue view --comments`, `runs view` and `moved` print nested records. They take no field list and exit 1 if given one; bare `--json` still works.
 - Write commands print the URL of what they created or changed on stdout; `release upload` prints one line per file, the asset's download URL.
+- `issue labels` and `issue create --label` resolve the names against the repo's labels before they write, so a typo exits 1 instead of applying a label the repo doesn't have (on GitHub the error also names the labels the repo does have).
 - Errors go to stderr with exit code 1. `pr checks` and `runs watch` also exit 1 when something failed.
 - A flag the subcommand doesn't take exits 1 and names the flags it does, for example `unknown flag --bogus for issue list; flags: --state --label ...`. `-h`, `--help` and `-R` are taken everywhere; `-h` or `--help` after a command prints its usage page instead of running it (`cha issue list --help` prints `cha issue`).
+- A flag that takes a value and is given none exits 1 with `--limit needs a value`: at the end of the line, before another flag the command reads, or with nothing after its `=`. A value may start with a dash, or be another command's flag name, so `--body "-1 from me"` and `--title "--limit"` keep their words.
 - Forge text is printed with its control characters and escape sequences removed, on stderr too, so a title, a body, a label, a branch name or a CI log line cannot move the cursor or spoof output. One-line fields (titles, labels, branches, names) also turn a newline or tab into a space, so they can't add rows to a list; bodies, comments and release notes keep their lines. Raw content stays byte-exact when piped: `repo file` and `pr diff` print the bytes unchanged into a redirect, and `--json` keeps the data, escaping control characters as `\uXXXX`.
 - Bodies come from `--body TEXT` or `--body-file PATH`. `--body-file -` reads stdin. cha never opens an editor or prompts.
 
@@ -76,7 +78,7 @@ cha completions fish
 ## Runs output and filters
 
 - `runs view --json` is one array: a `kind: "run"` row followed by `kind: "job"` rows. Job rows include `runner_name`, timestamps, `duration` in seconds, and `steps.#` / `steps.N.*` flat string fields. Missing timestamps and durations are empty strings.
-- Run rows include `updated_at`, `completed_at` and `duration`. A forge that supplies only `updated_at` leaves completion and duration empty; an update is not necessarily a completion.
+- Run rows include `updated_at`, `completed_at`, `duration` and `attempt`. Only GitHub counts attempts and sends `run_attempt`, so `attempt` is empty on Gitea and Forgejo. `runs view` appends `attempt N` to its header when N is above 1.
 - `runs list --workflow` matches an exact filename, path or display name. Filtering follows pages until `--limit` matches (default 20, range 1–1000), with a 100-page safety cap. A display name resolves first through the workflows the forge lists now, on Gitea and GitHub alike; a name that matches no workflow exits 1 with the names it found, and a filename is used as given, for renamed or removed workflows.
 - When `head_branch` is absent, the branch column falls back to the workflow ref. Tags and pull-request refs retain their `refs/tags/` or `refs/pull/` prefix.
 - Logs accept a job id or case-insensitive exact job name. `--failed` selects failed jobs; it still prints each selected job's full log unless `--step` is also given.
@@ -98,7 +100,8 @@ cha completions fish
 ## Forge differences cha already handles
 
 - Forgejo (Codeberg) answers Actions with its own schema: `workflow_id`, `prettyref`, `commit_sha`, `started`/`stopped` and one status field. `runs list` and `runs view` map it onto the same columns. Its job listing carries no runner, timings or steps, so those stay empty there.
-- Gitea's 405 on merge means a conflict or a moved base. cha says so.
+- Gitea's 405 on merge means a conflict or a moved base. cha says so. `pr merge` reads the pull request first, so an already merged one exits 1 naming the merge commit (when the forge gives it) and a closed unmerged one exits 1 saying it is closed; a merge is never a silent no-op.
+- `pr comment N` checks that N is a pull request first. Both forges share the comment endpoint between issues and pull requests, so a number that is an issue (or none at all) exits 1 with `#N is not a pull request (an issue, or no such number)` instead of commenting on the issue.
 - Label names are checked before any write, because Gitea silently ignores unknown names, or wipes the set on replace.
 - Gitea 1.25 has no API to rerun or cancel an Actions run. `cha runs rerun|cancel` exit 1 with a hint: push a commit, or use the web UI.
 - GitHub's issue list includes pull requests. `cha issue list` drops them.
