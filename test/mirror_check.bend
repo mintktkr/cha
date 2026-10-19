@@ -111,6 +111,24 @@ def colour.check() -> IO(Unit):
 def json.check() -> IO(Unit):
   expect(Cli.json.rows(all.pulls(), Mirror.fields()), "[{\"kind\":\"pull\",\"address\":\"https://upstream.example/sample/repo.git\",\"interval\":\"8h0m0s\",\"updated\":\"2026-01-02T03:04:05Z\",\"error\":\"\"}]")
 
+def env() -> Cli.Env:
+  Cli.Env{sample(), "", False{}, Cli.Off{}, Nil{}}
+
+# an anonymous token can't list push mirrors: the 401/403 leaves the pull mirror as the
+# whole answer, in text and in --json, while any other status keeps failing
+# (push.read.if(.., 500, ..) exits 1, so only its decision is checked here)
+def denied.check() -> IO(Unit):
+  do IO<Unit>:
+    expect(Bool.pick(String, Mirror.denied(401), "denied", "other"), "denied")
+    expect(Bool.pick(String, Mirror.denied(403), "denied", "other"), "denied")
+    expect(Bool.pick(String, Mirror.denied(500), "denied", "other"), "other")
+    +no : List<&2, Map<&2, String>> <- Mirror.push.read.if(env(), False{}, 403, Bytes.from_string(""), False{})
+    expect(Nat.show(List.length(&2, Map<&2, String>, no)), "0")
+    expect(Mirror.status.text(False{}, True{}, all.pulls()), "pull mirror  https://upstream.example/sample/repo.git  every 8h0m0s  updated 2026-01-02T03:04:05Z\n")
+    expect(Mirror.status.text(False{}, False{}, Nil{}), "not a pull mirror\n")
+    expect(Cli.json.rows(no, Mirror.fields()), "[]")
+    expect(Cli.json.rows(all.pulls(), Mirror.fields()), "[{\"kind\":\"pull\",\"address\":\"https://upstream.example/sample/repo.git\",\"interval\":\"8h0m0s\",\"updated\":\"2026-01-02T03:04:05Z\",\"error\":\"\"}]")
+
 # repo view: a pull mirror says what it mirrors, with the token stripped; --json carries
 # the same two fields
 def view.check() -> IO(Unit):
@@ -139,4 +157,5 @@ def main() -> IO(Unit):
     text.check()
     colour.check()
     json.check()
+    denied.check()
     view.check()
