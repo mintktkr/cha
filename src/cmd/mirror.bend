@@ -176,21 +176,55 @@ def status.out(+on: Bool, json: Cli.Json, +pull: Bool, +xs: List<&2, Map<&2, Str
 # Commands
 # --------
 
+# listing push mirrors needs admin rights, so a 401 or 403 on them says the pull mirror is
+# all this repo will show, instead of failing the whole command
+def denied.msg() -> String:
+  "push mirrors need admin rights on this repo"
+
+def denied(+status: U32) -> Bool:
+  Bool.or(U32.is_eq(status, 401), U32.is_eq(status, 403))
+
+def denied.list(+on: Bool) -> IO(List<&2, Map<&2, String>>):
+  do IO<List<&2, Map<&2, String>>>:
+    Ui.info(on, denied.msg())
+    IO.pure(List<&2, Map<&2, String>>, Nil{})
+
+def push.read.bad(+env: Cli.Env, +on: Bool, +status: U32, body: Bytes.Bytes, refused: Bool) -> IO(List<&2, Map<&2, String>>):
+  match refused:
+    case True{}:
+      denied.list(on)
+    case False{}:
+      Cli.fail(List<&2, Map<&2, String>>, env, Api.message(status, body))
+
+def push.read.if(+env: Cli.Env, +on: Bool, +status: U32, body: Bytes.Bytes, good: Bool) -> IO(List<&2, Map<&2, String>>):
+  match good:
+    case True{}:
+      IO.pure(List<&2, Map<&2, String>>, push.rows(Api.rows(body)))
+    case False{}:
+      push.read.bad(env, on, status, body, denied(status))
+
+def push.read(+env: Cli.Env, +on: Bool, r: Api.Reply) -> IO(List<&2, Map<&2, String>>):
+  match r:
+    case Api.Broke{why}:
+      Cli.fail(List<&2, Map<&2, String>>, env, why)
+    case Api.Reply{+status, +next, body}:
+      push.read.if(env, on, status, body, Api.ok(status))
+
 # status: the repo's own object says whether it is a pull mirror; push_mirrors lists the
 # mirrors it pushes to
 def status(+env: Cli.Env) -> IO(Unit):
   match env:
-    case Cli.Env{+repo, +tok, on, json, +args}:
+    case Cli.Env{+repo, +tok, +on, json, +args}:
       do IO<Unit>:
         Cli.check(env, "mirror status", args, ["--json"])
         github.check(env, forge.of(repo))
         r1 : Api.Reply <- Api.get(repo, tok, pull.url(repo))
         b1 : Bytes.Bytes <- body.reply(env, r1)
         r2 : Api.Reply <- Api.get(repo, tok, push.url(repo))
-        b2 : Bytes.Bytes <- body.reply(env, r2)
+        +pushs : List<&2, Map<&2, String>> <- push.read(env, on, r2)
         +x : Map<&2, String> = Api.obj(b1)
         +pulls : List<&2, Map<&2, String>> = pull.rows(x)
-        +xs : List<&2, Map<&2, String>> = List.concat(&2, Map<&2, String>, [pulls, push.rows(Api.rows(b2))])
+        +xs : List<&2, Map<&2, String>> = List.concat(&2, Map<&2, String>, [pulls, pushs])
         status.out(on, json, Bool.not(List.is_empty(&2, Map<&2, String>, pulls)), xs)
 
 # sync: POST mirror-sync, but only once the repo has said it is a pull mirror, so a repo
