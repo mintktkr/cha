@@ -10,6 +10,7 @@ import ./src/cli.bend as Cli
 import ./src/api.bend as Api
 import ./src/cmd/runners.bend as Runners
 import ./src/cmd/packages.bend as Packages
+import ./src/hooks.bend as Hooks
 
 # Colour off
 # ----------
@@ -220,3 +221,33 @@ law packages_refuses_without_yes:
 # LAW: --yes lets the delete through.
 law packages_allows_with_yes:
   {Packages.refusal("cha", "0.1.0", True{}) == "" : String}
+
+# Hooks
+# -----
+# A webhook's config carries its secret: GitHub masks it, Gitea can hand it back. A hook
+# row drops every field named secret, password or token, so neither the text line nor
+# --json can print one.
+
+# LAW: config.secret is dropped, and the fields around it stay.
+law hooks_row_fields:
+  {Hooks.row.fields(["id", "config.url", "config.content_type", "config.secret"]) == ["id", "config.url", "config.content_type"] : List<&2, String>}
+
+# LAW: a field is judged by its last path segment, so a url that mentions a token is kept.
+law hooks_row_fields_url:
+  {Hooks.row.fields(["config.url?token=x", "config.password", "metadata.token"]) == ["config.url?token=x"] : List<&2, String>}
+
+# LAW: the last segment is read in any case.
+law hooks_row_fields_case:
+  {Hooks.row.fields(["config.Secret", "Config.Password", "TOKEN"]) == Nil{} : List<&2, String>}
+
+# LAW: a hook id may go into a path only as digits: ".." reads as a number but is not one.
+law hooks_id_dots:
+  {Hooks.id.ok("..") == False{} : Bool}
+
+# LAW: ...and neither is a number with anything but digits in it.
+law hooks_id_letters:
+  {Hooks.id.ok("12a") == False{} : Bool}
+
+# LAW: ...and neither is an empty id.
+law hooks_id_empty:
+  {Hooks.id.ok("") == False{} : Bool}

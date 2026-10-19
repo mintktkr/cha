@@ -15,13 +15,14 @@ import ./src/cmd/runners.bend as Runners
 import ./src/cmd/search.bend as Search
 import ./src/cmd/packages.bend as Packages
 import ./src/cmd/mirror.bend as Mirror
+import ./src/cmd/hooks.bend as Hooks
 
 def version() -> String:
   "0.1.0"
 
 # the command word's index in this list, or its length when unknown
 def names() -> List<&2, String>:
-  ["issue", "pr", "runs", "repo", "release", "moved", "auth", "runners", "search", "packages", "mirror", "help", "version"]
+  ["issue", "pr", "runs", "repo", "release", "moved", "auth", "runners", "search", "packages", "mirror", "hooks", "help", "version"]
 
 def index.at(eq: Bool, +i: Nat, +later: Nat) -> Nat:
   match eq:
@@ -61,7 +62,9 @@ def dispatch(+env: Cli.Env, n: Nat) -> IO(Unit):
       Packages.run(env)
     case 10n:
       Mirror.run(env)
-    case 11n+k:
+    case 11n:
+      Hooks.run(env)
+    case 12n+k:
       Cli.fail(Unit, env, "unknown command, try cha help")
 
 # the command's arguments: everything after the command word
