@@ -234,7 +234,7 @@ def issue.rows() -> List<&2, Row>:
    Row{"create --title T [--body B|--body-file F] [--label a,b] [--assignee u]", "open an issue", "cha issue create --title \"kettle is empty\" --label bug"},
    Row{"comment N --body B|--body-file F", "comment on an issue", "cha issue comment 42 --body \"still empty\""},
    Row{"comment-edit ID --body B|--body-file F", "edit a comment in place", "cha issue comment-edit 1337 --body-file -"},
-   Row{"comment-delete ID [--yes]", "delete a comment", "cha issue comment-delete 1337 --yes"},
+   Row{"comment-delete ID --yes", "delete a comment", "cha issue comment-delete 1337 --yes"},
    Row{"edit N [--title T] [--body B]", "edit an issue", "cha issue edit 42 --title \"kettle is full\""},
    Row{"close N [--comment C]", "close an issue", "cha issue close 42 --comment \"fixed\""},
    Row{"reopen N", "reopen an issue", "cha issue reopen 42"},
@@ -256,7 +256,7 @@ def issue.flags() -> List<&2, Row>:
    Row{"--label a,b", "comma-separated labels (create)", ""},
    Row{"--assignee u", "create: assign to this user", ""},
    Row{"--comment C", "a comment with the close", ""},
-   Row{"--yes", "comment-delete: no need to ask (needed off a terminal)", ""}]
+   Row{"--yes", "comment-delete: always required; cha never prompts", ""}]
 
 def issue.examples() -> List<&2, String>:
   ["cha issue list --state all --json",
@@ -281,7 +281,7 @@ def pr.rows() -> List<&2, Row>:
    Row{"edit N", "edit a pull request", "cha pr edit 7"},
    Row{"comment N --body B", "comment on a pull request", "cha pr comment 7 --body \"nice\""},
    Row{"comment-edit ID --body B|--body-file F", "edit a comment in place", "cha pr comment-edit 1337 --body \"nice, and merged\""},
-   Row{"comment-delete ID [--yes]", "delete a comment", "cha pr comment-delete 1337 --yes"},
+   Row{"comment-delete ID --yes", "delete a comment", "cha pr comment-delete 1337 --yes"},
    Row{"checks N", "the checks", "cha pr checks 7"}]
 
 def pr.flags() -> List<&2, Row>:
@@ -297,7 +297,7 @@ def pr.flags() -> List<&2, Row>:
    Row{"--body-file F", "the body from a file; - is stdin", ""},
    Row{"--squash / --merge / --rebase", "how to merge", ""},
    Row{"--delete-branch", "delete the head branch after a merge", ""},
-   Row{"--yes", "comment-delete: no need to ask (needed off a terminal)", ""}]
+   Row{"--yes", "comment-delete: always required; cha never prompts", ""}]
 
 def pr.examples() -> List<&2, String>:
   ["cha pr list --json",
@@ -637,7 +637,7 @@ def comp.issue() -> List<&2, String>:
    "complete -c cha -n '__cha_using_sub issue comment' -l body-file -r -F -d 'the body from a file; - is stdin'",
    "complete -c cha -n '__cha_using_sub issue comment-edit' -l body -x -d 'the body text'",
    "complete -c cha -n '__cha_using_sub issue comment-edit' -l body-file -r -F -d 'the body from a file; - is stdin'",
-   "complete -c cha -n '__cha_using_sub issue comment-delete' -l yes -d 'no need to ask'",
+   "complete -c cha -n '__cha_using_sub issue comment-delete' -l yes -d 'required to delete'",
    "complete -c cha -n '__cha_using_sub issue edit' -l title -x -d 'the title'",
    "complete -c cha -n '__cha_using_sub issue edit' -l body -x -d 'the body text'",
    "complete -c cha -n '__cha_using_sub issue close' -l comment -x -d 'a comment with the close'",
@@ -671,7 +671,7 @@ def comp.pr() -> List<&2, String>:
    "complete -c cha -n '__cha_using_sub pr comment' -l body -x -d 'the body text'",
    "complete -c cha -n '__cha_using_sub pr comment-edit' -l body -x -d 'the body text'",
    "complete -c cha -n '__cha_using_sub pr comment-edit' -l body-file -r -F -d 'the body from a file; - is stdin'",
-   "complete -c cha -n '__cha_using_sub pr comment-delete' -l yes -d 'no need to ask'",
+   "complete -c cha -n '__cha_using_sub pr comment-delete' -l yes -d 'required to delete'",
    ""]
 
 def comp.runs() -> List<&2, String>:

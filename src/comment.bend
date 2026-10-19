@@ -6,7 +6,6 @@ import 0x584fc27920487ceab242392391418d7f/json.bend as Json
 import 0x49814d83de8f70993a43e1002be29ecd/bytes.bend as Bytes
 import ./ctx.bend as Ctx
 import ./api.bend as Api
-import ./ui.bend as Ui
 import ./cli.bend as Cli
 
 # ids
@@ -103,23 +102,15 @@ def delete(+env: Cli.Env, +repo: Ctx.Repo, +tok: String, +id: String) -> IO(Unit
     r : Api.Reply <- Api.send(repo, tok, "DELETE", path(repo, id), None{})
     delete.got(env, r)
 
-# deleting is forever: off a terminal, --yes has to say someone meant it. cha's one
-# terminal check is stdout (Ui.tty); an agent or a CI job has no terminal on either end.
-def yes.ok(yes: Bool, tty: Bool) -> Bool:
+# deleting is forever, cha can't tell whether stdin is a terminal, and cha never prompts, so
+# --yes is always required: without it the command says what it would delete and sends
+# nothing
+def yes.msg(+what: String, +id: String) -> String:
+  what ++ ": would delete comment " ++ id ++ "; rerun with --yes"
+
+def yes.need(+env: Cli.Env, yes: Bool, +what: String, +id: String) -> IO(Unit):
   match yes:
     case True{}:
-      True{}
-    case False{}:
-      tty
-
-def yes.need.if(+env: Cli.Env, +what: String, missing: Bool) -> IO(Unit):
-  match missing:
-    case True{}:
-      Cli.fail(Unit, env, what ++ ": --yes is required when cha isn't on a terminal")
-    case False{}:
       IO.pure(Unit, Unit{})
-
-def yes.need(+env: Cli.Env, yes: Bool, +what: String) -> IO(Unit):
-  do IO<Unit>:
-    tty : Bool <- Ui.tty()
-    yes.need.if(env, what, Bool.not(yes.ok(yes, tty)))
+    case False{}:
+      Cli.fail(Unit, env, yes.msg(what, id))

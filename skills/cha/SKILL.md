@@ -31,7 +31,7 @@ description: Use cha for Gitea, Forgejo and GitHub work from the terminal - issu
 - Forge text is printed with its control characters and escape sequences removed, on stderr too, so a title, a body, a label, a branch name or a CI log line cannot move the cursor or spoof output. One-line fields (titles, labels, branches, names) also turn a newline or tab into a space, so they can't add rows to a list; bodies, comments and release notes keep their lines. Raw content stays byte-exact when piped: `repo file` and `pr diff` print the bytes unchanged into a redirect, and `--json` keeps the data, escaping control characters as `\uXXXX`.
 - Bodies come from `--body TEXT` or `--body-file PATH`. `--body-file -` reads stdin. cha never opens an editor or prompts, so a destructive command such as `repo delete` requires `--yes`, and without it exits 1 naming the repo it would delete and sends no request.
 - `view N --comments` prints each comment's `id` beside its author and date, and `--json` carries it: that id is what `comment-edit` and `comment-delete` take. A PR's conversation comments are issue comments, so an id works under both `issue` and `pr`.
-- `comment-delete` refuses to run without `--yes` when cha isn't on a terminal, and writes nothing before exiting 1.
+- `comment-delete` always needs `--yes`: without it cha names the comment it would delete, sends no request and exits 1. cha never prompts.
 
 ## Commands
 
@@ -41,7 +41,7 @@ cha issue view N [--comments]
 cha issue create --title T [--body B | --body-file F] [--label a,b] [--assignee u]
 cha issue comment N --body B          # or --body-file -
 cha issue comment-edit ID --body B    # edit a comment in place; the id is in `view --comments`
-cha issue comment-delete ID [--yes]   # --yes is required when cha isn't on a terminal
+cha issue comment-delete ID --yes     # --yes is always required
 cha issue edit N [--title T] [--body B]
 cha issue close N [--comment C]  /  cha issue reopen N
 cha issue labels N add a,b | remove a,b | set a,b
@@ -54,7 +54,7 @@ cha pr merge N [--squash|--merge|--rebase] [--delete-branch]
 cha pr edit N [--title T] [--body B]
 cha pr comment N --body B
 cha pr comment-edit ID --body B       # the same comments a PR's conversation holds
-cha pr comment-delete ID [--yes]
+cha pr comment-delete ID --yes
 cha pr checks N                       # statuses and check runs of the head commit
 
 cha runs list [--branch B] [--status S] [--workflow FILE|NAME] [--limit N] [--json]
