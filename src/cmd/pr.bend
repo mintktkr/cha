@@ -1,4 +1,4 @@
-# cha pr: list, view, diff, create, merge, edit, comment, checks.
+# cha pr: list, view, diff, create, merge, edit, comment, comment-edit, comment-delete, checks.
 import Base
 import bend-kit-hairpin@0.1.0.0/hairpin.bend as Hairpin
 import bend-kit-http@0.23.0.1/http.bend as Http
@@ -8,6 +8,7 @@ import ../ctx.bend as Ctx
 import ../api.bend as Api
 import ../ui.bend as Ui
 import ../cli.bend as Cli
+import ../comment.bend as Comment
 
 # Small shared pieces
 # -------------------
@@ -279,7 +280,7 @@ def comment.lines(+on: Bool, xs: List<&2, Map<&2, String>>) -> String:
     case Nil{}:
       ""
     case Con{+x, rest}:
-      Ui.dim(on, "@" ++ Api.f(x, "user.login") ++ "  " ++ Api.f(x, "created_at")) ++ "\n" ++ Api.f.lines(x, "body") ++ "\n\n" ++ comment.lines(on, rest)
+      Ui.dim(on, "@" ++ Api.f(x, "user.login") ++ "  " ++ Api.f(x, "created_at") ++ "  id " ++ Api.f(x, "id")) ++ "\n" ++ Api.f.lines(x, "body") ++ "\n\n" ++ comment.lines(on, rest)
 
 def comment.ok(+env: Cli.Env, +on: Bool, body: Bytes.Bytes, +status: U32, good: Bool) -> IO(Unit):
   match good:
@@ -1007,11 +1008,41 @@ def comment(+env: Cli.Env) -> IO(Unit):
         r : Api.Reply <- Api.send(repo, tok, "POST", Api.path(repo, comment.url(forge.of(repo), n)), Some{comment.body(txt)})
         written(env, web.url(repo, n), r)
 
+# comment-edit, comment-delete
+# ----------------------------
+# A pull request's conversation comments are the issue's comments on both forges, so these
+# are the same two commands issue has: src/comment.bend holds the request.
+
+def comment.edit.flags() -> List<&2, String>:
+  ["--body", "--body-file"]
+
+def comment.edit(+env: Cli.Env) -> IO(Unit):
+  match env:
+    case Cli.Env{+repo, +tok, on, json, +args}:
+      do IO<Unit>:
+        Cli.check(env, "pr comment-edit", args, comment.edit.flags())
+        +id : String <- Comment.id.need(env, Cli.arg(args, 1n), "pr comment-edit")
+        +b : String <- body.text(env, args)
+        txt : String <- need.flag(env, "body", b, String.is_empty(b))
+        Comment.edit(env, repo, tok, id, txt)
+
+def comment.delete.flags() -> List<&2, String>:
+  ["--yes"]
+
+def comment.delete(+env: Cli.Env) -> IO(Unit):
+  match env:
+    case Cli.Env{+repo, +tok, on, json, +args}:
+      do IO<Unit>:
+        Cli.check(env, "pr comment-delete", args, comment.delete.flags())
+        +id : String <- Comment.id.need(env, Cli.arg(args, 1n), "pr comment-delete")
+        Comment.yes.need(env, Cli.has(args, "--yes"), "pr comment-delete")
+        Comment.delete(env, repo, tok, id)
+
 # dispatch
 # --------
 
 def subs() -> List<&2, String>:
-  ["list", "view", "diff", "create", "merge", "edit", "comment", "checks"]
+  ["list", "view", "diff", "create", "merge", "edit", "comment", "comment-edit", "comment-delete", "checks"]
 
 def index.at(eq: Bool, +i: Nat, +later: Nat) -> Nat:
   match eq:
@@ -1051,8 +1082,12 @@ def run.at(+env: Cli.Env, +sub: String, kind: Nat) -> IO(Unit):
     case 6n:
       comment(env)
     case 7n:
+      comment.edit(env)
+    case 8n:
+      comment.delete(env)
+    case 9n:
       checks(env)
-    case 8n+k:
+    case 10n+k:
       Cli.fail(Unit, env, "pr " ++ sub ++ ": unknown subcommand, try cha help")
 
 def run.sub(+env: Cli.Env, +sub: String) -> IO(Unit):

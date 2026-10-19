@@ -23,13 +23,15 @@ description: Use cha for Gitea, Forgejo and GitHub work from the terminal - issu
 - The word after a bare `--json` is the field list unless it starts with `-` or a digit, or is a command name. So `cha issue view --json 7` is issue 7, and `cha issue view --json title 7` selects the title. In scripts, use `--json=a,b`.
 - An unknown field exits 1 with `unknown JSON field X; valid fields: a, b, c`, so `--json nope` is a cheap way to list a command's fields.
 - `issue view --comments`, `runs view` and `moved` print nested records. They take no field list and exit 1 if given one; bare `--json` still works.
-- Write commands print the URL of what they created or changed on stdout; `release upload` prints one line per file, the asset's download URL. `repo delete` prints nothing on success, only a `✓ deleted OWNER/NAME` line on stderr, because the forge answers 204.
+- Write commands print the URL of what they created or changed on stdout; `release upload` prints one line per file, the asset's download URL. `repo delete` prints nothing on success, only a `✓ deleted OWNER/NAME` line on stderr, because the forge answers 204. `comment-edit` prints the edited comment's URL; `comment-delete` prints nothing, and exit 0 is the receipt.
 - `issue labels` and `issue create --label` resolve the names against the repo's labels before they write, so a typo exits 1 instead of applying a label the repo doesn't have (on GitHub the error also names the labels the repo does have).
 - Errors go to stderr with exit code 1. `pr checks` and `runs watch` also exit 1 when something failed.
 - A flag the subcommand doesn't take exits 1 and names the flags it does, for example `unknown flag --bogus for issue list; flags: --state --label ...`. `-h`, `--help` and `-R` are taken everywhere; `-h` or `--help` after a command prints its usage page instead of running it (`cha issue list --help` prints `cha issue`).
 - A flag that takes a value and is given none exits 1 with `--limit needs a value`: at the end of the line, before another flag the command reads, or with nothing after its `=`. A value may start with a dash, or be another command's flag name, so `--body "-1 from me"` and `--title "--limit"` keep their words.
 - Forge text is printed with its control characters and escape sequences removed, on stderr too, so a title, a body, a label, a branch name or a CI log line cannot move the cursor or spoof output. One-line fields (titles, labels, branches, names) also turn a newline or tab into a space, so they can't add rows to a list; bodies, comments and release notes keep their lines. Raw content stays byte-exact when piped: `repo file` and `pr diff` print the bytes unchanged into a redirect, and `--json` keeps the data, escaping control characters as `\uXXXX`.
 - Bodies come from `--body TEXT` or `--body-file PATH`. `--body-file -` reads stdin. cha never opens an editor or prompts, so a destructive command such as `repo delete` requires `--yes`, and without it exits 1 naming the repo it would delete and sends no request.
+- `view N --comments` prints each comment's `id` beside its author and date, and `--json` carries it: that id is what `comment-edit` and `comment-delete` take. A PR's conversation comments are issue comments, so an id works under both `issue` and `pr`.
+- `comment-delete` refuses to run without `--yes` when cha isn't on a terminal, and writes nothing before exiting 1.
 
 ## Commands
 
@@ -38,6 +40,8 @@ cha issue list [--state open|closed|all] [--label L] [--assignee U] [--since 1d|
 cha issue view N [--comments]
 cha issue create --title T [--body B | --body-file F] [--label a,b] [--assignee u]
 cha issue comment N --body B          # or --body-file -
+cha issue comment-edit ID --body B    # edit a comment in place; the id is in `view --comments`
+cha issue comment-delete ID [--yes]   # --yes is required when cha isn't on a terminal
 cha issue edit N [--title T] [--body B]
 cha issue close N [--comment C]  /  cha issue reopen N
 cha issue labels N add a,b | remove a,b | set a,b
@@ -49,6 +53,8 @@ cha pr create --head H [--base main] --title T [--body B | --body-file F]
 cha pr merge N [--squash|--merge|--rebase] [--delete-branch]
 cha pr edit N [--title T] [--body B]
 cha pr comment N --body B
+cha pr comment-edit ID --body B       # the same comments a PR's conversation holds
+cha pr comment-delete ID [--yes]
 cha pr checks N                       # statuses and check runs of the head commit
 
 cha runs list [--branch B] [--status S] [--workflow FILE|NAME] [--limit N] [--json]
@@ -97,6 +103,7 @@ cha completions fish
 - Failing run ids for a script: `cha runs list --status failure --json=id,workflow`.
 - Catch up on a repo: `cha moved --since 1d`.
 - Long comment or body from a heredoc: `cha issue comment 12 --body-file - <<'EOF' ... EOF`.
+- Update a bot's marker comment instead of posting another: `cha issue view 12 --comments`, then `cha issue comment-edit ID --body-file -`.
 - Check the latest upstream version: `cha -R github.com/owner/repo release latest`.
 - Attach a build to a release: `cha release upload v0.1.0 out/cha`. The asset name is the file's basename, each asset's URL is printed, and `cha release view v0.1.0` lists the assets afterwards.
 - Read a file without cloning: `cha -R host/owner/repo repo file README.md --ref main`.
