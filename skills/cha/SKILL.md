@@ -1,6 +1,6 @@
 ---
 name: cha
-description: Use cha for Gitea, Forgejo and GitHub work from the terminal - issues, pull requests, Actions runs and logs, releases, repo files, and "what moved since yesterday" sweeps. Prefer it over gh, tea or raw API calls for those. One binary, plain output when piped, --json for scripting.
+description: Use cha for Gitea, Forgejo and GitHub work from the terminal - issues, pull requests, Actions runs and logs, releases, repo files, search across a forge, and "what moved since yesterday" sweeps. Prefer it over gh, tea or raw API calls for those. One binary, plain output when piped, --json for scripting.
 ---
 
 # cha
@@ -77,6 +77,10 @@ cha release create TAG [--title T] [--notes N | --notes-file F] [--draft] [--pre
 cha release upload TAG FILE...        # attach files; the asset name is the file's basename
 
 cha moved [--since 1d|6h|30m|ISO8601] [--json]   # issues/PRs, comments, commits, runs since then
+cha search issues QUERY [--state open|closed|all] [--owner O] [--limit N] [--json]
+cha search prs QUERY [--state open|closed|all] [--owner O] [--limit N] [--json]
+cha search repos QUERY [--owner O] [--limit N] [--json]
+cha search code QUERY [--owner O] [--limit N] [--json]   # GitHub only, needs a token
 cha auth status [--json]               # host, forge, login, token source; exit 1 without a working token
 cha runners [list] [--org O | --user | --admin] [--json]   # self-hosted runners of a scope
 cha runners delete ID --yes [--org O | --user | --admin]   # deregister one; cha never prompts
@@ -96,6 +100,16 @@ cha completions fish
 - `runs rerun --job` requires a job id belonging to the supplied run. It cannot be combined with `--failed`.
 - `runs dispatch` prints the URL of the run it created. GitHub names that run in its reply (`return_run_details`); Gitea and Forgejo answer 204, so cha notes the instant before the POST and polls the repo's `workflow_dispatch` runs a few times, taking the newest run of that workflow file, on that ref, that appeared at or after it. When no such run has shown up after ~8s, it says the dispatch was accepted and prints the workflow's runs page instead of naming an older run.
 
+## Search
+
+- `issues`, `prs` and `code` search the current repo (the checkout, or `-R host/owner/repo`) unless `--owner O` narrows them to one owner instead. `repos` ignores the repo scope: it searches the whole forge, or one owner with `--owner`.
+- Outside a checkout and without `-R`, `search` talks to github.com.
+- Rows print like `issue list` (`#12  open  title  [labels]  @user`) and `repo view` (`full_name  visibility  stars N  forks N  description`). A search wider than one repo puts the repo name in front of every issue, pr and code row.
+- `--state` takes open, closed or all (default: every state). `--limit` takes 1-100 and defaults to 20; a forge's page size caps it (50 on Gitea, 100 on GitHub).
+- `code` needs a token on GitHub: anonymous code search answers 401, so cha says `search code: GitHub code search needs a token` and exits 1. Gitea and Forgejo have no code search API at all, and cha says so and exits 1.
+- Gitea can search issues and prs by owner but has no owner filter for repos, so `search repos --owner` is GitHub-only.
+- `--json` fields: issues and prs `repo,number,title,state,user.login,labels,html_url`; repos `full_name,forge,description,default_branch,visibility,stars,forks,open_issues,html_url`; code `repo,name,path,html_url`.
+
 ## Recipes
 
 - What changed for me this week: `cha issue list --assignee LOGIN --since 7d`. `--assignee none` (unassigned) works on GitHub only.
@@ -103,6 +117,7 @@ cha completions fish
 - Why did CI fail: `cha runs list --limit 5`, then `cha runs logs ID --failed`.
 - Failing run ids for a script: `cha runs list --status failure --json=id,workflow`.
 - Catch up on a repo: `cha moved --since 1d`.
+- Find a repo before cloning it: `cha search repos kettle --json full_name,html_url`.
 - Long comment or body from a heredoc: `cha issue comment 12 --body-file - <<'EOF' ... EOF`.
 - Update a bot's marker comment instead of posting another: `cha issue view 12 --comments`, then `cha issue comment-edit ID --body-file -`.
 - Check the latest upstream version: `cha -R github.com/owner/repo release latest`.

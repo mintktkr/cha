@@ -179,6 +179,7 @@ def groups() -> List<&2, Row>:
    Row{"moved", "what changed in the repo since a time", "cha moved --since 1d"},
    Row{"auth", "which login and token source a host uses", "cha auth status"},
    Row{"runners", "self-hosted runners: list, delete", "cha runners"},
+   Row{"search", "issues, prs, repos and code across a forge", "cha search issues kettle"},
    Row{"help", "this page, or one command's usage", "cha help issue"},
    Row{"version", "print the version", "cha version"},
    Row{"completions", "a fish completion script", "cha completions fish"}]
@@ -434,6 +435,30 @@ def runners.page() -> Page:
      Row{"--json [FIELDS]", "id, name, status, busy, labels, os", ""}],
     ["cha runners", "cha runners --org sample-org --json", "cha runners --admin", "cha runners delete 23 --yes --org sample-org"]}
 
+# cha help search
+# ----------------
+
+def search.rows() -> List<&2, Row>:
+  [Row{"issues QUERY [--state S] [--owner O] [--limit N]", "search issues", "cha search issues kettle"},
+   Row{"prs QUERY [--state S] [--owner O] [--limit N]", "search pull requests", "cha search prs kettle"},
+   Row{"repos QUERY [--owner O] [--limit N]", "search repos, on the whole forge", "cha search repos kettle"},
+   Row{"code QUERY [--owner O] [--limit N]", "search code (GitHub, needs a token)", "cha search code kettle"}]
+
+def search.flags() -> List<&2, Row>:
+  [Row{"--state open|closed|all", "issues and prs: which state (default all)", ""},
+   Row{"--owner O", "search one owner instead of the current repo", ""},
+   Row{"--limit N", "results to return (1-100, default 20)", ""},
+   Row{"--json [FIELDS]", "machine-readable rows, optionally only FIELDS", ""}]
+
+def search.examples() -> List<&2, String>:
+  ["cha search issues kettle",
+   "cha search prs steam --owner bendlang",
+   "cha search repos bend -R github.com/bendlang/bend",
+   "cha search code IO.now --json path"]
+
+def search.page() -> Page:
+  Page{"cha search", "cha search issues|prs|repos|code QUERY [flags]", search.rows(), search.flags(), search.examples()}
+
 # cha help help, version and completions
 # --------------------------------------
 
@@ -492,7 +517,8 @@ def group(+sub: String) -> Nat:
   pick(String.eq(sub, "version"), 8n,
   pick(String.eq(sub, "completions"), 9n,
   pick(String.eq(sub, "auth"), 10n,
-  pick(String.eq(sub, "runners"), 11n, 0n)))))))))))
+  pick(String.eq(sub, "runners"), 11n,
+  pick(String.eq(sub, "search"), 12n, 0n))))))))))))
 
 # the word's index in args, or the length when it isn't there
 def idx.at(eq: Bool, i: Nat, later: Nat) -> Nat:
@@ -555,8 +581,10 @@ def show(+on: Bool, +sub: String, k: Nat) -> IO(Unit):
       page.show(on, completions.page())
     case 10n:
       page.show(on, auth.page())
-    case 11n+_:
+    case 11n:
       page.show(on, runners.page())
+    case 12n+_:
+      page.show(on, search.page())
 
 # cha, cha help, cha help <command>
 def run(+on: Bool, +args: List<&2, String>) -> IO(Unit):
@@ -611,6 +639,7 @@ def comp.groups() -> List<&2, String>:
    "complete -c cha -n '__cha_needs_command' -a auth -d 'login and token source'",
    "complete -c cha -n '__cha_in_group auth' -a status -d 'login and token source'",
    "complete -c cha -n '__cha_needs_command' -a runners -d 'self-hosted runners: list, delete'",
+   "complete -c cha -n '__cha_needs_command' -a search -d 'issues, prs, repos and code across a forge'",
    "complete -c cha -n '__cha_needs_command' -a help -d 'help'",
    "complete -c cha -n '__cha_needs_command' -a version -d 'print the version'",
    "complete -c cha -n '__cha_needs_command' -a completions -d 'shell completions'",
@@ -751,8 +780,25 @@ def comp.runners() -> List<&2, String>:
    "complete -c cha -n '__cha_using_sub runners delete' -l yes -d 'really delete it'",
    ""]
 
+def comp.search() -> List<&2, String>:
+  ["complete -c cha -n '__cha_sub_command search' -a issues -d 'search issues'",
+   "complete -c cha -n '__cha_sub_command search' -a prs -d 'search pull requests'",
+   "complete -c cha -n '__cha_sub_command search' -a repos -d 'search repos'",
+   "complete -c cha -n '__cha_sub_command search' -a code -d 'search code (GitHub, needs a token)'",
+   "complete -c cha -n '__cha_using_sub search issues' -l state -x -a 'open closed all' -d 'which state'",
+   "complete -c cha -n '__cha_using_sub search issues' -l owner -x -d 'search one owner'",
+   "complete -c cha -n '__cha_using_sub search issues' -l limit -x -d 'results to return'",
+   "complete -c cha -n '__cha_using_sub search prs' -l state -x -a 'open closed all' -d 'which state'",
+   "complete -c cha -n '__cha_using_sub search prs' -l owner -x -d 'search one owner'",
+   "complete -c cha -n '__cha_using_sub search prs' -l limit -x -d 'results to return'",
+   "complete -c cha -n '__cha_using_sub search repos' -l owner -x -d 'search one owner'",
+   "complete -c cha -n '__cha_using_sub search repos' -l limit -x -d 'results to return'",
+   "complete -c cha -n '__cha_using_sub search code' -l owner -x -d 'search one owner'",
+   "complete -c cha -n '__cha_using_sub search code' -l limit -x -d 'results to return'",
+   ""]
+
 def comp.all() -> List<&2, String>:
-  List.concat(&2, String, [comp.head(), comp.global(), comp.groups(), comp.issue(), comp.pr(), comp.runs(), comp.repo(), comp.release(), comp.moved(), comp.runners()])
+  List.concat(&2, String, [comp.head(), comp.global(), comp.groups(), comp.issue(), comp.pr(), comp.runs(), comp.repo(), comp.release(), comp.moved(), comp.runners(), comp.search()])
 
 def comp.body() -> String:
   String.join(comp.all(), "\n") ++ "\n"
