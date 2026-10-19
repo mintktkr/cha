@@ -38,7 +38,7 @@ On GitHub, an issue and a pull request share one number sequence: the first PR i
 | issue | `C issue create --title T --body B --label cha-test` | URL of #1 |
 | | `C issue comment 1 --body B` | comment URL |
 | | `C issue view 1 --comments` then `C issue comment-edit ID --body B2` | `issue view 1 --comments` shows the new body |
-| | `C issue comment-delete ID --yes`; without `--yes`, piped | the comment is gone; the second fails, exit 1, nothing on stdout |
+| | `C issue comment-delete ID --yes`; first without `--yes` | the second deletes; the first fails, exit 1, nothing sent |
 | | `C issue edit 1 --title T2 --body B2` | `issue view 1` shows both |
 | | `C issue labels 1 add X`, `remove X`, `set a,b` | `issue view 1` shows the set |
 | | `C issue labels 1 add no-such-label` | fails (#19) |

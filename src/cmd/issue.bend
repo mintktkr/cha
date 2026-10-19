@@ -741,7 +741,7 @@ def comment.delete(+env: Cli.Env) -> IO(Unit):
       do IO<Unit>:
         Cli.check(env, "issue comment-delete", args, comment.delete.flags())
         +id : String <- Comment.id.need(env, Cli.arg(args, 1n), "issue comment-delete")
-        Comment.yes.need(env, Cli.has(args, "--yes"), "issue comment-delete")
+        Comment.yes.need(env, Cli.has(args, "--yes"), "issue comment-delete", id)
         Comment.delete(env, repo, tok, id)
 
 # edit

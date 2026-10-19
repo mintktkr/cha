@@ -1,5 +1,5 @@
 # offline checks for the shared comment pieces: the endpoint an edit and a delete use on
-# both forges, the edit's JSON body, the id that goes into the path, and the --yes guard
+# both forges, the edit's JSON body, the id that goes into the path, and the --yes refusal
 import Base
 import 0x584fc27920487ceab242392391418d7f/json.bend as Json
 import ../src/ctx.bend as Ctx
@@ -46,6 +46,5 @@ def main() -> IO(Unit):
     IO.print(check("id.ok rejects nothing", y(Comment.id.ok("")), "false"))
     IO.print(check("id.empty.msg", Comment.id.empty.msg("issue comment-delete"), "issue comment-delete: give a comment id"))
     IO.print(check("id.bad.msg", Comment.id.bad.msg("pr comment-edit", "1x"), "pr comment-edit: expected a comment id, got '1x'"))
-    IO.print(check("yes.ok: no --yes off a terminal is refused", y(Comment.yes.ok(False{}, False{})), "false"))
-    IO.print(check("yes.ok: --yes passes off a terminal", y(Comment.yes.ok(True{}, False{})), "true"))
-    IO.print(check("yes.ok: no --yes at a terminal passes", y(Comment.yes.ok(False{}, True{})), "true"))
+    IO.print(check("yes.msg names the comment and asks for --yes", Comment.yes.msg("issue comment-delete", "1337"), "issue comment-delete: would delete comment 1337; rerun with --yes"))
+    IO.print(check("yes.msg under pr", Comment.yes.msg("pr comment-delete", "99"), "pr comment-delete: would delete comment 99; rerun with --yes"))
