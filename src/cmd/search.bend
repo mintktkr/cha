@@ -88,14 +88,16 @@ def repo.q(+repo: Ctx.Repo, +owner: String) -> String:
     case Ctx.Repo{f, h, o, n}:
       Ctx.or(qual("user", owner), qual("repo", name.q(o, n)))
 
-# gitea takes the scope as parameters instead
-def gitea.repo.q(+o: String, +n: String) -> String:
-  Ctx.or.if("&owner=" ++ Url.encode(o) ++ "&repo=" ++ Url.encode(n), "", String.is_empty(o) || String.is_empty(n))
-
-def gitea.scope.q(+repo: Ctx.Repo, +owner: String) -> String:
+# gitea's issue search filters by owner but has no repo filter, so one repo is searched
+# through that repo's own issue list, which takes q as well
+def gitea.issues.path(+repo: Ctx.Repo, +owner: String) -> String:
   match repo:
-    case Ctx.Repo{f, h, o, n}:
-      Ctx.or.if("&owner=" ++ Url.encode(owner), gitea.repo.q(o, n), String.is_empty(owner))
+    case Ctx.Repo{f, h, +o, +n}:
+      Ctx.or.if("repos/" ++ o ++ "/" ++ n ++ "/issues", "repos/issues/search", Bool.not(String.is_empty(owner)) || String.is_empty(o) || String.is_empty(n))
+
+# gitea takes an owner scope as a parameter instead
+def gitea.scope.q(+owner: String) -> String:
+  Ctx.or.if("&owner=" ++ Url.encode(owner), "", String.is_empty(owner))
 
 def prs.word(prs: Bool) -> String:
   match prs:
@@ -122,7 +124,7 @@ def issue.url(+f: Ctx.Forge, +repo: Ctx.Repo, +owner: String, +q: String, +state
     case Ctx.GitHub{}:
       gh.url("issues", q ++ prs.word(prs) ++ qual("is", state) ++ repo.q(repo, owner), size)
     case Ctx.Gitea{}:
-      "repos/issues/search?limit=" ++ Nat.show(size) ++ "&state=" ++ Url.encode(Ctx.or(state, "all")) ++ type.q(prs) ++ Issue.param.q("&q=", q) ++ gitea.scope.q(repo, owner)
+      gitea.issues.path(repo, owner) ++ "?limit=" ++ Nat.show(size) ++ "&state=" ++ Url.encode(Ctx.or(state, "all")) ++ type.q(prs) ++ Issue.param.q("&q=", q) ++ gitea.scope.q(owner)
 
 # repos ignore the repo scope: --owner narrows them, or the whole forge is searched
 def repo.url(+f: Ctx.Forge, +owner: String, +q: String, size: Nat) -> String:
