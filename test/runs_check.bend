@@ -4,6 +4,7 @@ import ../src/api.bend as Api
 import ../src/cmd/runs.bend as Runs
 import ../lib/chaki/utf8.bend as Utf8
 import ../lib/chaki/sys.bend as Sys
+import ../lib/chaki/json.bend as Json
 
 def expect.if(+got: String, +want: String, same: Bool) -> IO(Unit):
   match same:
@@ -19,6 +20,19 @@ def expect(+got: String, +want: String) -> IO(Unit):
 
 def is_true(+got: Bool) -> IO(Unit):
   expect(Bool.show(got), "True")
+
+# 2026-01-02T10:00:00Z, the instant noted before the POST, so every case below is
+# fixed text
+def T0() -> U32:
+  1767348000
+
+# 2026-01-02T10:00:10Z, past the last run on a page
+def LATER() -> U32:
+  1767348010
+
+# 2026-01-02T08:00:00Z, before the older run on a page
+def EARLIER() -> U32:
+  1767340800
 
 # one run object as Api.obj flattens it
 def fake() -> Map<&2, String>:
@@ -99,6 +113,37 @@ def fj.check.approval(+row: Map<&2, String>) -> IO(Unit):
     expect(Api.f(row, "age"), "")
     expect(Api.f(row, "updated_at"), "2026-01-02T10:00:45Z")
 
+# a page of Gitea runs around a dispatch: an older dispatch of the same workflow
+# first (the trap), a push, another workflow, another ref, then the run the
+# dispatch made. Gitea 1.25 sends no creation time, so a run is placed by its start.
+def gitea.page() -> String:
+  "{\"total_count\":5,\"workflow_runs\":[{\"id\":\"41\",\"event\":\"workflow_dispatch\",\"path\":\"ci.yml@refs/heads/main\",\"head_branch\":\"main\",\"html_url\":\"https://example.org/runs/41\",\"started_at\":\"2026-01-02T09:00:00Z\"},{\"id\":\"42\",\"event\":\"push\",\"path\":\"ci.yml@refs/heads/main\",\"head_branch\":\"main\",\"html_url\":\"https://example.org/runs/42\",\"started_at\":\"2026-01-02T10:00:05Z\"},{\"id\":\"43\",\"event\":\"workflow_dispatch\",\"path\":\"slow.yml@refs/heads/main\",\"head_branch\":\"main\",\"html_url\":\"https://example.org/runs/43\",\"started_at\":\"2026-01-02T10:00:06Z\"},{\"id\":\"44\",\"event\":\"workflow_dispatch\",\"path\":\"ci.yml@refs/heads/dev\",\"head_branch\":\"dev\",\"html_url\":\"https://example.org/runs/44\",\"started_at\":\"2026-01-02T10:00:07Z\"},{\"id\":\"45\",\"event\":\"workflow_dispatch\",\"path\":\"ci.yml@refs/heads/main\",\"head_branch\":\"main\",\"html_url\":\"https://example.org/runs/45\",\"started_at\":\"2026-01-02T10:00:08Z\"}]}"
+
+# a Gitea stamp carries the forge's own offset: 07:00:08-03:00 is 10:00:08Z, at or
+# after the dispatch at 10:00:00Z even though it reads as the earlier string
+def offset.page() -> String:
+  "{\"workflow_runs\":[{\"id\":\"51\",\"event\":\"workflow_dispatch\",\"path\":\"ci.yml@refs/heads/main\",\"head_branch\":\"main\",\"html_url\":\"https://example.org/runs/51\",\"started_at\":\"2026-01-02T07:00:08-03:00\"}]}"
+
+# GitHub stamps created_at on a run, which is the first field cha looks for
+def github.page() -> String:
+  "{\"total_count\":2,\"workflow_runs\":[{\"id\":\"71\",\"event\":\"workflow_dispatch\",\"path\":\"ci.yml@refs/heads/main\",\"head_branch\":\"main\",\"html_url\":\"https://example.org/runs/71\",\"created_at\":\"2026-01-02T09:00:00Z\"},{\"id\":\"72\",\"event\":\"workflow_dispatch\",\"path\":\"ci.yml@refs/heads/main\",\"head_branch\":\"main\",\"html_url\":\"https://example.org/runs/72\",\"created_at\":\"2026-01-02T10:00:04Z\"}]}"
+
+# a dispatch that has created no run yet: one still queued (Gitea's zero start) and
+# one with no timestamp at all are both uncountable
+def queued.page() -> String:
+  "{\"workflow_runs\":[{\"id\":\"61\",\"event\":\"workflow_dispatch\",\"path\":\"ci.yml@refs/heads/main\",\"head_branch\":\"main\",\"html_url\":\"https://example.org/runs/61\",\"started_at\":\"0001-01-01T00:00:00Z\"},{\"id\":\"60\",\"event\":\"workflow_dispatch\",\"path\":\"ci.yml@refs/heads/main\",\"head_branch\":\"main\",\"html_url\":\"https://example.org/runs/60\"}]}"
+
+# a field of a request body, read back the way a forge would: encoded, then flat
+def body.f(v: Json.Val, +k: String) -> String:
+  Api.f(Api.obj(Utf8.encode(Json.encode(v))), k)
+
+# the url dispatch.scan names for a page, with a fixed clock
+def picked.for(+forge: Ctx.Forge, +src: Map<&2, String>, +wf: String, +ref: String, +t0: U32) -> String:
+  Runs.dispatch.url.of(Runs.dispatch.scan(Api.count(src, "workflow_runs"), 0, src, forge, LATER(), wf, ref, t0))
+
+def picked(+src: Map<&2, String>, +wf: String, +ref: String, +t0: U32) -> String:
+  picked.for(Ctx.Gitea{}, src, wf, ref, t0)
+
 def main() -> IO(Unit):
   do IO<Unit>:
     expect(Runs.runs.url(Ctx.Gitea{}, "main", "failure", "5"), "actions/runs?page=1&limit=5&branch=main&status=failure")
@@ -140,3 +185,33 @@ def main() -> IO(Unit):
     fj.check.skipped(Runs.run.row(fsrc, "workflow_runs.1", Ctx.Gitea{}, now))
     fj.check.running(Runs.run.row(fsrc, "workflow_runs.2", Ctx.Gitea{}, now))
     fj.check.approval(Runs.run.row(fsrc, "workflow_runs.3", Ctx.Gitea{}, now))
+    # the run a dispatch made is the only run of its workflow, event and ref that
+    # appeared at or after the instant noted before the POST
+    +t0 : U32 = T0()
+    +gpage : Map<&2, String> = Api.obj(Utf8.encode(gitea.page()))
+    expect(picked(gpage, "ci.yml", "main", t0), "https://example.org/runs/45")
+    expect(picked(gpage, "slow.yml", "main", t0), "https://example.org/runs/43")
+    expect(picked(gpage, "ci.yml", "dev", t0), "https://example.org/runs/44")
+    expect(picked(gpage, "ci.yml", "refs/heads/main", t0), "https://example.org/runs/45")
+    expect(picked(gpage, "other.yml", "main", t0), "")
+    +later : U32 = LATER()
+    expect(picked(gpage, "ci.yml", "main", later), "")
+    is_true(Runs.dispatch.hit(Runs.run.row(gpage, "workflow_runs.0", Ctx.Gitea{}, now), Runs.created.at(gpage, "workflow_runs.0"), "ci.yml", "main", EARLIER()))
+    expect(Bool.show(Runs.dispatch.hit(Runs.run.row(gpage, "workflow_runs.0", Ctx.Gitea{}, now), Runs.created.at(gpage, "workflow_runs.0"), "ci.yml", "main", t0)), "False")
+    +opage : Map<&2, String> = Api.obj(Utf8.encode(offset.page()))
+    expect(picked(opage, "ci.yml", "main", t0), "https://example.org/runs/51")
+    +ghpage : Map<&2, String> = Api.obj(Utf8.encode(github.page()))
+    expect(picked.for(Ctx.GitHub{}, ghpage, "ci.yml", "main", t0), "https://example.org/runs/72")
+    expect(Runs.created.at(ghpage, "workflow_runs.1"), "2026-01-02T10:00:04Z")
+    +qpage : Map<&2, String> = Api.obj(Utf8.encode(queued.page()))
+    expect(picked(qpage, "ci.yml", "main", t0), "")
+    is_true(Runs.ref.same("main", "refs/heads/main"))
+    is_true(Runs.ref.same("refs/tags/v1", "v1"))
+    expect(Bool.show(Runs.ref.same("dev", "main")), "False")
+    expect(Runs.dispatch.runs(Ctx.Gitea{}), "actions/runs?page=1&limit=20&event=workflow_dispatch")
+    expect(Runs.dispatch.runs(Ctx.GitHub{}), "actions/runs?page=1&per_page=20&event=workflow_dispatch")
+    expect(Runs.dispatch.page(Ctx.Gitea{}, "ci.yml"), "actions?workflow=ci.yml")
+    expect(Runs.dispatch.page(Ctx.GitHub{}, "ci.yml"), "actions/workflows/ci.yml")
+    expect(body.f(Runs.dispatch.body("main", Nil{}, True{}), "ref"), "main")
+    expect(body.f(Runs.dispatch.body("main", Nil{}, True{}), "return_run_details"), "true")
+    expect(body.f(Runs.dispatch.body("main", Nil{}, False{}), "return_run_details"), "")

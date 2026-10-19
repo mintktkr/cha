@@ -307,7 +307,7 @@ def runs.rows() -> List<&2, Row>:
    Row{"view ID", "run, jobs, runners and step timings", "cha runs view 4142"},
    Row{"logs ID [--job J] [--failed] [--step NAME]", "a run's logs", "cha runs logs 4142 --failed"},
    Row{"watch ID", "follow a run", "cha runs watch 4142"},
-   Row{"dispatch FILE [--ref R] [--input k=v]", "start a workflow", "cha runs dispatch ci.yml --ref main"},
+   Row{"dispatch FILE [--ref R] [--input k=v]", "start a workflow, print its run", "cha runs dispatch ci.yml --ref main"},
    Row{"rerun ID [--failed | --job ID]", "rerun a run or selected jobs", "cha runs rerun 4142"},
    Row{"cancel ID", "cancel a run", "cha runs cancel 4142"}]
 

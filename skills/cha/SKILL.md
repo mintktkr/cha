@@ -87,6 +87,7 @@ cha completions fish
 - Logs accept a job id or case-insensitive exact job name. `--failed` selects failed jobs; it still prints each selected job's full log unless `--step` is also given.
 - On GitHub, unfinished jobs print a watch hint on stderr while completed jobs still print their logs; partial retrieval exits 1. `--step` cuts the job log between the runner's `##[group]Run ...` markers, matching the step by case-insensitive name; a step the runner gave no group (an image pull, a runner step) falls back to its step times. On Gitea it needs step timestamps; its whole-second boundaries can overlap adjacent steps, and missing metadata produces an actionable error.
 - `runs rerun --job` requires a job id belonging to the supplied run. It cannot be combined with `--failed`.
+- `runs dispatch` prints the URL of the run it created. GitHub names that run in its reply (`return_run_details`); Gitea and Forgejo answer 204, so cha notes the instant before the POST and polls the repo's `workflow_dispatch` runs a few times, taking the newest run of that workflow file, on that ref, that appeared at or after it. When no such run has shown up after ~8s, it says the dispatch was accepted and prints the workflow's runs page instead of naming an older run.
 
 ## Recipes
 
