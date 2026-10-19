@@ -4,7 +4,6 @@ import ../src/api.bend as Api
 import ../src/cmd/runs.bend as Runs
 import 0x49814d83de8f70993a43e1002be29ecd/bytes.bend as Bytes
 import 0x3bfb4ae4d3b87b90f01bfcd298211455/time.bend as Time
-import 0x4eed9d7ac6ece61523d747a9d804e4f0/int.bend as Int
 
 def expect.if(+got: String, +want: String, same: Bool) -> IO(Unit):
   match same:
@@ -20,6 +19,19 @@ def expect(+got: String, +want: String) -> IO(Unit):
 
 def is_true(+got: Bool) -> IO(Unit):
   expect(Bool.show(got), "True")
+
+# 2026-01-02T10:00:00Z, the instant noted before the POST, so every case below is
+# fixed text
+def T0() -> Time.Instant:
+  Time.Instant{Time.i64(1767348000), 0}
+
+# 2026-01-02T10:00:10Z, past the last run on a page
+def LATER() -> Time.Instant:
+  Time.Instant{Time.i64(1767348010), 0}
+
+# 2026-01-02T08:00:00Z, before the older run on a page
+def EARLIER() -> Time.Instant:
+  Time.Instant{Time.i64(1767340800), 0}
 
 # one run object as Api.obj flattens it
 def fake() -> Map<&2, String>:
@@ -122,7 +134,7 @@ def queued.page() -> String:
 
 # the url dispatch.scan names for a page, with a fixed clock
 def picked.for(+forge: Ctx.Forge, +src: Map<&2, String>, +wf: String, +ref: String, +t0: Time.Instant) -> String:
-  Runs.dispatch.url.of(Runs.dispatch.scan(Api.count(src, "workflow_runs"), 0, src, forge, Time.Instant.of_unix(Int.I64.from_u32(1767348100)), wf, ref, t0))
+  Runs.dispatch.url.of(Runs.dispatch.scan(Api.count(src, "workflow_runs"), 0, src, forge, LATER(), wf, ref, t0))
 
 def picked(+src: Map<&2, String>, +wf: String, +ref: String, +t0: Time.Instant) -> String:
   picked.for(Ctx.Gitea{}, src, wf, ref, t0)
@@ -170,16 +182,16 @@ def main() -> IO(Unit):
     fj.check.approval(Runs.run.row(fsrc, "workflow_runs.3", Ctx.Gitea{}, now))
     # the run a dispatch made is the only run of its workflow, event and ref that
     # appeared at or after the instant noted before the POST
-    +t0 : Time.Instant = Time.Instant.of_unix(Int.I64.from_u32(1767348000))
+    +t0 : Time.Instant = T0()
     +gpage : Map<&2, String> = Api.obj(Bytes.from_string(gitea.page()))
     expect(picked(gpage, "ci.yml", "main", t0), "https://example.org/runs/45")
     expect(picked(gpage, "slow.yml", "main", t0), "https://example.org/runs/43")
     expect(picked(gpage, "ci.yml", "dev", t0), "https://example.org/runs/44")
     expect(picked(gpage, "ci.yml", "refs/heads/main", t0), "https://example.org/runs/45")
     expect(picked(gpage, "other.yml", "main", t0), "")
-    +later : Time.Instant = Time.Instant.of_unix(Int.I64.from_u32(1767348100))
+    +later : Time.Instant = LATER()
     expect(picked(gpage, "ci.yml", "main", later), "")
-    is_true(Runs.dispatch.hit(Runs.run.row(gpage, "workflow_runs.0", Ctx.Gitea{}, now), Runs.created.at(gpage, "workflow_runs.0"), "ci.yml", "main", Time.Instant.of_unix(Int.I64.from_u32(1767300000))))
+    is_true(Runs.dispatch.hit(Runs.run.row(gpage, "workflow_runs.0", Ctx.Gitea{}, now), Runs.created.at(gpage, "workflow_runs.0"), "ci.yml", "main", EARLIER()))
     expect(Bool.show(Runs.dispatch.hit(Runs.run.row(gpage, "workflow_runs.0", Ctx.Gitea{}, now), Runs.created.at(gpage, "workflow_runs.0"), "ci.yml", "main", t0)), "False")
     +opage : Map<&2, String> = Api.obj(Bytes.from_string(offset.page()))
     expect(picked(opage, "ci.yml", "main", t0), "https://example.org/runs/51")
