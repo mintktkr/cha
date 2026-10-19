@@ -12,6 +12,11 @@ def row.of(+id: String, +name: String) -> Map<&2, String>:
 def url.row(+url: String) -> Map<&2, String>:
   Map.set(&2, String, Map.new(&2, String), "pull_request.url", url)
 
+# a comment row as issue view --comments reads it, the id included
+def comment.row() -> Map<&2, String>:
+  +a = Map.set(&2, String, Map.set(&2, String, Map.new(&2, String), "id", "1337"), "user.login", "memu")
+  Map.set(&2, String, Map.set(&2, String, a, "created_at", "2026-10-01T12:00:00Z"), "body", "hello")
+
 def report.if(good: Bool, +name: String, +got: String, +want: String) -> String:
   match good:
     case True{}:
@@ -80,3 +85,11 @@ def main() -> IO(Unit):
     IO.print(check("unknown: a value that starts with - is a value", String.join(Cli.unknown(["--body"], ["7", "--body", "-1 from me"]), ","), ""))
     IO.print(check("unknown: first seen, each once", String.join(Cli.unknown(["--a"], ["--y", "1", "--a", "2", "--x", "3", "--y", "4"]), ","), "--y,--x"))
     IO.print(check("unknown.msg: a command without flags", Cli.unknown.msg("issue reopen", "--x", Nil{}), "unknown flag --x for issue reopen; flags: none"))
+    IO.print(check("comment.text names the comment's id", Issue.comment.text(False{}, comment.row()), "\n\n@memu  2026-10-01T12:00:00Z  id 1337\nhello"))
+    IO.print(check("comment.fields carry the id", String.join(Issue.comment.fields(), ","), "id,user.login,created_at,body,html_url"))
+    IO.print(check("sub.kind comment-edit", Nat.show(Issue.sub.kind("comment-edit")), "4"))
+    IO.print(check("sub.kind comment-delete", Nat.show(Issue.sub.kind("comment-delete")), "5"))
+    IO.print(check("sub.kind edit still follows the comment commands", Nat.show(Issue.sub.kind("edit")), "6"))
+    IO.print(check("sub.kind labels", Nat.show(Issue.sub.kind("labels")), "9"))
+    IO.print(check("comment-delete takes --yes", String.join(Cli.unknown(Issue.comment.delete.flags(), ["--yes", "1337"]), ","), ""))
+    IO.print(check("comment-edit takes --body-file", String.join(Cli.unknown(Issue.comment.edit.flags(), ["--body-file", "-"]), ","), ""))

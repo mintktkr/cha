@@ -37,12 +37,15 @@ On GitHub, an issue and a pull request share one number sequence: the first PR i
 | labels | `C repo label-create cha-test --color ff6eb4 --description D`, `C repo labels` | the label is listed |
 | issue | `C issue create --title T --body B --label cha-test` | URL of #1 |
 | | `C issue comment 1 --body B` | comment URL |
+| | `C issue view 1 --comments` then `C issue comment-edit ID --body B2` | `issue view 1 --comments` shows the new body |
+| | `C issue comment-delete ID --yes`; first without `--yes` | the second deletes; the first fails, exit 1, nothing sent |
 | | `C issue edit 1 --title T2 --body B2` | `issue view 1` shows both |
 | | `C issue labels 1 add X`, `remove X`, `set a,b` | `issue view 1` shows the set |
 | | `C issue labels 1 add no-such-label` | fails (#19) |
 | | `C issue close 1 --comment C`, `reopen 1`, `close 1` | state follows |
 | pr | `C pr create --head feat-merge --base main --title T --body B` | URL of #2 |
 | | `C pr edit 2 --title T2 --body B2`, `C pr comment 2 --body B` | `pr view 2 --comments` shows both |
+| | `C pr comment-edit ID --body B3`, `C pr comment-delete ID --yes` | a PR's conversation comment, edited then gone (same ids as `issue`) |
 | | `C pr diff 2` | the unified diff |
 | | `C pr checks 2` | `flaky` failed, exit 1 |
 | | `C pr comment 1 --body B` (an issue) | fails (#20) |

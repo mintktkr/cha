@@ -2,6 +2,7 @@
 import Base
 import ../src/ctx.bend as Ctx
 import ../src/api.bend as Api
+import ../src/cli.bend as Cli
 import ../src/cmd/pr.bend as Pr
 
 def gitea() -> Ctx.Repo:
@@ -15,6 +16,11 @@ def y(x: Bool) -> String:
 
 def row.kv(+k: String, +v: String) -> Map<&2, String>:
   Map.set(&2, String, Map.new(&2, String), k, v)
+
+# a comment row as pr view --comments reads it, the id included
+def comment.row() -> Map<&2, String>:
+  +a = Map.set(&2, String, Map.set(&2, String, row.kv("id", "1337"), "user.login", "memu"), "created_at", "2026-10-01T12:00:00Z")
+  Map.set(&2, String, a, "body", "hello")
 
 def review(+st: String) -> Map<&2, String>:
   Map.set(&2, String, Map.new(&2, String), "state", st)
@@ -103,3 +109,9 @@ def main() -> IO(Unit):
     expect("abs.url full", Pr.abs.url("tea.example.org", "https://ci.example.org/1"), "https://ci.example.org/1")
     expect("check.walk", lines.of(Pr.check.walk(2n, statuses(), "statuses", "tea.example.org", Pr.Gitea{}, 0, Nil{})), "ci / hello|success|https://tea.example.org/runs/1\nci / sad|failure|https://tea.example.org/runs/2\n")
     expect("checks.bads", Nat.show(Pr.checks.bads(Pr.check.walk(2n, statuses(), "statuses", "tea.example.org", Pr.Gitea{}, 0, Nil{}))), "1")
+    expect("comment.lines names each comment's id", Pr.comment.lines(False{}, [comment.row()]), "@memu  2026-10-01T12:00:00Z  id 1337\nhello\n\n")
+    expect("kind.of comment-edit", Nat.show(Pr.kind.of(False{}, "comment-edit")), "7")
+    expect("kind.of comment-delete", Nat.show(Pr.kind.of(False{}, "comment-delete")), "8")
+    expect("kind.of checks still follows the comment commands", Nat.show(Pr.kind.of(False{}, "checks")), "9")
+    expect("comment-delete takes --yes", String.join(Cli.unknown(Pr.comment.delete.flags(), ["--yes", "1337"]), ","), "")
+    expect("comment-edit takes --body", String.join(Cli.unknown(Pr.comment.edit.flags(), ["--body", "x"]), ","), "")

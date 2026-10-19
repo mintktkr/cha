@@ -169,8 +169,8 @@ def fits.of(+lines: List<&2, String>, +cols: U32, +rows: U32) -> Bool:
 # --------
 
 def groups() -> List<&2, Row>:
-  [Row{"issue", "issues: list, view, create, comment, edit, close, reopen, labels", "cha issue list --state open"},
-   Row{"pr", "pull requests: list, view, diff, create, merge, edit, comment, checks", "cha pr list"},
+  [Row{"issue", "issues: list, view, create, comment, comment-edit, comment-delete, edit, close, reopen, labels", "cha issue list --state open"},
+   Row{"pr", "pull requests: list, view, diff, create, merge, edit, comment, comment-edit, comment-delete, checks", "cha pr list"},
    Row{"runs", "actions: list, view, logs, watch, dispatch, rerun, cancel", "cha runs watch 4142"},
    Row{"repo", "repo: view, labels, label-create, branches, file, tree", "cha repo labels"},
    Row{"release", "releases: list, view, latest, create, upload", "cha release latest"},
@@ -232,6 +232,8 @@ def issue.rows() -> List<&2, Row>:
    Row{"view N [--comments]", "one issue", "cha issue view 42 --comments"},
    Row{"create --title T [--body B|--body-file F] [--label a,b] [--assignee u]", "open an issue", "cha issue create --title \"kettle is empty\" --label bug"},
    Row{"comment N --body B|--body-file F", "comment on an issue", "cha issue comment 42 --body \"still empty\""},
+   Row{"comment-edit ID --body B|--body-file F", "edit a comment in place", "cha issue comment-edit 1337 --body-file -"},
+   Row{"comment-delete ID --yes", "delete a comment", "cha issue comment-delete 1337 --yes"},
    Row{"edit N [--title T] [--body B]", "edit an issue", "cha issue edit 42 --title \"kettle is full\""},
    Row{"close N [--comment C]", "close an issue", "cha issue close 42 --comment \"fixed\""},
    Row{"reopen N", "reopen an issue", "cha issue reopen 42"},
@@ -252,14 +254,16 @@ def issue.flags() -> List<&2, Row>:
    Row{"--body-file F", "the body from a file; - is stdin", ""},
    Row{"--label a,b", "comma-separated labels (create)", ""},
    Row{"--assignee u", "create: assign to this user", ""},
-   Row{"--comment C", "a comment with the close", ""}]
+   Row{"--comment C", "a comment with the close", ""},
+   Row{"--yes", "comment-delete: always required; cha never prompts", ""}]
 
 def issue.examples() -> List<&2, String>:
   ["cha issue list --state all --json",
    "cha issue list --json number,title",
    "cha issue list --assignee mintktkr --since 7d",
    "cha issue view 42 --comments",
-   "cha issue create --title \"kettle is empty\" --body-file - --label bug"]
+   "cha issue create --title \"kettle is empty\" --body-file - --label bug",
+   "cha issue comment-edit 1337 --body \"boil water first\""]
 
 def issue.page() -> Page:
   Page{"cha issue", "cha issue <command> [flags]", issue.rows(), issue.flags(), issue.examples()}
@@ -275,6 +279,8 @@ def pr.rows() -> List<&2, Row>:
    Row{"merge N [--squash|--merge|--rebase] [--delete-branch]", "merge a pull request", "cha pr merge 7 --squash"},
    Row{"edit N", "edit a pull request", "cha pr edit 7"},
    Row{"comment N --body B", "comment on a pull request", "cha pr comment 7 --body \"nice\""},
+   Row{"comment-edit ID --body B|--body-file F", "edit a comment in place", "cha pr comment-edit 1337 --body \"nice, and merged\""},
+   Row{"comment-delete ID --yes", "delete a comment", "cha pr comment-delete 1337 --yes"},
    Row{"checks N", "the checks", "cha pr checks 7"}]
 
 def pr.flags() -> List<&2, Row>:
@@ -289,12 +295,14 @@ def pr.flags() -> List<&2, Row>:
    Row{"--body B", "the body text", ""},
    Row{"--body-file F", "the body from a file; - is stdin", ""},
    Row{"--squash / --merge / --rebase", "how to merge", ""},
-   Row{"--delete-branch", "delete the head branch after a merge", ""}]
+   Row{"--delete-branch", "delete the head branch after a merge", ""},
+   Row{"--yes", "comment-delete: always required; cha never prompts", ""}]
 
 def pr.examples() -> List<&2, String>:
   ["cha pr list --json",
    "cha pr view 7 --comments",
-   "cha pr merge 7 --squash --delete-branch"]
+   "cha pr merge 7 --squash --delete-branch",
+   "cha pr comment-delete 1337"]
 
 def pr.page() -> Page:
   Page{"cha pr", "cha pr <command> [flags]", pr.rows(), pr.flags(), pr.examples()}
@@ -585,8 +593,8 @@ def comp.global() -> List<&2, String>:
    ""]
 
 def comp.groups() -> List<&2, String>:
-  ["complete -c cha -n '__cha_needs_command' -a issue -d 'issues: list, view, create, comment, edit, close, reopen, labels'",
-   "complete -c cha -n '__cha_needs_command' -a pr -d 'pull requests: list, view, diff, create, merge, edit, comment, checks'",
+  ["complete -c cha -n '__cha_needs_command' -a issue -d 'issues: list, view, create, comment, comment-edit, comment-delete, edit, close, reopen, labels'",
+   "complete -c cha -n '__cha_needs_command' -a pr -d 'pull requests: list, view, diff, create, merge, edit, comment, comment-edit, comment-delete, checks'",
    "complete -c cha -n '__cha_needs_command' -a runs -d 'actions: list, view, logs, watch, dispatch, rerun, cancel'",
    "complete -c cha -n '__cha_needs_command' -a repo -d 'repo: view, labels, label-create, branches, file, tree, create, delete'",
    "complete -c cha -n '__cha_needs_command' -a release -d 'releases: list, view, latest, create, upload'",
@@ -604,6 +612,8 @@ def comp.issue() -> List<&2, String>:
    "complete -c cha -n '__cha_sub_command issue' -a view -d 'one issue'",
    "complete -c cha -n '__cha_sub_command issue' -a create -d 'open an issue'",
    "complete -c cha -n '__cha_sub_command issue' -a comment -d 'comment on an issue'",
+   "complete -c cha -n '__cha_sub_command issue' -a comment-edit -d 'edit a comment in place'",
+   "complete -c cha -n '__cha_sub_command issue' -a comment-delete -d 'delete a comment'",
    "complete -c cha -n '__cha_sub_command issue' -a edit -d 'edit an issue'",
    "complete -c cha -n '__cha_sub_command issue' -a close -d 'close an issue'",
    "complete -c cha -n '__cha_sub_command issue' -a reopen -d 'reopen an issue'",
@@ -624,6 +634,9 @@ def comp.issue() -> List<&2, String>:
    "complete -c cha -n '__cha_using_sub issue create' -l assignee -x -d 'assign to this user'",
    "complete -c cha -n '__cha_using_sub issue comment' -l body -x -d 'the body text'",
    "complete -c cha -n '__cha_using_sub issue comment' -l body-file -r -F -d 'the body from a file; - is stdin'",
+   "complete -c cha -n '__cha_using_sub issue comment-edit' -l body -x -d 'the body text'",
+   "complete -c cha -n '__cha_using_sub issue comment-edit' -l body-file -r -F -d 'the body from a file; - is stdin'",
+   "complete -c cha -n '__cha_using_sub issue comment-delete' -l yes -d 'required to delete'",
    "complete -c cha -n '__cha_using_sub issue edit' -l title -x -d 'the title'",
    "complete -c cha -n '__cha_using_sub issue edit' -l body -x -d 'the body text'",
    "complete -c cha -n '__cha_using_sub issue close' -l comment -x -d 'a comment with the close'",
@@ -637,6 +650,8 @@ def comp.pr() -> List<&2, String>:
    "complete -c cha -n '__cha_sub_command pr' -a merge -d 'merge a pull request'",
    "complete -c cha -n '__cha_sub_command pr' -a edit -d 'edit a pull request'",
    "complete -c cha -n '__cha_sub_command pr' -a comment -d 'comment on a pull request'",
+   "complete -c cha -n '__cha_sub_command pr' -a comment-edit -d 'edit a comment in place'",
+   "complete -c cha -n '__cha_sub_command pr' -a comment-delete -d 'delete a comment'",
    "complete -c cha -n '__cha_sub_command pr' -a checks -d 'the checks'",
    "complete -c cha -n '__cha_using_sub pr list' -l state -x -a 'open closed all' -d 'which pull requests'",
    "complete -c cha -n '__cha_using_sub pr list' -l all -d 'every page'",
@@ -653,6 +668,9 @@ def comp.pr() -> List<&2, String>:
    "complete -c cha -n '__cha_using_sub pr merge' -l rebase -d 'rebase the commits'",
    "complete -c cha -n '__cha_using_sub pr merge' -l delete-branch -d 'delete the head branch'",
    "complete -c cha -n '__cha_using_sub pr comment' -l body -x -d 'the body text'",
+   "complete -c cha -n '__cha_using_sub pr comment-edit' -l body -x -d 'the body text'",
+   "complete -c cha -n '__cha_using_sub pr comment-edit' -l body-file -r -F -d 'the body from a file; - is stdin'",
+   "complete -c cha -n '__cha_using_sub pr comment-delete' -l yes -d 'required to delete'",
    ""]
 
 def comp.runs() -> List<&2, String>:
