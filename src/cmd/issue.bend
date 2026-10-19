@@ -441,6 +441,54 @@ def label.check(+env: Cli.Env, +repo: Ctx.Repo, +tok: String, +names: List<&2, S
     need(env, Bool.not(List.is_empty(&2, String, miss.go(names, ids))), what ++ ": unknown label: " ++ miss(names, ids))
     return ids
 
+# github matches a label name without case: a repo can't hold two names differing only in
+# case, so "BUG" is the repo's "bug". one the repo doesn't have, the write would create,
+# so a write reads the repo's labels first and sends back the repo's own spelling
+def name.same(+a: String, +b: String) -> Bool:
+  String.eq(String.to_lower(a), String.to_lower(b))
+
+def canon.same(+name: String, later: String, same: Bool) -> String:
+  match same:
+    case True{}:
+      name
+    case False{}:
+      later
+
+# the repo's spelling of a name, "" for one it doesn't have
+def canon.scan(ls: List<&2, Map<&2, String>>, +want: String) -> String:
+  match ls:
+    case Nil{}:
+      ""
+    case Con{+x, rest}:
+      canon.same(Api.f(x, "name"), canon.scan(rest, want), name.same(want, Api.f(x, "name")))
+
+def canons.of(ls: List<&2, String>, +rows: List<&2, Map<&2, String>>) -> List<&2, String>:
+  match ls:
+    case Nil{}:
+      Nil{}
+    case Con{+x, rest}:
+      canon.scan(rows, x) <> canons.of(rest, rows)
+
+def names.go(ls: List<&2, Map<&2, String>>) -> List<&2, String>:
+  match ls:
+    case Nil{}:
+      Nil{}
+    case Con{+x, rest}:
+      Api.f(x, "name") <> names.go(rest)
+
+# the names the repo has, since a typo is the usual way to reach an unknown one
+def label.msg(+what: String, +missed: String, +rows: List<&2, Map<&2, String>>) -> String:
+  what ++ ": unknown label: " ++ missed ++ "; labels: " ++ Ctx.or(String.join(names.go(rows), ", "), "none")
+
+# the same read for github, which takes names and creates the unknown ones
+def label.check.names(+env: Cli.Env, +repo: Ctx.Repo, +tok: String, +names: List<&2, String>, +what: String) -> IO(List<&2, String>):
+  do IO<List<&2, String>>:
+    rows : Result<&1, &1, String, List<&2, Map<&2, String>>> <- label.rows(repo, tok)
+    +ls : List<&2, Map<&2, String>> <- need.rows(env, rows, what ++ ": can't read the repo's labels")
+    +known : List<&2, String> = canons.of(names, ls)
+    need(env, Bool.not(List.is_empty(&2, String, miss.go(names, known))), label.msg(what, miss(names, known), ls))
+    return known
+
 # json
 # ----
 
@@ -727,11 +775,12 @@ def del.each(+env: Cli.Env, +repo: Ctx.Repo, +tok: String, +n: String, +refs: Li
         del.each(env, repo, tok, n, rest)
 
 # github addresses a label by its name, gitea by its id. resolving first catches an unknown
-# name before a write: both forges ignore one, and gitea's PUT clears the issue's labels for it
+# name before a write: both forges ignore one, github creates it on the repo, and gitea's PUT
+# clears the issue's labels for it. a known name is sent as the repo spells it
 def labels.refs.by(github: Bool, +env: Cli.Env, +repo: Ctx.Repo, +tok: String, +names: List<&2, String>) -> IO(List<&2, String>):
   match github:
     case True{}:
-      IO.pure(List<&2, String>, names)
+      label.check.names(env, repo, tok, names, "issue labels")
     case False{}:
       label.check(env, repo, tok, names, "issue labels")
 
