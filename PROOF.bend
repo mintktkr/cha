@@ -190,3 +190,9 @@ def Laws.clean_plain():
 
 def Laws.clean_line():
   {==}
+
+def Laws.runner_id_digits():
+  {==}
+
+def Laws.runner_id_not_digits():
+  {==}

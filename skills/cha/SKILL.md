@@ -29,7 +29,7 @@ description: Use cha for Gitea, Forgejo and GitHub work from the terminal - issu
 - A flag the subcommand doesn't take exits 1 and names the flags it does, for example `unknown flag --bogus for issue list; flags: --state --label ...`. `-h`, `--help` and `-R` are taken everywhere; `-h` or `--help` after a command prints its usage page instead of running it (`cha issue list --help` prints `cha issue`).
 - A flag that takes a value and is given none exits 1 with `--limit needs a value`: at the end of the line, before another flag the command reads, or with nothing after its `=`. A value may start with a dash, or be another command's flag name, so `--body "-1 from me"` and `--title "--limit"` keep their words.
 - Forge text is printed with its control characters and escape sequences removed, on stderr too, so a title, a body, a label, a branch name or a CI log line cannot move the cursor or spoof output. One-line fields (titles, labels, branches, names) also turn a newline or tab into a space, so they can't add rows to a list; bodies, comments and release notes keep their lines. Raw content stays byte-exact when piped: `repo file` and `pr diff` print the bytes unchanged into a redirect, and `--json` keeps the data, escaping control characters as `\uXXXX`.
-- Bodies come from `--body TEXT` or `--body-file PATH`. `--body-file -` reads stdin. cha never opens an editor or prompts, so a destructive command such as `repo delete` requires `--yes`, and without it exits 1 naming the repo it would delete and sends no request.
+- Bodies come from `--body TEXT` or `--body-file PATH`. `--body-file -` reads stdin. cha never opens an editor or prompts. A destructive command therefore needs `--yes`: without it, it exits 1 naming what it would remove and makes no request.
 - `view N --comments` prints each comment's `id` beside its author and date, and `--json` carries it: that id is what `comment-edit` and `comment-delete` take. A PR's conversation comments are issue comments, so an id works under both `issue` and `pr`.
 - `comment-delete` always needs `--yes`: without it cha names the comment it would delete, sends no request and exits 1. cha never prompts.
 
@@ -78,7 +78,8 @@ cha release upload TAG FILE...        # attach files; the asset name is the file
 
 cha moved [--since 1d|6h|30m|ISO8601] [--json]   # issues/PRs, comments, commits, runs since then
 cha auth status [--json]               # host, forge, login, token source; exit 1 without a working token
-cha runners [--org O] [--json]         # a repo's or an org's self-hosted runners
+cha runners [list] [--org O | --user | --admin] [--json]   # self-hosted runners of a scope
+cha runners delete ID --yes [--org O | --user | --admin]   # deregister one; cha never prompts
 
 cha help [command]
 cha completions fish
@@ -116,6 +117,7 @@ cha completions fish
 - Label names are checked before any write, because Gitea silently ignores unknown names, or wipes the set on replace.
 - Gitea 1.25 has no API to rerun or cancel an Actions run. `cha runs rerun|cancel` exit 1 with a hint: push a commit, or use the web UI.
 - GitHub's issue list includes pull requests. `cha issue list` drops them.
+- GitHub scopes runners to a repo or an org: `cha runners --user` and `--admin` exit 1 there. On Gitea and Forgejo, `--admin` lists every runner on the site and needs a site-admin token; a 403 says so. A runner id must be digits only, and a delete without `--yes` names the runner and exits 1.
 
 ## When cha isn't enough
 
