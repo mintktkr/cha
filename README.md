@@ -51,6 +51,7 @@ $ cha completions fish > ~/.config/fish/completions/cha.fish
   - piped output is plain text, with no escape codes
   - `--json` gives stable fields, `--json a,b` only those
   - exit codes mean something
+  - an unknown flag is an error that lists the flags the command takes, never silently ignored
 - **Gitea Actions included.** List runs, read job logs, dispatch workflows.
 - **Nothing to install.** cha speaks HTTPS and JSON itself. Credentials come from git's credential store or an environment variable.
 

@@ -422,6 +422,7 @@ def run(+env: Cli.Env) -> IO(Unit):
   match env:
     case Cli.Env{repo, tok, on, json, +args}:
       do IO<Unit>:
+        Cli.check(env, "moved", args, ["--since", "--json"])
         now : U32 <- Sys.now()
         +m : Maybe<&2, U32> = Since.of(now, Cli.flag(args, "--since", "1d"))
         start(env, m)

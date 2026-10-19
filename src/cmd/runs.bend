@@ -593,6 +593,7 @@ def view(+env: Cli.Env) -> IO(Unit):
   match env:
     case Cli.Env{+repo, +tok, on, json, +args}:
       do IO<Unit>:
+        Cli.check(env, "runs view", args, ["--json"])
         +id : String <- require.at(env, 1n, "run id")
         r : Api.Reply <- Api.get(repo, tok, Api.path(repo, "actions/runs/" ++ id))
         body : List<&2, U32> <- fetch.body(env, r)
@@ -804,6 +805,7 @@ def logs(+env: Cli.Env) -> IO(Unit):
   match env:
     case Cli.Env{+repo, +tok, on, json, +args}:
       do IO<Unit>:
+        Cli.check(env, "runs logs", args, ["--job", "--step", "--failed"])
         +id : String <- require.at(env, 1n, "run id")
         +job : String = Cli.flag(args, "--job", "")
         +step : String <- require.if(env, Cli.flag(args, "--step", ""), "step name", (Cli.has(args, "--step") || Cli.has(args, "--step=")) && (String.is_empty(Cli.flag(args, "--step", "")) || String.starts_with(Cli.flag(args, "--step", ""), "--")))
@@ -911,6 +913,7 @@ def watch(+env: Cli.Env) -> IO(Unit):
   match env:
     case Cli.Env{+repo, +tok, on, json, +args}:
       do IO<Unit>:
+        Cli.check(env, "runs watch", args, [])
         +id : String <- require.at(env, 1n, "run id")
         r : Api.Reply <- Api.get(repo, tok, Api.path(repo, "actions/runs/" ++ id))
         body : List<&2, U32> <- fetch.body(env, r)
@@ -981,6 +984,7 @@ def dispatch(+env: Cli.Env) -> IO(Unit):
   match env:
     case Cli.Env{+repo, +tok, on, json, +args}:
       do IO<Unit>:
+        Cli.check(env, "runs dispatch", args, ["--ref", "--input"])
         wf : String <- require.at(env, 1n, "workflow file")
         +ref : String = Cli.flag(args, "--ref", "main")
         ks : List<&2, String> = inputs.of(args)
@@ -1048,6 +1052,7 @@ def rerun(+env: Cli.Env) -> IO(Unit):
   match env:
     case Cli.Env{+repo, +tok, on, json, +args}:
       do IO<Unit>:
+        Cli.check(env, "runs rerun", args, ["--job", "--failed"])
         +id : String <- require.at(env, 1n, "run id")
         +job : String = Cli.flag(args, "--job", "")
         rerun.args(env, repo, id, job, Cli.has(args, "--failed"), (Cli.has(args, "--job") || Cli.has(args, "--job=")) && (String.is_empty(job) || String.starts_with(job, "--")))
@@ -1077,6 +1082,7 @@ def cancel(+env: Cli.Env) -> IO(Unit):
   match env:
     case Cli.Env{+repo, +tok, on, json, +args}:
       do IO<Unit>:
+        Cli.check(env, "runs cancel", args, [])
         +id : String <- require.at(env, 1n, "run id")
         r : Api.Reply <- Api.send(repo, tok, "POST", Api.path(repo, "actions/runs/" ++ id ++ "/cancel"), None{})
         cancel.check(env, r, id)
@@ -1269,6 +1275,7 @@ def list(+env: Cli.Env) -> IO(Unit):
   match env:
     case Cli.Env{+repo, +tok, on, json, +args}:
       do IO<Unit>:
+        Cli.check(env, "runs list", args, ["--limit", "--workflow", "--branch", "--status", "--json"])
         +limit : Nat <- list.limit(env, U32.read(Cli.flag(args, "--limit", "20")))
         +now : U32 <- Sys.now()
         +wanted : String = Cli.flag(args, "--workflow", "")

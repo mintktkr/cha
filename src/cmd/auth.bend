@@ -80,8 +80,9 @@ def check(+env: Cli.Env, +source: String, none: Bool) -> IO(Unit):
 
 def status(+env: Cli.Env) -> IO(Unit):
   match env:
-    case Cli.Env{+repo, +tok, on, json, a}:
+    case Cli.Env{+repo, +tok, on, json, +args}:
       do IO<Unit>:
+        Cli.check(env, "auth status", args, ["--json"])
         +source : String <- Ctx.token.source(repo)
         check(env, source, String.is_empty(tok))
 

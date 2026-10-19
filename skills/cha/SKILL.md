@@ -24,13 +24,14 @@ description: Use cha for Gitea, Forgejo and GitHub work from the terminal - issu
 - `issue view --comments`, `runs view` and `moved` print nested records. They take no field list and exit 1 if given one; bare `--json` still works.
 - Write commands print the URL of what they created or changed on stdout; `release upload` prints one line per file, the asset's download URL.
 - Errors go to stderr with exit code 1. `pr checks` and `runs watch` also exit 1 when something failed.
+- A flag the subcommand doesn't take exits 1 and names the flags it does, for example `unknown flag --bogus for issue list; flags: --state --label ...`. `-h`, `--help` and `-R` are taken everywhere; `-h` or `--help` after a command prints its usage page instead of running it (`cha issue list --help` prints `cha issue`).
 - Forge text is printed with its control characters and escape sequences removed, on stderr too, so a title, a body, a label, a branch name or a CI log line cannot move the cursor or spoof output. One-line fields (titles, labels, branches, names) also turn a newline or tab into a space, so they can't add rows to a list; bodies, comments and release notes keep their lines. Raw content stays byte-exact when piped: `repo file` and `pr diff` print the bytes unchanged into a redirect, and `--json` keeps the data, escaping control characters as `\uXXXX`.
 - Bodies come from `--body TEXT` or `--body-file PATH`. `--body-file -` reads stdin. cha never opens an editor or prompts.
 
 ## Commands
 
 ```bash
-cha issue list [--state open|closed|all] [--label L] [--assignee U] [--since 1d|6h|ISO8601] [--with-prs] [--all] [--json]
+cha issue list [--state open|closed|all] [--label L] [--assignee U] [--since 1d|6h|ISO8601] [--with-prs] [--all] [--limit N] [--json]
 cha issue view N [--comments]
 cha issue create --title T [--body B | --body-file F] [--label a,b] [--assignee u]
 cha issue comment N --body B          # or --body-file -
@@ -38,7 +39,7 @@ cha issue edit N [--title T] [--body B]
 cha issue close N [--comment C]  /  cha issue reopen N
 cha issue labels N add a,b | remove a,b | set a,b
 
-cha pr list [--state open|closed|all] [--json]
+cha pr list [--state open|closed|all] [--all] [--limit N] [--json]
 cha pr view N [--comments]            # state, head -> base, mergeable, review summary, body
 cha pr diff N                         # raw unified diff
 cha pr create --head H [--base main] --title T [--body B | --body-file F]

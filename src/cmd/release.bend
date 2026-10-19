@@ -118,6 +118,7 @@ def list(+env: Cli.Env) -> IO(Unit):
   match env:
     case Cli.Env{+repo, +tok, on, json, +args}:
       do IO<Unit>:
+        Cli.check(env, "release list", args, ["--json"])
         r : Result<&1, &1, String, List<&2, Map<&2, String>>> <- Api.all(1n, repo, tok, Api.path(repo, release.query.repo(repo)))
         release.show(env, r)
 
@@ -194,6 +195,7 @@ def view(+env: Cli.Env) -> IO(Unit):
   match env:
     case Cli.Env{+repo, +tok, on, json, +args}:
       do IO<Unit>:
+        Cli.check(env, "release view", args, ["--json"])
         +tag : String = Cli.arg(args, 1n)
         r : Api.Reply <- Api.get(repo, tok, Api.path(repo, view.url(tag, latest.of(tag))))
         b : List<&2, U32> <- body.reply(env, r)
@@ -216,6 +218,7 @@ def latest(+env: Cli.Env) -> IO(Unit):
   match env:
     case Cli.Env{+repo, +tok, on, json, +args}:
       do IO<Unit>:
+        Cli.check(env, "release latest", args, ["--json"])
         r : Api.Reply <- Api.get(repo, tok, Api.path(repo, "releases/latest"))
         b : List<&2, U32> <- body.reply(env, r)
         latest.out(on, json, release.row(Api.obj(b)))
@@ -332,6 +335,7 @@ def create(+env: Cli.Env) -> IO(Unit):
   match env:
     case Cli.Env{+repo, +tok, on, json, +args}:
       do IO<Unit>:
+        Cli.check(env, "release create", args, ["--notes", "--notes-file", "--title", "--draft", "--prerelease", "--target"])
         +tag : String = Cli.arg(flag.drop(flag.drop(args, "--draft"), "--prerelease"), 1n)
         t : String <- create.tag(env, tag, String.is_empty(tag))
         notes : String <- notes.of(env, Cli.flag(args, "--notes", ""), Cli.flag(args, "--notes-file", ""), Cli.has(args, "--notes-file"))
@@ -548,6 +552,7 @@ def upload(+env: Cli.Env) -> IO(Unit):
   match env:
     case Cli.Env{+repo, +tok, on, json, +args}:
       do IO<Unit>:
+        Cli.check(env, "release upload", args, [])
         +tag : String = Cli.arg(args, 1n)
         t : String <- upload.tag(env, tag, String.is_empty(tag))
         paths : List<&2, String> <- upload.paths(env, List.drop(&2, String, Cli.positional(args), 2n))

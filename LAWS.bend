@@ -78,6 +78,19 @@ law flag_empty:
   for dflt: String
   {Cli.flag(Nil{}, name, dflt) == dflt : String}
 
+# LAW: a flag the command doesn't read is named, so it can fail loud instead of vanishing
+# with its value.
+law unknown_flag:
+  {Cli.unknown(["--state"], ["--state", "open", "--limit", "3"]) == ["--limit"] : List<&2, String>}
+
+# LAW: a flag is judged by its name before any =, so --limit=3 can't slip past as one word.
+law unknown_flag_eq:
+  {Cli.unknown(["--state"], ["--state=open", "--limit=3"]) == ["--limit"] : List<&2, String>}
+
+# LAW: -h and --help are never unknown, even to a command that reads no flags.
+law unknown_flag_help:
+  {Cli.unknown(Nil{}, ["-h", "--help"]) == Nil{} : List<&2, String>}
+
 # Concrete examples
 # -----------------
 

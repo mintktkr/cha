@@ -343,6 +343,7 @@ def view(+env: Cli.Env) -> IO(Unit):
   match env:
     case Cli.Env{+repo, +tok, on, json, +args}:
       do IO<Unit>:
+        Cli.check(env, "pr view", args, ["--comments", "--json"])
         +num : String = Cli.arg(args, 1n)
         +n : String <- need.number(env, num, number.ok(U32.read(num)))
         r : Api.Reply <- Api.get(repo, tok, Api.path(repo, "pulls/" ++ n))
@@ -351,12 +352,12 @@ def view(+env: Cli.Env) -> IO(Unit):
 # list
 # ----
 
-def list.query(f: Ctx.Forge, +state: String) -> String:
+def list.query(f: Ctx.Forge, +size: Nat, +state: String) -> String:
   match f:
     case Ctx.Gitea{}:
-      "pulls?limit=50&state=" ++ state
+      "pulls?limit=" ++ Nat.show(size) ++ "&state=" ++ state
     case Ctx.GitHub{}:
-      "pulls?per_page=100&state=" ++ state
+      "pulls?per_page=" ++ Nat.show(size) ++ "&state=" ++ state
 
 def state.ok(+s: String) -> Bool:
   String.eq(s, "open") || String.eq(s, "closed") || String.eq(s, "all")
@@ -386,10 +387,18 @@ def list.print(+on: Bool, json: Cli.Json, +xs: List<&2, Map<&2, String>>) -> IO(
     case j:
       Cli.json.emit(on, j, xs, ["number", "title", "state", "user.login", "html_url"])
 
-def list.show(+env: Cli.Env, r: Result<&1, &1, String, List<&2, Map<&2, String>>>) -> IO(Unit):
+# --limit cuts the list to its first N; without it the list is what the pages held
+def list.cut(xs: List<&2, Map<&2, String>>, +limit: Nat, given: Bool) -> List<&2, Map<&2, String>>:
+  match given:
+    case True{}:
+      List.take(&2, Map<&2, String>, xs, limit)
+    case False{}:
+      xs
+
+def list.show(+env: Cli.Env, r: Result<&1, &1, String, List<&2, Map<&2, String>>>, +limit: Nat, given: Bool) -> IO(Unit):
   match env r:
     case Cli.Env{repo, tok, +on, json, args} Done{xs}:
-      list.print(on, json, xs)
+      list.print(on, json, list.cut(xs, limit, given))
     case e Fail{w}:
       Cli.fail(Unit, e, w)
 
@@ -400,14 +409,48 @@ def list.pages(all: Bool) -> Nat:
     case False{}:
       1n
 
+# --limit reads the pages its N fill; without it, one page, or a hundred with --all
+def list.pages.of(all: Bool, +limit: Nat, +size: Nat, given: Bool) -> Nat:
+  match given:
+    case True{}:
+      Nat.div(Nat.add(limit, Nat.sub(size, 1n)), size)
+    case False{}:
+      list.pages(all)
+
+# a page as each forge caps it, and the list's size without --limit
+def list.size(f: Ctx.Forge) -> Nat:
+  match f:
+    case Ctx.Gitea{}:
+      50n
+    case Ctx.GitHub{}:
+      100n
+
+def require.limit(+env: Cli.Env, v: U32, valid: Bool) -> IO(Nat):
+  match valid:
+    case True{}:
+      IO.pure(Nat, U32.to_nat(v))
+    case False{}:
+      Cli.fail(Nat, env, "pr list: --limit must be an integer from 1 to 1000")
+
+def list.limit(+env: Cli.Env, n: Maybe<&2, U32>) -> IO(Nat):
+  match n:
+    case Some{+v}:
+      require.limit(env, v, (v > 0 : U32) && (v <= 1000 : U32))
+    case None{}:
+      Cli.fail(Nat, env, "pr list: --limit must be an integer from 1 to 1000")
+
 def list(+env: Cli.Env) -> IO(Unit):
   match env:
     case Cli.Env{+repo, +tok, on, json, +args}:
       do IO<Unit>:
+        Cli.check(env, "pr list", args, ["--state", "--all", "--limit", "--json"])
         +st : String = Cli.flag(args, "--state", "open")
         state : String <- need.state(env, st, Bool.not(state.ok(st)))
-        r : Result<&1, &1, String, List<&2, Map<&2, String>>> <- Api.all(list.pages(Cli.has(args, "--all")), repo, tok, Api.path(repo, list.query(forge.of(repo), state)))
-        list.show(env, r)
+        +size : Nat = list.size(forge.of(repo))
+        +given : Bool = Bool.not(String.is_empty(Cli.flag(args, "--limit", "")))
+        +limit : Nat <- list.limit(env, U32.read(Cli.flag(args, "--limit", Nat.show(size))))
+        r : Result<&1, &1, String, List<&2, Map<&2, String>>> <- Api.all(list.pages.of(Cli.has(args, "--all"), limit, size, given), repo, tok, Api.path(repo, list.query(forge.of(repo), size, state)))
+        list.show(env, r, limit, given)
 
 # checks
 # ------
@@ -597,6 +640,7 @@ def checks(+env: Cli.Env) -> IO(Unit):
   match env:
     case Cli.Env{+repo, +tok, on, json, +args}:
       do IO<Unit>:
+        Cli.check(env, "pr checks", args, ["--json"])
         +num : String = Cli.arg(args, 1n)
         +n : String <- need.number(env, num, number.ok(U32.read(num)))
         checks.pr(env, repo, tok, n)
@@ -653,6 +697,7 @@ def diff(+env: Cli.Env) -> IO(Unit):
   match env:
     case Cli.Env{+repo, +tok, on, json, +args}:
       do IO<Unit>:
+        Cli.check(env, "pr diff", args, [])
         +num : String = Cli.arg(args, 1n)
         +n : String <- need.number(env, num, number.ok(U32.read(num)))
         r : Api.Reply <- accept.get(repo, tok, Api.path(repo, diff.url(forge.of(repo), n)), diff.accept(forge.of(repo)))
@@ -668,6 +713,7 @@ def create(+env: Cli.Env) -> IO(Unit):
   match env:
     case Cli.Env{+repo, +tok, on, json, +args}:
       do IO<Unit>:
+        Cli.check(env, "pr create", args, ["--head", "--title", "--base", "--body", "--body-file"])
         +head : String = Cli.flag(args, "--head", "")
         +title : String = Cli.flag(args, "--title", "")
         h : String <- need.flag(env, "head", head, String.is_empty(head))
@@ -799,6 +845,7 @@ def merge(+env: Cli.Env) -> IO(Unit):
   match env:
     case Cli.Env{+repo, +tok, on, json, +args}:
       do IO<Unit>:
+        Cli.check(env, "pr merge", args, ["--squash", "--merge", "--rebase", "--delete-branch"])
         +num : String = Cli.arg(args, 1n)
         +n : String <- need.number(env, num, number.ok(U32.read(num)))
         +method : String = merge.pick(Cli.has(args, "--squash"), Cli.has(args, "--merge"), Cli.has(args, "--rebase"))
@@ -829,6 +876,7 @@ def edit(+env: Cli.Env) -> IO(Unit):
   match env:
     case Cli.Env{+repo, +tok, on, json, +args}:
       do IO<Unit>:
+        Cli.check(env, "pr edit", args, ["--title", "--body", "--body-file"])
         +num : String = Cli.arg(args, 1n)
         +n : String <- need.number(env, num, number.ok(U32.read(num)))
         +title : String = Cli.flag(args, "--title", "")
@@ -849,6 +897,7 @@ def comment(+env: Cli.Env) -> IO(Unit):
   match env:
     case Cli.Env{+repo, +tok, on, json, +args}:
       do IO<Unit>:
+        Cli.check(env, "pr comment", args, ["--body", "--body-file"])
         +num : String = Cli.arg(args, 1n)
         +n : String <- need.number(env, num, number.ok(U32.read(num)))
         +b : String <- body.text(env, args)

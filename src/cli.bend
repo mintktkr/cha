@@ -326,3 +326,81 @@ def fail(-A: Type, +env: Env, msg: String) -> IO(A):
       do IO<A>:
         Ui.error(c, msg)
         IO.die(A, 1, "")
+
+# Unknown flags
+# -------------
+# Each subcommand names the flags it reads, so one it doesn't read fails loud instead of
+# vanishing with its value, as --limit once did on issue list.
+
+# a word of the arguments as the flag check sees it: a flag by its name, or anything else
+type Said is Data:
+  Loose{}
+  Named{name: String, takes: Bool}
+
+# --limit=3 is judged as --limit
+def said.name(+a: String) -> String:
+  Ctx.first(String.split(a, '='))
+
+def said.one(+a: String, flag: Bool) -> Said:
+  match flag:
+    case True{}:
+      Named{said.name(a), Bool.not(switch(a)) && Bool.not(String.contains(a, "="))}
+    case False{}:
+      Loose{}
+
+def said(args: List<&2, String>) -> List<&2, Said>:
+  match args:
+    case Nil{}:
+      Nil{}
+    case Con{+a, rest}:
+      said.one(a, String.starts_with(a, "-") && Nat.is_gt(String.length(a), 1n)) <> said(rest)
+
+# the flag names in args, in order; a flag's value is never judged, so --body "-1" stays a body
+def said.names(ws: List<&2, Said>) -> List<&2, String>:
+  match ws:
+    case Nil{}:
+      Nil{}
+    case Con{Named{n, True{}}, Con{w, t}}:
+      n <> said.names(t)
+    case Con{Named{n, b}, t}:
+      n <> said.names(t)
+    case Con{Loose{}, t}:
+      said.names(t)
+
+# flags every command takes: help, and -R written after the command word
+def said.global(+n: String) -> Bool:
+  String.eq(n, "-h") || String.eq(n, "--help") || String.eq(n, "-R")
+
+def unknown.keep(+n: String, later: List<&2, String>, keep: Bool) -> List<&2, String>:
+  match keep:
+    case True{}:
+      n <> later
+    case False{}:
+      later
+
+def unknown.go(ns: List<&2, String>, +known: List<&2, String>, +seen: List<&2, String>) -> List<&2, String>:
+  match ns:
+    case Nil{}:
+      Nil{}
+    case Con{+n, rest}:
+      unknown.keep(n, unknown.go(rest, known, n <> seen), Bool.not(list.has(n, known) || said.global(n) || list.has(n, seen)))
+
+# the flags in args that aren't in known, first-seen order, each once
+def unknown(+known: List<&2, String>, args: List<&2, String>) -> List<&2, String>:
+  unknown.go(said.names(said(args)), known, Nil{})
+
+# the error for a flag cmd doesn't read
+def unknown.msg(+cmd: String, +bad: String, +known: List<&2, String>) -> String:
+  "unknown flag " ++ bad ++ " for " ++ cmd ++ "; flags: " ++ Ctx.or(String.join(known, " "), "none")
+
+def check.if(+env: Env, +msg: String, ok: Bool) -> IO(Unit):
+  match ok:
+    case True{}:
+      IO.pure(Unit, Unit{})
+    case False{}:
+      fail(Unit, env, msg)
+
+# exit 1 on the first flag in args that cmd ("issue list") doesn't read
+def check(+env: Env, +cmd: String, args: List<&2, String>, +known: List<&2, String>) -> IO(Unit):
+  +bad = Ctx.first(unknown(known, args))
+  check.if(env, unknown.msg(cmd, bad, known), String.is_empty(bad))
