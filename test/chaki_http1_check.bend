@@ -116,6 +116,13 @@ def seven(one: Bool, resp: String) -> String:
   +b = Bytes.of_ascii(resp)
   show.step(H.step(seven.go(U32.to_nat(Bytes.len(b)), b, H.parser(one))))
 
+# the same, whole and one byte at a time, to a parser that lets the response take room bytes
+def roomy(room: Nat, resp: String) -> String:
+  show.step(H.step(H.feed(H.parser.room(False{}, room), Bytes.of_ascii(resp))))
+
+def roomy.drip(room: Nat, resp: String) -> String:
+  show.step(H.step(drip.go(Bytes.of_ascii(resp), H.parser.room(False{}, room))))
+
 # the step after feeding the response whole and then closing the connection
 def closed(one: Bool, resp: String) -> String:
   p = H.feed(H.parser(one), Bytes.of_ascii(resp))
@@ -334,6 +341,13 @@ def main() -> IO(Unit):
     IO.print(T.eq("a head over 64 KiB", whole(False{}, resp.big.head()), "bad head over 64 KiB"))
     IO.print(T.eq("a chunk-size that isn't hex", whole(False{}, resp.bad.chunk()), "bad bad chunk size"))
     IO.print(T.eq("a chunk-size with too many digits", whole(False{}, "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n1ffffffff\r\n"), "bad chunk size is too large"))
+    IO.print(T.eq("a content-length past the default room fails at the head", whole(False{}, "HTTP/1.1 200 OK\r\nContent-Length: 67108865\r\n\r\n"), "bad the response is too large"))
+    IO.print(T.eq("a content-length at the default room waits for its body", whole(False{}, "HTTP/1.1 200 OK\r\nContent-Length: 67108864\r\n\r\n"), "more"))
+    IO.print(T.eq("a response that fits its room exactly", roomy(43n, resp.len()), "status 200 | content-length=5 | body 68656c6c6f"))
+    IO.print(T.eq("a response one byte past its room", roomy(42n, resp.len()), "bad the response is too large"))
+    IO.print(T.eq("the room is spent across feeds", roomy.drip(42n, resp.len()), "bad the response is too large"))
+    IO.print(T.eq("a body to eof past its room", roomy(25n, resp.close()), "bad the response is too large"))
+    IO.print(T.eq("a chunked body past its room", roomy.drip(60n, resp.chunked()), "bad the response is too large"))
     IO.print(T.eq("a bad chunk end", whole(False{}, "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n1\r\nxZ\r\n"), "bad bad chunk end"))
     IO.print(T.eq("eof in the middle of a body", closed(False{}, "HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nab"), "bad eof with the response unfinished"))
     IO.print(T.eq("eof in the middle of a head", closed(False{}, "HTTP/1.1 200 OK\r\nContent-Len"), "bad eof with the response unfinished"))

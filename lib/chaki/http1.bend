@@ -94,8 +94,17 @@ type Mv is Data:
   Hold{st: St, buf: List<&2, U32>}
   End{st: St}
 
+# room: the bytes the response may still take, head and body together
 type Parser is Data:
-  P{st: St, buf: List<&2, U32>}
+  P{st: St, buf: List<&2, U32>, room: Nat}
+
+# the most a response may take by default: 64 MiB. A body is held as a list of bytes, so
+# this is what bounds the memory a hostile server can make the client spend.
+def ROOM() -> Nat:
+  67108864n
+
+def too.big() -> String:
+  "the response is too large"
 
 # Character classes
 # -----------------
@@ -542,12 +551,20 @@ def te.last.go(s: String, acc: String) -> String:
 def body.chunked(v: String) -> Bool:
   Bytes.eq(low.bytes(ws.trim(Bytes.of_ascii(te.last.go(v, SNil{})))), Bytes.of_ascii("chunked"))
 
+# a content-length past the room fails at the head, before any of the body is read
+def head.framed.cl.fit(head: Head, rest: List<&2, U32>, +n: Nat, over: Bool) -> Mv:
+  match over:
+    case True{}:
+      End{StBad{too.big()}}
+    case False{}:
+      Cont{StLen{n, Nil{}, head}, rest}
+
 def head.framed.cl.parse(head: Head, rest: List<&2, U32>, c: Cl) -> Mv:
   match c:
     case ClBad{why}:
       End{StBad{why}}
-    case ClSome{n}:
-      Cont{StLen{n, Nil{}, head}, rest}
+    case ClSome{+n}:
+      head.framed.cl.fit(head, rest, n, Nat.is_gt(n, ROOM()))
 
 def head.framed.cl.seen(head: Head, rest: List<&2, U32>, text: String, seen: Bool) -> Mv:
   match seen:
@@ -955,28 +972,44 @@ def run(fuel: Nat, m: Mv) -> St & List<&2, U32>:
 # The parser
 # ----------
 
-# a fresh parser. head_only is a HEAD request: no body is read, whatever the headers say.
-def parser(head_only: Bool) -> Parser:
-  P{StHead{65536n, head_only, Nil{}}, Nil{}}
+# a fresh parser that lets a response take at most room bytes, head and body together.
+# head_only is a HEAD request: no body is read, whatever the headers say.
+def parser.room(head_only: Bool, room: Nat) -> Parser:
+  P{StHead{65536n, head_only, Nil{}}, Nil{}, room}
 
-def feed.p(r: St & List<&2, U32>) -> Parser:
+# a fresh parser with the default room, ROOM()
+def parser(head_only: Bool) -> Parser:
+  parser.room(head_only, ROOM())
+
+def feed.p(r: St & List<&2, U32>, room: Nat) -> Parser:
   match r:
     case (s, b):
-      P{s, b}
+      P{s, b, room}
 
-def feed.run(st: St, fuel: Nat, buf: List<&2, U32>) -> Parser:
-  feed.p(run(fuel, Cont{st, buf}))
+def feed.run(st: St, fuel: Nat, buf: List<&2, U32>, room: Nat) -> Parser:
+  feed.p(run(fuel, Cont{st, buf}), room)
 
-def feed.go(st: St, b: List<&2, U32> & Nat, c: List<&2, U32> & Nat) -> Parser:
+# bytes past the room end the response, whatever state it was in
+def feed.over(st: St, +room: Nat, buf: List<&2, U32>, nb: Nat, chunk: List<&2, U32>, +nc: Nat, over: Bool) -> Parser:
+  match over:
+    case True{}:
+      P{StBad{too.big()}, Nil{}, 0n}
+    case False{}:
+      feed.run(st, Nat.add(Nat.add(nb, nc), 1n), Bytes.rev.onto(Bytes.rev(buf), chunk), Nat.sub(room, nc))
+
+def feed.at(st: St, +room: Nat, buf: List<&2, U32>, nb: Nat, chunk: List<&2, U32>, +nc: Nat) -> Parser:
+  feed.over(st, room, buf, nb, chunk, nc, Nat.is_gt(nc, room))
+
+def feed.go(st: St, room: Nat, b: List<&2, U32> & Nat, c: List<&2, U32> & Nat) -> Parser:
   (buf, nb) = b
   (chunk, nc) = c
-  feed.run(st, Nat.add(Nat.add(nb, nc), 1n), Bytes.rev.onto(Bytes.rev(buf), chunk))
+  feed.at(st, room, buf, nb, chunk, nc)
 
 # hand the parser the next bytes of the response
 def feed(p: Parser, chunk: List<&2, U32>) -> Parser:
   match p:
-    case P{st, buf}:
-      feed.go(st, len.keep(buf), len.keep(chunk))
+    case P{st, buf, room}:
+      feed.go(st, room, len.keep(buf), len.keep(chunk))
 
 def eof.of(st: St, buf: List<&2, U32>) -> St:
   match st:
@@ -992,8 +1025,8 @@ def eof.of(st: St, buf: List<&2, U32>) -> St:
 # the peer closed the connection
 def eof(p: Parser) -> Parser:
   match p:
-    case P{st, buf}:
-      P{eof.of(st, buf), Nil{}}
+    case P{st, buf, room}:
+      P{eof.of(st, buf), Nil{}, room}
 
 def step.of(st: St) -> Step:
   match st:
@@ -1007,5 +1040,5 @@ def step.of(st: St) -> Step:
 # what the parser has so far: More, Got, or Bad
 def step(p: Parser) -> Step:
   match p:
-    case P{st, buf}:
+    case P{st, buf, room}:
       step.of(st)
