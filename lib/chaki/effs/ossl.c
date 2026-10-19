@@ -50,6 +50,7 @@ static struct {
   const char*   (*X509_verify_cert_error_string)(long);
   unsigned long (*ERR_peek_last_error)(void);
   unsigned long (*ERR_get_error)(void);
+  void          (*ERR_clear_error)(void);
   void          (*ERR_error_string_n)(unsigned long, char*, size_t);
   int           (*SSL_read)(void*, void*, int);
   int           (*SSL_write)(void*, const void*, int);
@@ -91,6 +92,7 @@ static bool ossl_load(void) {
   ossl.X509_verify_cert_error_string = dlsym(h, "X509_verify_cert_error_string");
   ossl.ERR_peek_last_error = dlsym(h, "ERR_peek_last_error");
   ossl.ERR_get_error = dlsym(h, "ERR_get_error");
+  ossl.ERR_clear_error = dlsym(h, "ERR_clear_error");
   ossl.ERR_error_string_n = dlsym(h, "ERR_error_string_n");
   ossl.SSL_read = dlsym(h, "SSL_read");
   ossl.SSL_write = dlsym(h, "SSL_write");
@@ -101,7 +103,8 @@ static bool ossl_load(void) {
     && ossl.SSL_CTX_ctrl && ossl.SSL_CTX_set_verify && ossl.SSL_new && ossl.SSL_set_fd
     && ossl.SSL_set1_host && ossl.SSL_ctrl && ossl.SSL_set_alpn_protos && ossl.SSL_connect
     && ossl.SSL_get_error && ossl.SSL_get_verify_result && ossl.X509_verify_cert_error_string
-    && ossl.ERR_peek_last_error && ossl.ERR_get_error && ossl.ERR_error_string_n
+    && ossl.ERR_peek_last_error && ossl.ERR_get_error && ossl.ERR_clear_error
+    && ossl.ERR_error_string_n
     && ossl.SSL_read && ossl.SSL_write && ossl.SSL_shutdown && ossl.SSL_free
     && ossl.SSL_CTX_free;
   ossl.state = ok ? 1 : -1;
@@ -222,9 +225,17 @@ static int ossl_event(int err) {
   return err == OSSL_E_WANT_READ ? POLLIN : err == OSSL_E_WANT_WRITE ? POLLOUT : 0;
 }
 
+// Before every TLS call: SSL_get_error and ossl_eof read the thread's error queue and
+// errno, and an entry an earlier call left there would be taken for this call's.
+static void ossl_fresh(void) {
+  ossl.ERR_clear_error();
+  errno = 0;
+}
+
 // OpenSSL 3 answers a peer that closed without close_notify with a TLS error whose last
-// entry says unexpected EOF. TLS cannot tell that from a truncated stream; a client that
-// has read what it asked for has to accept it as the end.
+// entry says unexpected EOF. TLS can't tell that from a truncated stream, so it's an
+// error: a body framed by content-length or chunks is read to its end before the close,
+// and only a body that runs to the close needs the close to be a clean one.
 static bool ossl_eof(void* s) {
   if (s == NULL) {
     return false;
@@ -280,6 +291,9 @@ static Term ossl_connect_ok(Env e, IoWork* w, void* s) {
 // that is ETIMEDOUT. w->time is the absolute deadline, in io_tick's nanoseconds.
 static Term ossl_connect_step(Env e, IoWork* w) {
   void* s = ossl_get((int)w->hand);
+  if (s != NULL) {
+    ossl_fresh();
+  }
   int rc = s == NULL ? -1 : ossl.SSL_connect(s);
   if (rc == 1) {
     return ossl_connect_ok(e, w, s);
@@ -344,6 +358,7 @@ static Term ossl_send_end(Env e, IoWork* w, u32 code, const char* why) {
 static Term ossl_send_more(Env e, IoWork* w) {
   void* s = ossl_get((int)w->hand);
   while (s != NULL && (u64)w->made < (u64)w->size) {
+    ossl_fresh();
     int n = ossl.SSL_write(s, w->data + w->made, (int)((u64)w->size - (u64)w->made));
     if (n > 0) {
       w->made += n;
@@ -391,21 +406,25 @@ static Term ossl_recv_fail(Env e, IoWork* w, u32 code, const char* why) {
 
 // One read; while OpenSSL wants the socket, park on it, and past the deadline that is
 // ETIMEDOUT. w->time is the absolute deadline, w->made the bytes asked for. Done{[]} is
-// the peer's close: a close_notify, or the plain EOF of a peer that closed without one.
+// the peer's close_notify; a peer that closed without one is ECONNRESET.
 static Term ossl_recv_more(Env e, IoWork* w) {
   void* s = ossl_get((int)w->hand);
   if (s == NULL) {
     return ossl_recv_fail(e, w, EBADF, "this socket has no TLS session");
   }
+  ossl_fresh();
   int n = ossl.SSL_read(s, w->data, (int)w->made);
   if (n > 0) {
     w->size = (intptr_t)n;
     return ossl_recv_end(e, w);
   }
   int err = ossl.SSL_get_error(s, n);
-  if (err == OSSL_E_ZERO_RETURN || (err == OSSL_E_SYSCALL && n == 0 && errno == 0) || ossl_eof(s)) {
+  if (err == OSSL_E_ZERO_RETURN) {
     w->size = 0;
     return ossl_recv_end(e, w);
+  }
+  if ((err == OSSL_E_SSL && ossl_eof(s)) || (err == OSSL_E_SYSCALL && n == 0 && errno == 0)) {
+    return ossl_recv_fail(e, w, ECONNRESET, "the server closed the connection without close_notify");
   }
   int what = ossl_event(err);
   if (what != 0 && io_tick() < (u64)w->time) {

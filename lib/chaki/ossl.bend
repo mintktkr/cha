@@ -22,8 +22,9 @@ def send(sock: Socket, data: List<&2, U32>) ->
   import "./effs/ossl.c"
   import "./effs/ossl.js"
 
-# Up to max bytes of plaintext, waiting at most ms. Done{[]} once the peer closed. A
-# max of 0 fails with EINVAL, as Base's TCP.recv_bytes does.
+# Up to max bytes of plaintext, waiting at most ms. Done{[]} once the peer sent its
+# close_notify; a peer that closed without one fails with ECONNRESET. A max of 0 fails
+# with EINVAL, as Base's TCP.recv_bytes does.
 def recv(sock: Socket, max: U32, ms: U32) ->
   IO(Socket & Result<&1, &1, U32 & String, List<&2, U32>>):
   import "./effs/ossl.c"
