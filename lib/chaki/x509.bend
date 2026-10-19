@@ -13,23 +13,25 @@ import ./asn1.bend as Asn1
 # key_alg: the SubjectPublicKeyInfo algorithm OID. key_curve: the namedCurve OID for
 # id-ecPublicKey, else "". key: the subjectPublicKey BIT STRING's bytes. dns: the
 # subjectAltName dNSName entries, lowercased. path_len and key_usage are 4294967295 when
-# their extension is absent. unknown_critical: a critical extension outside the four the
-# engine reads.
+# their extension is absent. server_auth: no extKeyUsage, or one that names id-kp-serverAuth
+# or anyExtendedKeyUsage (RFC 5280 §4.2.1.12). unknown_critical: a critical extension
+# outside the four the engine reads.
 type Cert is Data:
   Cert{der: List<&2, U32>, tbs: List<&2, U32>, sig_alg: String, sig: List<&2, U32>,
        issuer: List<&2, U32>, subject: List<&2, U32>, not_before: U32, not_after: U32,
        key_alg: String, key_curve: String, key: List<&2, U32>, dns: List<&2, String>,
-       ca: Bool, path_len: U32, key_usage: U32, unknown_critical: Bool}
+       ca: Bool, path_len: U32, key_usage: U32, unknown_critical: Bool, server_auth: Bool}
 
 # the extensions the engine reads, or the defaults when there are none
 type Exts is Data:
-  Exts{ca: Bool, path_len: U32, key_usage: U32, dns: List<&2, String>, unknown: Bool}
+  Exts{ca: Bool, path_len: U32, key_usage: U32, dns: List<&2, String>, unknown: Bool,
+       server_auth: Bool}
 
 # a TBSCertificate's fields
 type Tbs is Data:
   Tbs{issuer: List<&2, U32>, subject: List<&2, U32>, not_before: U32, not_after: U32,
       key_alg: String, key_curve: String, key: List<&2, U32>, ca: Bool, path_len: U32,
-      key_usage: U32, dns: List<&2, String>, unknown: Bool}
+      key_usage: U32, dns: List<&2, String>, unknown: Bool, server_auth: Bool}
 
 # a SubjectPublicKeyInfo
 type Spki is Data:
@@ -252,27 +254,32 @@ def x509.uint.of(+t: Asn1.Tlv) -> Maybe<&2, U32>:
 # ----------
 
 def x509.exts.none() -> Exts:
-  Exts{False{}, 4294967295, 4294967295, Nil{}, False{}}
+  Exts{False{}, 4294967295, 4294967295, Nil{}, False{}, True{}}
 
 def x509.exts.ca(+acc: Exts, ca: Bool, +path_len: U32) -> Exts:
   match acc:
-    case Exts{old_ca, old_path, usage, dns, unknown}:
-      Exts{ca, path_len, usage, dns, unknown}
+    case Exts{old_ca, old_path, usage, dns, unknown, server_auth}:
+      Exts{ca, path_len, usage, dns, unknown, server_auth}
 
 def x509.exts.usage(+acc: Exts, +key_usage: U32) -> Exts:
   match acc:
-    case Exts{ca, path_len, old_usage, dns, unknown}:
-      Exts{ca, path_len, key_usage, dns, unknown}
+    case Exts{ca, path_len, old_usage, dns, unknown, server_auth}:
+      Exts{ca, path_len, key_usage, dns, unknown, server_auth}
 
 def x509.exts.dns(+acc: Exts, dns: List<&2, String>) -> Exts:
   match acc:
-    case Exts{ca, path_len, key_usage, old_dns, unknown}:
-      Exts{ca, path_len, key_usage, dns, unknown}
+    case Exts{ca, path_len, key_usage, old_dns, unknown, server_auth}:
+      Exts{ca, path_len, key_usage, dns, unknown, server_auth}
 
 def x509.exts.unknown(+acc: Exts) -> Exts:
   match acc:
-    case Exts{ca, path_len, key_usage, dns, unknown}:
-      Exts{ca, path_len, key_usage, dns, True{}}
+    case Exts{ca, path_len, key_usage, dns, unknown, server_auth}:
+      Exts{ca, path_len, key_usage, dns, True{}, server_auth}
+
+def x509.exts.eku(+acc: Exts, server_auth: Bool) -> Exts:
+  match acc:
+    case Exts{ca, path_len, key_usage, dns, unknown, old_server_auth}:
+      Exts{ca, path_len, key_usage, dns, unknown, server_auth}
 
 # basicConstraints: cA, then pathLenConstraint
 def x509.ext.basic.path(rest: List<&2, Asn1.Tlv>, +acc: Exts, ca: Bool) -> Maybe<&2, Exts>:
@@ -384,6 +391,34 @@ def x509.ext.san.m(m: Maybe<&2, List<&2, Asn1.Tlv>>, +acc: Exts) -> Maybe<&2, Ex
 def x509.ext.san(t: Asn1.Tlv, +acc: Exts) -> Maybe<&2, Exts>:
   x509.ext.san.m(x509.oct.seq(t), acc)
 
+# extKeyUsage: whether the SEQUENCE OF OBJECT IDENTIFIER names id-kp-serverAuth or
+# anyExtendedKeyUsage. A purpose TLS servers don't have, in a list that has neither, leaves
+# server_auth False; anything but an OID in the list doesn't parse.
+def x509.eku.tls(+s: String) -> Bool:
+  Bool.or(String.eq(s, "1.3.6.1.5.5.7.3.1"), String.eq(s, "2.5.29.37.0"))
+
+def x509.eku.ids(parts: List<&2, Asn1.Tlv>, ok: Bool) -> Maybe<&2, Bool>:
+  match parts:
+    case Nil{}:
+      Some{ok}
+    case Con{oid, rest}:
+      do Maybe<&2, Bool>:
+        s : String <- x509.oid.of(oid)
+        out : Bool <- x509.eku.ids(rest, Bool.or(ok, x509.eku.tls(s)))
+        return out
+
+def x509.ext.eku.m(m: Maybe<&2, List<&2, Asn1.Tlv>>, +acc: Exts) -> Maybe<&2, Exts>:
+  match m:
+    case Some{parts}:
+      do Maybe<&2, Exts>:
+        ok : Bool <- x509.eku.ids(parts, False{})
+        return x509.exts.eku(acc, ok)
+    case None{}:
+      None{}
+
+def x509.ext.eku(t: Asn1.Tlv, +acc: Exts) -> Maybe<&2, Exts>:
+  x509.ext.eku.m(x509.oct.seq(t), acc)
+
 # the extensions the engine reads: basicConstraints, keyUsage, subjectAltName,
 # extKeyUsage. Another OID is fine unless it is marked critical.
 type Ext is Data:
@@ -415,7 +450,7 @@ def x509.ext.by(k: Ext, t: Asn1.Tlv, crit: Bool, +acc: Exts) -> Maybe<&2, Exts>:
     case San{}:
       x509.ext.san(t, acc)
     case Eku{}:
-      Some{acc}
+      x509.ext.eku(t, acc)
     case Unknown{}:
       x509.ext.unknown(crit, acc)
 
@@ -501,8 +536,8 @@ def x509.exts(parts: List<&2, Asn1.Tlv>) -> Maybe<&2, Exts>:
 
 def x509.tbs.make(issuer: List<&2, U32>, subject: List<&2, U32>, v: Validity, k: Spki, e: Exts) -> Tbs:
   match v k e:
-    case Validity{nb, na} Spki{alg, curve, key} Exts{ca, path_len, key_usage, dns, unknown}:
-      Tbs{issuer, subject, nb, na, alg, curve, key, ca, path_len, key_usage, dns, unknown}
+    case Validity{nb, na} Spki{alg, curve, key} Exts{ca, path_len, key_usage, dns, unknown, server_auth}:
+      Tbs{issuer, subject, nb, na, alg, curve, key, ca, path_len, key_usage, dns, unknown, server_auth}
 
 # sign: the DER start of the issuer's Name. issuer's rest is that Name's end, validity's
 # rest the start of the subject's Name.
@@ -551,8 +586,8 @@ def x509.tbs(t: Asn1.Tlv) -> Maybe<&2, Tbs>:
 
 def x509.cert.make(der: List<&2, U32>, tbs: List<&2, U32>, sig_alg: String, sig: List<&2, U32>, b: Tbs) -> Cert:
   match b:
-    case Tbs{issuer, subject, not_before, not_after, key_alg, key_curve, key, ca, path_len, key_usage, dns, unknown}:
-      Cert{der, tbs, sig_alg, sig, issuer, subject, not_before, not_after, key_alg, key_curve, key, dns, ca, path_len, key_usage, unknown}
+    case Tbs{issuer, subject, not_before, not_after, key_alg, key_curve, key, ca, path_len, key_usage, dns, unknown, server_auth}:
+      Cert{der, tbs, sig_alg, sig, issuer, subject, not_before, not_after, key_alg, key_curve, key, dns, ca, path_len, key_usage, unknown, server_auth}
 
 def x509.cert.go(der: List<&2, U32>, raw: List<&2, U32>, tbs: Asn1.Tlv, sigalg: Asn1.Tlv, sig: Asn1.Tlv) -> Maybe<&2, Cert>:
   do Maybe<&2, Cert>:

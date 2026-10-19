@@ -161,7 +161,7 @@ def signed.with(s: Sig, +alg: String, +curve: String, key: List<&2, U32>, tbs: L
 # whether cert's signature verifies under issuer's public key
 def signed_by(cert: X509.Cert, issuer: X509.Cert) -> Bool:
   match cert issuer:
-    case X509.Cert{d, tbs, +sa, sig, i, su, nb, na, ka, kc, k, dns, ca, pl, ku, uc} X509.Cert{d2, t2, sa2, s2, i2, su2, nb2, na2, +alg, +curve, key, dns2, ca2, pl2, ku2, uc2}:
+    case X509.Cert{d, tbs, +sa, sig, i, su, nb, na, ka, kc, k, dns, ca, pl, ku, uc, st} X509.Cert{d2, t2, sa2, s2, i2, su2, nb2, na2, +alg, +curve, key, dns2, ca2, pl2, ku2, uc2, st2}:
       signed.with(sig.of(sa), alg, curve, key, tbs, sig)
 
 # Hosts
@@ -216,7 +216,7 @@ def host_ok.if(ip: Bool, c: X509.Cert, +host: String) -> Bool:
       False{}
     case False{}:
       match c:
-        case X509.Cert{d, t, sa, s, i, su, nb, na, ka, kc, k, dns, ca, pl, ku, uc}:
+        case X509.Cert{d, t, sa, s, i, su, nb, na, ka, kc, k, dns, ca, pl, ku, uc, st}:
           names.ok(dns, host)
 
 # whether host matches the certificate: SAN dNSName entries only, case-insensitive, a "*."
@@ -231,12 +231,12 @@ def host_ok(cert: X509.Cert, +host: String) -> Bool:
 
 def subject.of(c: X509.Cert) -> List<&2, U32>:
   match c:
-    case X509.Cert{d, t, sa, s, i, su, nb, na, ka, kc, k, dns, ca, pl, ku, uc}:
+    case X509.Cert{d, t, sa, s, i, su, nb, na, ka, kc, k, dns, ca, pl, ku, uc, st}:
       su
 
 def issuer.of(c: X509.Cert) -> List<&2, U32>:
   match c:
-    case X509.Cert{d, t, sa, s, i, su, nb, na, ka, kc, k, dns, ca, pl, ku, uc}:
+    case X509.Cert{d, t, sa, s, i, su, nb, na, ka, kc, k, dns, ca, pl, ku, uc, st}:
       i
 
 # the signature is only checked once the names match: most candidates fail on bytes
@@ -277,7 +277,7 @@ def KEY_CERT_SIGN() -> U32:
 # below is how many issuers sit between it and the leaf
 def inter.why(c: X509.Cert, +below: U32, +now: U32) -> String:
   match c:
-    case X509.Cert{d, t, sa, s, i, su, +nb, +na, ka, kc, k, dns, ca, +pl, +ku, uc}:
+    case X509.Cert{d, t, sa, s, i, su, +nb, +na, ka, kc, k, dns, ca, +pl, +ku, uc, st}:
       Bool.pick(String, Bool.not(ca), "an issuer in the chain isn't a CA",
       Bool.pick(String, Bool.and(U32.is_ne(ku, 4294967295), U32.is_eq(U32.and(ku, KEY_CERT_SIGN()), 0)), "an issuer in the chain may not sign certificates",
       Bool.pick(String, U32.is_lt(now, nb), "an issuer in the chain isn't valid yet",
@@ -287,7 +287,7 @@ def inter.why(c: X509.Cert, +below: U32, +now: U32) -> String:
 
 def leaf.why(c: X509.Cert, +host: String, +now: U32, ok: Bool) -> String:
   match c:
-    case X509.Cert{d, t, sa, s, i, su, +nb, +na, ka, kc, k, dns, ca, pl, ku, uc}:
+    case X509.Cert{d, t, sa, s, i, su, +nb, +na, ka, kc, k, dns, ca, pl, ku, uc, st}:
       Bool.pick(String, U32.is_lt(now, nb), "the server's certificate isn't valid yet",
       Bool.pick(String, U32.is_gt(now, na), "the server's certificate has expired",
       Bool.pick(String, uc, "the server's certificate has a critical extension chaki doesn't know",

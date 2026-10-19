@@ -77,7 +77,7 @@ def leaf.check(sc: Scheme, +alg: String, +curve: String, key: List<&2, U32>, sig
 
 def leaf.signed(+scheme: U32, c: X509.Cert, signed: List<&2, U32>, sig: List<&2, U32>) -> Bool:
   match c:
-    case X509.Cert{d, t, sa, s, i, su, nb, na, +alg, +curve, key, dns, ca, pl, ku, uc}:
+    case X509.Cert{d, t, sa, s, i, su, nb, na, +alg, +curve, key, dns, ca, pl, ku, uc, st}:
       leaf.check(scheme.of(scheme), alg, curve, key, signed, sig)
 
 def trust.sig(ok: Bool) -> Result<&1, &1, String, Unit>:
