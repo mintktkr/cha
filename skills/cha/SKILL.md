@@ -67,6 +67,8 @@ cha runs rerun ID [--failed | --job ID]  /  cha runs cancel ID
 cha repo [view] [--json]
 cha repo labels  /  cha repo label-create NAME [--color HEX] [--description D]
 cha repo branches
+cha repo branch-delete NAME --yes    # delete a branch; the default branch is refused
+cha repo protection [BRANCH] [--json]   # protection rules: pattern, approvals, checks
 cha repo file PATH [--ref R]          # raw file content, no clone needed
 cha repo tree [--ref R]
 cha repo create NAME [--org O] [--private] [--description D]   # make a repo, prints its URL
@@ -84,6 +86,12 @@ cha runners delete ID --yes [--org O | --user | --admin]   # deregister one; cha
 cha help [command]
 cha completions fish
 ```
+
+## Branches and branch protection
+
+- A destructive command never prompts, so `repo branch-delete NAME` needs `--yes`. Without it cha names the branch it would delete, exits 1, and makes no request. It reads the repo's default branch first and refuses that one: `repo branch-delete: main is the default branch`. Branch names are path-encoded with their slashes kept, so `memu/foo` is the branch `memu/foo` on both forges.
+- `repo protection` is read-only. On GitHub it reads one branch's protection, the default branch when none is named: a 404 `Branch not protected` means the branch has none, and any other refusal (403, or 401 without a token) exits 1 saying the token can't read it, since branch protection takes admin rights. On Gitea and Forgejo it lists the repo's protection rules and `BRANCH` picks the rule of that name, so a pattern rule is named as it is: `release/*`, not `release/1.0`.
+- `--json` fields, the same on both forges: `branch` (the branch or the rule's pattern), `approvals` (required approvals, `0` when none), `checks` (required status check contexts, comma-separated), `push_restricted` and `force_push_blocked` (`"true"`/`"false"`).
 
 ## Runs output and filters
 
@@ -121,4 +129,4 @@ cha completions fish
 
 ## When cha isn't enough
 
-cha doesn't cover secrets, packages, webhooks, mirrors, branch protection or tokens yet. Call the forge's REST API directly for those (Gitea: `https://<host>/api/v1/`, GitHub: `https://api.github.com/`). If a missing command keeps coming up, that's worth an issue on cha.
+cha doesn't cover secrets, packages, webhooks, mirrors or tokens yet. Call the forge's REST API directly for those (Gitea: `https://<host>/api/v1/`, GitHub: `https://api.github.com/`). If a missing command keeps coming up, that's worth an issue on cha.

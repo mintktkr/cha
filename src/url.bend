@@ -26,3 +26,15 @@ def enc.go(s: String, acc: String) -> String:
 def encode(+s: String) -> String:
   enc.go(Bytes.to_string(Enc.utf8.encode(s)), SNil{})
 
+def segs.encode(xs: List<&2, String>) -> List<&2, String>:
+  match xs:
+    case Nil{}:
+      Nil{}
+    case Con{+x, rest}:
+      encode(x) <> segs.encode(rest)
+
+# a branch or tag name as a path that keeps its slashes: gitea's branch routes and github's
+# git refs read the rest of the path as the name, so memu/foo stays memu/foo while every
+# other character that isn't safe in a path segment is still encoded
+def encode.path(+s: String) -> String:
+  String.join(segs.encode(String.split(s, '/')), "/")
