@@ -1,6 +1,6 @@
 ---
 name: cha
-description: Use cha for Gitea, Forgejo and GitHub work from the terminal - issues, pull requests, Actions runs and logs, releases, repo files, search across a forge, and "what moved since yesterday" sweeps. Prefer it over gh, tea or raw API calls for those. One binary, plain output when piped, --json for scripting.
+description: Use cha for Gitea, Forgejo and GitHub work from the terminal - issues, pull requests, Actions runs and logs, releases, packages, repo files, search across a forge, and "what moved since yesterday" sweeps. Prefer it over gh, tea or raw API calls for those. One binary, plain output when piped, --json for scripting.
 ---
 
 # cha
@@ -86,6 +86,9 @@ cha search code QUERY [--owner O] [--limit N] [--json]   # GitHub only, needs a 
 cha auth status [--json]               # host, forge, login, token source; exit 1 without a working token
 cha runners [list] [--org O | --user | --admin] [--json]   # self-hosted runners of a scope
 cha runners delete ID --yes [--org O | --user | --admin]   # deregister one; cha never prompts
+cha packages [list] [--type T] [--owner O] [--json]   # name, type, version, created
+cha packages versions NAME [--type T] [--owner O]     # one package's versions
+cha packages delete NAME VERSION --type T [--owner O] --yes
 
 cha help [command]
 cha completions fish
@@ -117,6 +120,7 @@ cha completions fish
 - `code` needs a token on GitHub: anonymous code search answers 401, so cha says `search code: GitHub code search needs a token` and exits 1. Gitea and Forgejo have no code search API at all, and cha says so and exits 1.
 - Gitea can search issues and prs by owner but has no owner filter for repos, so `search repos --owner` is GitHub-only.
 - `--json` fields: issues and prs `repo,number,title,state,user.login,labels,html_url`; repos `full_name,forge,description,default_branch,visibility,stars,forks,open_issues,html_url`; code `repo,name,path,html_url`.
+- `packages` lists the repo owner's packages, or `--owner O` for another user or org. Every row is `name`, `type`, `version` and `created`; GitHub's package list has no version, so that field is empty there, and its versions list carries it. `--type` is required on GitHub (`npm`, `maven`, `rubygems`, `nuget`, `container`) and optional on Gitea. `packages delete` removes one version for good and needs `--yes`; it never prompts, and without `--yes` it exits 1 with `would remove NAME VERSION for good; rerun with --yes` before any request.
 
 ## Recipes
 
@@ -141,7 +145,8 @@ cha completions fish
 - Gitea 1.25 has no API to rerun or cancel an Actions run. `cha runs rerun|cancel` exit 1 with a hint: push a commit, or use the web UI.
 - GitHub's issue list includes pull requests. `cha issue list` drops them.
 - GitHub scopes runners to a repo or an org: `cha runners --user` and `--admin` exit 1 there. On Gitea and Forgejo, `--admin` lists every runner on the site and needs a site-admin token; a 403 says so. A runner id must be digits only, and a delete without `--yes` names the runner and exits 1.
+- GitHub's package endpoints need a token with `read:packages`: an anonymous 401 or 403 says so. Gitea's version list is a name query, so `packages versions NAME` keeps only the rows named exactly.
 
 ## When cha isn't enough
 
-cha doesn't cover secrets, packages, webhooks, mirrors or tokens yet. Call the forge's REST API directly for those (Gitea: `https://<host>/api/v1/`, GitHub: `https://api.github.com/`). If a missing command keeps coming up, that's worth an issue on cha.
+cha doesn't cover secrets, webhooks, mirrors or tokens yet. Call the forge's REST API directly for those (Gitea: `https://<host>/api/v1/`, GitHub: `https://api.github.com/`). If a missing command keeps coming up, that's worth an issue on cha.

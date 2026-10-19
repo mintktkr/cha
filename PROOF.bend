@@ -5,6 +5,7 @@ import ./src/ui.bend as Ui
 import ./src/ctx.bend as Ctx
 import ./src/cli.bend as Cli
 import ./src/api.bend as Api
+import ./src/cmd/packages.bend as Packages
 import ./LAWS.bend as Laws
 
 # Colour off
@@ -195,4 +196,13 @@ def Laws.runner_id_digits():
   {==}
 
 def Laws.runner_id_not_digits():
+  {==}
+
+# Packages
+# --------
+
+def Laws.packages_refuses_without_yes():
+  {==}
+
+def Laws.packages_allows_with_yes():
   {==}
