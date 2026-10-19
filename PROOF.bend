@@ -6,6 +6,7 @@ import ./src/ctx.bend as Ctx
 import ./src/cli.bend as Cli
 import ./src/api.bend as Api
 import ./src/cmd/packages.bend as Packages
+import ./src/hooks.bend as Hooks
 import ./LAWS.bend as Laws
 
 # Colour off
@@ -214,4 +215,27 @@ def Laws.packages_refuses_without_yes():
   {==}
 
 def Laws.packages_allows_with_yes():
+  {==}
+
+# Hooks
+# -----
+# Each law is one row's field list, so reflexivity is the whole proof: field.secret reads
+# the last segment of a literal key, which normalizes before the comparison.
+
+def Laws.hooks_row_fields():
+  {==}
+
+def Laws.hooks_row_fields_url():
+  {==}
+
+def Laws.hooks_row_fields_case():
+  {==}
+
+def Laws.hooks_id_dots():
+  {==}
+
+def Laws.hooks_id_letters():
+  {==}
+
+def Laws.hooks_id_empty():
   {==}

@@ -76,7 +76,7 @@ In a terminal, cha uses a pink → lavender → mint palette where every colour 
 
 cha is written in [Bend](https://bend-lang.com). The rules that must never break live in `LAWS.bend`, and a commit only lands if they still prove:
 
-- 🔐 a token never reaches the output
+- 🔐 a token or a webhook secret never reaches the output
 - 🎨 with colour off, no escape byte is printed
 - 🔁 pagination always terminates
 

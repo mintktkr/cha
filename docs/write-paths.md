@@ -14,7 +14,7 @@ The repo needs two workflows and two branches:
 - `slow`: `workflow_dispatch` only, one job that sleeps 15 minutes, for `cancel`.
 - branches `feat-merge` and `feat-delete`, each one commit ahead of `main`, for two pull requests.
 
-The token needs the `repo` scope (`cha auth status` names its source). `repo` covers dispatch, rerun and cancel. On GitHub, deleting the sandbox also needs the `delete_repo` scope. Workflow files are pushed with git, so the token never needs the `workflow` scope.
+The token needs the `repo` scope (`cha auth status` names its source). `repo` covers dispatch, rerun and cancel. On GitHub, deleting the sandbox also needs the `delete_repo` scope. Workflow files are pushed with git, so the token never needs the `workflow` scope. For the hooks rows, `printf 's3cr3t' > /tmp/cha-hook-secret`, outside the repo.
 
 cha makes and removes the sandbox itself. `-R` names the host and the token; its `OWNER/NAME` need not exist yet, since only the host is read from it.
 
@@ -62,6 +62,11 @@ On GitHub, an issue and a pull request share one number sequence: the first PR i
 | release | `C release create v0.0.1-test --title T --notes N --target main` | URL |
 | | `C release upload v0.0.1-test FILE out/cha` | one download URL per file (#18) |
 | | `C release view v0.0.1-test` | lists both assets; the binary downloads byte-identical |
+| hooks | `C hooks create https://example.com/hook --events push --secret-file /tmp/cha-hook-secret` | `#ID  https://example.com/hook`; `C hooks` lists it |
+| | `C hooks --json` | the hook's fields, and no secret field at all |
+| | `C hooks test ID` | exit 0 (the forge queues a test delivery) |
+| | `C hooks delete ID` | exit 1, names the hook, sends nothing; `C hooks` still lists it |
+| | `C hooks delete ID --yes` | `C hooks` no longer lists it |
 
 ## Results
 

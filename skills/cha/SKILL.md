@@ -32,6 +32,8 @@ description: Use cha for Gitea, Forgejo and GitHub work from the terminal - issu
 - Bodies come from `--body TEXT` or `--body-file PATH`. `--body-file -` reads stdin. cha never opens an editor or prompts. A destructive command therefore needs `--yes`: without it, it exits 1 naming what it would remove and makes no request.
 - `view N --comments` prints each comment's `id` beside its author and date, and `--json` carries it: that id is what `comment-edit` and `comment-delete` take. A PR's conversation comments are issue comments, so an id works under both `issue` and `pr`.
 - `comment-delete` always needs `--yes`: without it cha names the comment it would delete, sends no request and exits 1. cha never prompts.
+- `hooks` needs a token that can administer the repo or org: GitHub and Gitea both refuse even the list without one, so anonymous `hooks` exits 1 with HTTP 401.
+- `hooks` never prints a hook's secret. Every row is redacted first: a field named `secret`, `password` or `token` (in any case, at any depth, so `config.secret` too) is dropped from the text line and from `--json`. The secret comes from `--secret-file F` (`-` is stdin), never from a flag value; trailing whitespace from the file is trimmed. `hooks create` prints `#ID  URL` on stdout.
 
 ## Commands
 
@@ -90,6 +92,9 @@ cha packages [list] [--type T] [--owner O] [--json]   # name, type, version, cre
 cha packages versions NAME [--type T] [--owner O]     # one package's versions
 cha packages delete NAME VERSION --type T [--owner O] --yes
 cha mirror [status|sync|push-sync] [--json]   # pull mirror, push mirrors, a sync on demand
+cha hooks [--org O] [--json]           # a repo's or an org's webhooks
+cha hooks create URL --events push,pull_request [--secret-file F] [--content-type json|form] [--org O]
+cha hooks delete ID --yes             # hooks test ID sends a test delivery
 
 cha help [command]
 cha completions fish
@@ -151,4 +156,4 @@ cha completions fish
 
 ## When cha isn't enough
 
-cha doesn't cover secrets, webhooks or tokens yet. Call the forge's REST API directly for those (Gitea: `https://<host>/api/v1/`, GitHub: `https://api.github.com/`). If a missing command keeps coming up, that's worth an issue on cha.
+cha doesn't cover secrets or tokens yet. Call the forge's REST API directly for those (Gitea: `https://<host>/api/v1/`, GitHub: `https://api.github.com/`). If a missing command keeps coming up, that's worth an issue on cha.

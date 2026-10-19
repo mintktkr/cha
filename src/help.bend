@@ -182,6 +182,7 @@ def groups() -> List<&2, Row>:
    Row{"search", "issues, prs, repos and code across a forge", "cha search issues kettle"},
    Row{"packages", "a forge's packages and their versions", "cha packages --type container"},
    Row{"mirror", "a repo's pull mirror and push mirrors, and a sync", "cha mirror"},
+   Row{"hooks", "a repo's or an org's webhooks: list, create, delete, test", "cha hooks"},
    Row{"help", "this page, or one command's usage", "cha help issue"},
    Row{"version", "print the version", "cha version"},
    Row{"completions", "a fish completion script", "cha completions fish"}]
@@ -483,6 +484,12 @@ def mirror.page() -> Page:
     [Row{"--json [FIELDS]", "kind, address, interval, updated, error", ""}],
     ["cha mirror", "cha mirror sync"]}
 
+# cha help hooks
+# --------------
+
+def hooks.page() -> Page:
+  Page{"cha hooks", "cha hooks [list] [--org O] [--json] | create | delete | test", [Row{"hooks [--org O] [--json]", "a repo's or an org's webhooks", "cha hooks"}, Row{"hooks create URL --events E", "add a webhook; prints its id and URL", "cha hooks create https://hooks.example/hook --events push,pull_request"}, Row{"hooks delete ID --yes", "remove a webhook", "cha hooks delete 12 --yes"}, Row{"hooks test ID", "send a test delivery", "cha hooks test 12"}], [Row{"--org O", "the org whose hooks to read or change, instead of the repo's", ""}, Row{"--events a,b", "create: the events to deliver, as the forge names them", ""}, Row{"--secret-file F", "create: the secret, from a file; - is stdin, never printed", ""}, Row{"--content-type json|form", "create: the payload format, json by default", ""}, Row{"--yes", "delete: required; cha never prompts", ""}, Row{"--json [FIELDS]", "id, url, events, active, content_type", ""}], ["cha hooks", "cha hooks --org sample-org", "cha hooks create https://hooks.example/hook --events push --secret-file .secret", "cha hooks delete 12 --yes"]}
+
 # cha help help, version and completions
 # --------------------------------------
 
@@ -544,7 +551,8 @@ def group(+sub: String) -> Nat:
   pick(String.eq(sub, "runners"), 11n,
   pick(String.eq(sub, "search"), 12n,
   pick(String.eq(sub, "packages"), 13n,
-  pick(String.eq(sub, "mirror"), 14n, 0n))))))))))))))
+  pick(String.eq(sub, "mirror"), 14n,
+  pick(String.eq(sub, "hooks"), 15n, 0n)))))))))))))))
 
 # the word's index in args, or the length when it isn't there
 def idx.at(eq: Bool, i: Nat, later: Nat) -> Nat:
@@ -613,8 +621,10 @@ def show(+on: Bool, +sub: String, k: Nat) -> IO(Unit):
       page.show(on, search.page())
     case 13n:
       page.show(on, packages.page())
-    case 14n+_:
+    case 14n:
       page.show(on, mirror.page())
+    case 15n+_:
+      page.show(on, hooks.page())
 
 # cha, cha help, cha help <command>
 def run(+on: Bool, +args: List<&2, String>) -> IO(Unit):
@@ -675,6 +685,7 @@ def comp.groups() -> List<&2, String>:
    "complete -c cha -n '__cha_in_group mirror' -a status -d 'pull mirror and push mirrors'",
    "complete -c cha -n '__cha_in_group mirror' -a sync -d 'sync the pull mirror now'",
    "complete -c cha -n '__cha_in_group mirror' -a push-sync -d 'push to the push mirrors now'",
+   "complete -c cha -n '__cha_needs_command' -a hooks -d \"a repo's or an org's webhooks\"",
    "complete -c cha -n '__cha_needs_command' -a help -d 'help'",
    "complete -c cha -n '__cha_needs_command' -a version -d 'print the version'",
    "complete -c cha -n '__cha_needs_command' -a completions -d 'shell completions'",
@@ -848,8 +859,20 @@ def comp.mirror() -> List<&2, String>:
   ["complete -c cha -n '__cha_using_sub mirror status' -l json -d 'machine-readable rows, optionally only FIELDS'",
    ""]
 
+def comp.hooks() -> List<&2, String>:
+  ["complete -c cha -n '__cha_sub_command hooks' -a list -d 'list webhooks'",
+   "complete -c cha -n '__cha_sub_command hooks' -a create -d 'add a webhook'",
+   "complete -c cha -n '__cha_sub_command hooks' -a delete -d 'remove a webhook'",
+   "complete -c cha -n '__cha_sub_command hooks' -a test -d 'send a test delivery'",
+   "complete -c cha -n '__cha_in_group hooks' -l org -x -d \"the org whose hooks to read or change\"",
+   "complete -c cha -n '__cha_using_sub hooks create' -l events -x -d 'the events to deliver, comma-separated'",
+   "complete -c cha -n '__cha_using_sub hooks create' -l secret-file -r -F -d 'the secret from a file; - is stdin'",
+   "complete -c cha -n '__cha_using_sub hooks create' -l content-type -x -a 'json form' -d 'the payload format'",
+   "complete -c cha -n '__cha_using_sub hooks delete' -l yes -d 'confirm the delete'",
+   ""]
+
 def comp.all() -> List<&2, String>:
-  List.concat(&2, String, [comp.head(), comp.global(), comp.groups(), comp.issue(), comp.pr(), comp.runs(), comp.repo(), comp.release(), comp.moved(), comp.runners(), comp.search(), comp.packages(), comp.mirror()])
+  List.concat(&2, String, [comp.head(), comp.global(), comp.groups(), comp.issue(), comp.pr(), comp.runs(), comp.repo(), comp.release(), comp.moved(), comp.runners(), comp.search(), comp.packages(), comp.mirror(), comp.hooks()])
 
 def comp.body() -> String:
   String.join(comp.all(), "\n") ++ "\n"
