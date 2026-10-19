@@ -6,8 +6,10 @@ import ../src/ctx.bend as Ctx
 import ../src/api.bend as Api
 import ../src/cli.bend as Cli
 import ../src/ui.bend as Ui
+import ../src/url.bend as Url
 import ../src/cmd/repo.bend as Repo
 import ../src/cmd/release.bend as Rel
+import 0x49814d83de8f70993a43e1002be29ecd/bytes.bend as Bytes
 
 def row.put(m: Map<&2, String>, p: String & String) -> Map<&2, String>:
   (k, v) = p
@@ -92,6 +94,58 @@ def named() -> Ctx.Repo:
 def json.text(v: Json.Val) -> String:
   Api.raw.text(Json.encode.bytes(v))
 
+# Branches and protection
+# -----------------------
+
+def same.if(+got: String, +want: String, eq: Bool) -> IO(Unit):
+  match eq:
+    case True{}:
+      IO.print("ok  " ++ got)
+    case False{}:
+      do IO<Unit>:
+        IO.print("bad " ++ got ++ " != " ++ want)
+        IO.die(Unit, 1, "")
+
+def same(+got: String, +want: String) -> IO(Unit):
+  same.if(got, want, String.eq(got, want))
+
+# a row's five protection fields, so one expect covers a whole rule
+def card(+x: Map<&2, String>) -> String:
+  Api.f(x, "branch") ++ "|" ++ Api.f(x, "approvals") ++ "|" ++ Api.f(x, "checks") ++ "|" ++ Api.f(x, "push_restricted") ++ "|" ++ Api.f(x, "force_push_blocked")
+
+# a protected main: two required checks, two approvals, pushes restricted, force pushes
+# blocked
+def gh.body() -> String:
+  "{\"required_status_checks\":{\"strict\":true,\"contexts\":[\"ci\",\"lint\"]},\"required_pull_request_reviews\":{\"required_approving_review_count\":2},\"restrictions\":{\"url\":\"https://api.github.com/repos/example/repo/branches/main/protection/restrictions\",\"users\":[],\"teams\":[],\"apps\":[]},\"allow_force_pushes\":{\"enabled\":false}}"
+
+# a branch with nothing required: every field is null in the reply
+def gh.bare.body() -> String:
+  "{\"required_status_checks\":null,\"required_pull_request_reviews\":null,\"restrictions\":null,\"allow_force_pushes\":null}"
+
+# github sends checks set up through the checks API as objects, with no contexts
+def gh.checks.body() -> String:
+  "{\"required_status_checks\":{\"contexts\":[],\"checks\":[{\"context\":\"build\"},{\"context\":\"test\"}]},\"allow_force_pushes\":{\"enabled\":true}}"
+
+# gitea 1.25: the rule has both names, and force push is turned on
+def gitea.rule.body() -> String:
+  "{\"id\":1,\"rule_name\":\"\",\"branch_name\":\"main\",\"enable_push\":false,\"enable_force_push\":true,\"enable_status_check\":true,\"status_check_contexts\":[\"ci/woodpecker\"],\"required_approvals\":2}"
+
+# a gitea older than 1.21 has no enable_force_push, and keeps contexts it doesn't require
+def gitea.off.body() -> String:
+  "{\"id\":2,\"branch_name\":\"release/*\",\"enable_push\":true,\"enable_status_check\":false,\"status_check_contexts\":[\"stale\"],\"required_approvals\":0}"
+
+def gh.row.of(+b: String) -> Map<&2, String>:
+  Repo.gh.row(Api.obj(Bytes.from_string(b)), "main")
+
+def gitea.rows() -> List<&2, Map<&2, String>>:
+  Api.rows(Bytes.from_string("[" ++ gitea.rule.body() ++ "," ++ gitea.off.body() ++ "]"))
+
+def rule.row.of(+b: String) -> Map<&2, String>:
+  Repo.gitea.row(Api.obj(Bytes.from_string(b)))
+
+def picked(+w: String, empty: Bool) -> String:
+  Nat.show(List.length(&2, Map<&2, String>, Repo.gitea.rows(gitea.rows(), w, empty)))
+
 def main() -> IO(Unit):
   do IO<Unit>:
     IO.print(view.show(Repo.view.row(Ctx.Gitea{}, gitea.public())))
@@ -125,3 +179,29 @@ def main() -> IO(Unit):
     expect("repo delete takes only --yes", String.join(Cli.unknown(["--yes"], ["--yes"]), ","), "")
     expect("--private does not swallow the name", Cli.arg(["create", "--private", "sandbox"], 1n), "sandbox")
     expect("--yes does not swallow the target", Cli.arg(["delete", "--yes", "OWNER/cha-sandbox"], 1n), "OWNER/cha-sandbox")
+    # branch-delete: the paths each forge wants, and the two guards
+    same(Repo.branch.url(Ctx.GitHub{}, "memu/foo"), "git/refs/heads/memu/foo")
+    same(Repo.branch.url(Ctx.Gitea{}, "memu/foo"), "branches/memu/foo")
+    same(Repo.branch.url(Ctx.GitHub{}, "fix#1"), "git/refs/heads/fix%231")
+    same(Repo.branch.url(Ctx.Gitea{}, "fix#1"), "branches/fix%231")
+    same(Repo.gh.url("memu/foo"), "branches/memu%2Ffoo/protection")
+    same(Url.encode.path("a b/c"), "a%20b/c")
+    same(Url.encode.path("memu/foo"), "memu/foo")
+    same(Url.encode("memu/foo"), "memu%2Ffoo")
+    same(Repo.delete.ask("memu/foo", False{}), "repo branch-delete: would delete branch memu/foo; pass --yes to do it")
+    same(Repo.delete.ask("memu/foo", True{}), "")
+    same(Repo.delete.default("main", True{}), "repo branch-delete: main is the default branch")
+    same(Repo.delete.default("feature", False{}), "")
+    # protection: the same fields, from each forge's shape
+    same(card(gh.row.of(gh.body())), "main|2|ci, lint|true|true")
+    same(card(gh.row.of(gh.bare.body())), "main|0||false|true")
+    same(card(gh.row.of(gh.checks.body())), "main|0|build, test|false|false")
+    same(card(rule.row.of(gitea.rule.body())), "main|2|ci/woodpecker|true|false")
+    same(card(rule.row.of(gitea.off.body())), "release/*|0||false|true")
+    same(Repo.prot.line(False{}, rule.row.of(gitea.rule.body())), "main  approvals 2  checks ci/woodpecker  pushes restricted")
+    same(Repo.prot.line(False{}, rule.row.of(gitea.off.body())), "release/*  force-push blocked")
+    same(picked("", True{}), "2")
+    same(picked("main", False{}), "1")
+    same(picked("release/*", False{}), "1")
+    same(picked("release/1.0", False{}), "0")
+    same(Cli.json.rows([rule.row.of(gitea.rule.body())], Repo.prot.fields()), "[{\"branch\":\"main\",\"approvals\":\"2\",\"checks\":\"ci/woodpecker\",\"push_restricted\":\"true\",\"force_push_blocked\":\"false\"}]")

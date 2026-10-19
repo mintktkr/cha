@@ -1,4 +1,4 @@
-# cha repo: view, labels, label-create, branches, file, tree.
+# cha repo: view, labels, label-create, branches, branch-delete, protection, file, tree.
 #
 # gitea answers a raw file path with bytes; github answers a contents path with base64
 # unless the accept header asks for raw, so a file read carries its own client.
@@ -11,6 +11,7 @@ import ../ctx.bend as Ctx
 import ../api.bend as Api
 import ../ui.bend as Ui
 import ../cli.bend as Cli
+import ../url.bend as Url
 
 # Forge
 # -----
@@ -372,6 +373,73 @@ def branches(+env: Cli.Env) -> IO(Unit):
         r : Result<&1, &1, String, List<&2, Map<&2, String>>> <- Api.all(10n, repo, tok, Api.path(repo, branch.query(forge.of(repo))))
         branch.show(env, r)
 
+# branch-delete
+# -------------
+
+# a branch's path on its forge: gitea addresses the branch itself, github a ref under
+# git/refs/heads. Both read a name's slashes raw, so the path keeps them.
+def branch.url(f: Ctx.Forge, +name: String) -> String:
+  match f:
+    case Ctx.Gitea{}:
+      "branches/" ++ Url.encode.path(name)
+    case Ctx.GitHub{}:
+      "git/refs/heads/" ++ Url.encode.path(name)
+
+# cha never prompts, so a delete without --yes only names what it would delete
+def delete.ask(+name: String, ok: Bool) -> String:
+  match ok:
+    case True{}:
+      ""
+    case False{}:
+      "repo branch-delete: would delete branch " ++ name ++ "; pass --yes to do it"
+
+# the message a delete of the default branch leaves, "" when it is another branch
+def delete.default(+name: String, same: Bool) -> String:
+  match same:
+    case True{}:
+      "repo branch-delete: " ++ name ++ " is the default branch"
+    case False{}:
+      ""
+
+# the repo's default branch, read before a delete so it can be refused
+def default.branch(+env: Cli.Env, +repo: Ctx.Repo, +tok: String) -> IO(String):
+  do IO<String>:
+    r : Api.Reply <- Api.get(repo, tok, view.url(repo))
+    b : Bytes.Bytes <- body.reply(env, r)
+    IO.pure(String, Api.f(Api.obj(b), "default_branch"))
+
+def deleted(+env: Cli.Env, +msg: String) -> IO(Unit):
+  match env:
+    case Cli.Env{r, t, +on, j, a}:
+      Ui.done(on, "deleted " ++ msg)
+
+def delete.send(+env: Cli.Env, +repo: Ctx.Repo, +tok: String, +name: String) -> IO(Unit):
+  do IO<Unit>:
+    r : Api.Reply <- Api.send(repo, tok, "DELETE", Api.path(repo, branch.url(forge.of(repo), name)), None{})
+    b : Bytes.Bytes <- body.reply(env, r)
+    deleted(env, "branch " ++ name)
+
+# refuse the repo's default branch, which a delete must not remove
+def delete.compare(+env: Cli.Env, +name: String, +dflt: String) -> IO(Unit):
+  Cli.check.if(env, delete.default(name, String.eq(name, dflt)), Bool.not(String.eq(name, dflt)))
+
+# the --yes guard comes first, so a delete without it makes no request at all
+def delete.go(+env: Cli.Env, +repo: Ctx.Repo, +tok: String, +name: String, +ok: Bool) -> IO(Unit):
+  do IO<Unit>:
+    Cli.check.if(env, delete.ask(name, ok), ok)
+    dflt : String <- default.branch(env, repo, tok)
+    delete.compare(env, name, dflt)
+    delete.send(env, repo, tok, name)
+
+def branch.delete(+env: Cli.Env) -> IO(Unit):
+  match env:
+    case Cli.Env{+repo, +tok, on, json, +args}:
+      do IO<Unit>:
+        Cli.check(env, "repo branch-delete", args, ["--yes"])
+        +raw : String = Cli.arg(args, 1n)
+        name : String <- arg.of(env, "branch-delete: a branch name is required", raw, String.is_empty(raw))
+        delete.go(env, repo, tok, name, Cli.has(args, "--yes"))
+
 # file
 # ----
 
@@ -683,11 +751,235 @@ def repo.delete(+env: Cli.Env) -> IO(Unit):
         rep : Api.Reply <- Api.send(r, tok, "DELETE", Api.path(r, ""), None{})
         delete.check(env, forge.of(r), name.of(r), rep)
 
+# protection
+# ----------
+
+# the fields a protection view prints, in this order
+def prot.fields() -> List<&2, String>:
+  ["branch", "approvals", "checks", "push_restricted", "force_push_blocked"]
+
+# a required-approval count, "0" when the forge sent none
+def approvals.of(+x: Map<&2, String>, +k: String) -> String:
+  Ctx.or(Api.f(x, k), "0")
+
+# "  approvals 2" when any are required, nothing at zero
+def approvals.text(+n: String, none: Bool) -> String:
+  match none:
+    case True{}:
+      ""
+    case False{}:
+      "  approvals " ++ n
+
+# github keeps a status check's contexts as strings, or as objects with a context field
+# when they were configured through the checks API
+def gh.checks(+x: Map<&2, String>) -> String:
+  Ctx.or(Api.join(x, "required_status_checks.contexts", "", ", "), Api.join(x, "required_status_checks.checks", "context", ", "))
+
+# one github protection is one rule for one branch. Restrictions present mean only the
+# listed users, teams and apps may push; force pushes are blocked unless they are allowed.
+def gh.row(+x: Map<&2, String>, +branch: String) -> Map<&2, String>:
+  m = Map.set(&2, String, Map.new(&2, String), "branch", branch)
+  m = Map.set(&2, String, m, "approvals", approvals.of(x, "required_pull_request_reviews.required_approving_review_count"))
+  m = Map.set(&2, String, m, "checks", gh.checks(x))
+  m = Map.set(&2, String, m, "push_restricted", Api.json.bool(Bool.not(String.is_empty(Api.raw.f(x, "restrictions.url")))))
+  Map.set(&2, String, m, "force_push_blocked", Api.json.bool(Bool.not(String.eq(Api.raw.f(x, "allow_force_pushes.enabled"), "true"))))
+
+# gitea 1.22 and later name a rule with rule_name and keep branch_name as an alias; forgejo
+# and older gitea have only branch_name
+def gitea.name(+x: Map<&2, String>) -> String:
+  Ctx.or(Api.f(x, "rule_name"), Api.f(x, "branch_name"))
+
+# pushes are restricted unless the rule lets everyone with write access push
+def gitea.push(+x: Map<&2, String>) -> Bool:
+  Bool.not(String.eq(Api.raw.f(x, "enable_push"), "true"))
+
+# force pushes are blocked unless the rule turns them on; a gitea older than 1.21 has no
+# such field and always blocked them
+def gitea.force(+x: Map<&2, String>) -> Bool:
+  Bool.not(String.eq(Api.raw.f(x, "enable_force_push"), "true"))
+
+def gitea.contexts(+x: Map<&2, String>, on: Bool) -> String:
+  match on:
+    case True{}:
+      Api.join(x, "status_check_contexts", "", ", ")
+    case False{}:
+      ""
+
+# contexts a rule keeps while its status check requirement is off aren't required
+def gitea.checks(+x: Map<&2, String>) -> String:
+  gitea.contexts(x, String.eq(Api.raw.f(x, "enable_status_check"), "true"))
+
+def gitea.row(+x: Map<&2, String>) -> Map<&2, String>:
+  m = Map.set(&2, String, Map.new(&2, String), "branch", gitea.name(x))
+  m = Map.set(&2, String, m, "approvals", approvals.of(x, "required_approvals"))
+  m = Map.set(&2, String, m, "checks", gitea.checks(x))
+  m = Map.set(&2, String, m, "push_restricted", Api.json.bool(gitea.push(x)))
+  Map.set(&2, String, m, "force_push_blocked", Api.json.bool(gitea.force(x)))
+
+def gitea.all(xs: List<&2, Map<&2, String>>) -> List<&2, Map<&2, String>>:
+  match xs:
+    case Nil{}:
+      Nil{}
+    case Con{+x, rest}:
+      gitea.row(x) <> gitea.all(rest)
+
+def gitea.kept(+x: Map<&2, String>, later: List<&2, Map<&2, String>>, same: Bool) -> List<&2, Map<&2, String>>:
+  match same:
+    case True{}:
+      gitea.row(x) <> later
+    case False{}:
+      later
+
+def gitea.keep(+x: Map<&2, String>, +w: String, later: List<&2, Map<&2, String>>) -> List<&2, Map<&2, String>>:
+  gitea.kept(x, later, String.eq(gitea.name(x), w))
+
+# gitea's rules are one list, so a name picks the rule of that name rather than asking the
+# forge to match a branch against the rule's pattern
+def gitea.some(xs: List<&2, Map<&2, String>>, +w: String) -> List<&2, Map<&2, String>>:
+  match xs:
+    case Nil{}:
+      Nil{}
+    case Con{+x, rest}:
+      gitea.keep(x, w, gitea.some(rest, w))
+
+def gitea.rows(xs: List<&2, Map<&2, String>>, +w: String, empty: Bool) -> List<&2, Map<&2, String>>:
+  match empty:
+    case True{}:
+      gitea.all(xs)
+    case False{}:
+      gitea.some(xs, w)
+
+# what each forge says when nothing is protected
+def prot.none(+b: String) -> String:
+  "no branch protection on " ++ b
+
+def prot.rule.none(+w: String, empty: Bool) -> String:
+  match empty:
+    case True{}:
+      "no branch protection rules"
+    case False{}:
+      "no branch protection rule named " ++ w
+
+def prot.line(+on: Bool, +x: Map<&2, String>) -> String:
+  +n = Api.f(x, "approvals")
+  Ui.bold(on, Ui.fg(on, Ui.aqua(), Api.f(x, "branch"))) ++
+  approvals.text(n, String.eq(n, "0")) ++
+  prefixed(Api.f(x, "checks"), "  checks ") ++
+  prefixed(flag.text(on, "pushes restricted", bool.f(x, "push_restricted")), "  ") ++
+  prefixed(flag.text(on, "force-push blocked", bool.f(x, "force_push_blocked")), "  ")
+
+def prot.lines(+on: Bool, xs: List<&2, Map<&2, String>>) -> String:
+  match xs:
+    case Nil{}:
+      ""
+    case Con{+x, rest}:
+      prot.line(on, x) ++ "\n" ++ prot.lines(on, rest)
+
+def prot.write(+on: Bool, +s: String, +msg: String, empty: Bool) -> IO(Unit):
+  match empty:
+    case True{}:
+      Ui.info(on, msg)
+    case False{}:
+      IO.write(s)
+
+def prot.text(+on: Bool, +xs: List<&2, Map<&2, String>>, +msg: String) -> IO(Unit):
+  +s = prot.lines(on, xs)
+  prot.write(on, s, msg, String.is_empty(s))
+
+def prot.print(+on: Bool, json: Cli.Json, +xs: List<&2, Map<&2, String>>, +msg: String) -> IO(Unit):
+  match json:
+    case Cli.Off{}:
+      prot.text(on, xs, msg)
+    case j:
+      Cli.json.emit(on, j, xs, prot.fields())
+
+def prot.emit(+env: Cli.Env, +xs: List<&2, Map<&2, String>>, +msg: String) -> IO(Unit):
+  match env:
+    case Cli.Env{r, t, +on, json, a}:
+      prot.print(on, json, xs, msg)
+
+# github answers a 404 "Branch not protected" for a branch with no protection, and any
+# other refusal (403, a bare 404, or 401 without a token) means the token can't read it:
+# branch protection takes admin rights on the repo
+def gh.bare(+status: U32, +why: String) -> Bool:
+  Bool.and(U32.is_eq(status, 404), String.contains(String.to_lower(why), "not protected"))
+
+def gh.reply(+env: Cli.Env, +branch: String, +why: String, +x: Map<&2, String>, +good: Bool, +bare: Bool) -> IO(Unit):
+  match good bare:
+    case True{} b:
+      prot.emit(env, [gh.row(x, branch)], "")
+    case False{} True{}:
+      prot.emit(env, Nil{}, prot.none(branch))
+    case False{} False{}:
+      Cli.fail(Unit, env, "protection: the token can't read the protection of " ++ branch ++ ": " ++ why)
+
+# the body becomes a row either way: a protection object, or the message a refusal put in
+# it, which reads the same as Api.message spells it
+def gh.answer(+env: Cli.Env, +branch: String, +status: U32, +x: Map<&2, String>) -> IO(Unit):
+  +why = "HTTP " ++ U32.show(status) ++ Api.message.text(Api.raw.f(x, "message"))
+  gh.reply(env, branch, why, x, Api.ok(status), gh.bare(status, why))
+
+def gh.show(+env: Cli.Env, +branch: String, r: Api.Reply) -> IO(Unit):
+  match r:
+    case Api.Broke{why}:
+      Cli.fail(Unit, env, why)
+    case Api.Reply{+status, +next, body}:
+      gh.answer(env, branch, status, Api.obj(body))
+
+# github reads one branch's protection; the name is escaped whole, slash included
+def gh.url(+branch: String) -> String:
+  "branches/" ++ Url.encode(branch) ++ "/protection"
+
+# the branch a view is about: the one asked for, else the repo's default branch
+def prot.name(+env: Cli.Env, +repo: Ctx.Repo, +tok: String, +w: String, empty: Bool) -> IO(String):
+  match empty:
+    case True{}:
+      default.branch(env, repo, tok)
+    case False{}:
+      IO.pure(String, w)
+
+def gh.get(+env: Cli.Env, +repo: Ctx.Repo, +tok: String, +branch: String) -> IO(Unit):
+  do IO<Unit>:
+    r : Api.Reply <- Api.get(repo, tok, Api.path(repo, gh.url(branch)))
+    gh.show(env, branch, r)
+
+def gh.prot(+env: Cli.Env, +repo: Ctx.Repo, +tok: String, +w: String) -> IO(Unit):
+  do IO<Unit>:
+    branch : String <- prot.name(env, repo, tok, w, String.is_empty(w))
+    gh.get(env, repo, tok, branch)
+
+def gitea.show(+env: Cli.Env, +w: String, r: Result<&1, &1, String, List<&2, Map<&2, String>>>) -> IO(Unit):
+  match r:
+    case Done{xs}:
+      prot.emit(env, gitea.rows(xs, w, String.is_empty(w)), prot.rule.none(w, String.is_empty(w)))
+    case Fail{why}:
+      Cli.fail(Unit, env, why)
+
+def gitea.prot(+env: Cli.Env, +repo: Ctx.Repo, +tok: String, +w: String) -> IO(Unit):
+  do IO<Unit>:
+    r : Result<&1, &1, String, List<&2, Map<&2, String>>> <- Api.all(10n, repo, tok, Api.path(repo, "branch_protections"))
+    gitea.show(env, w, r)
+
+def prot.run(+env: Cli.Env, +f: Ctx.Forge, +repo: Ctx.Repo, +tok: String, +w: String) -> IO(Unit):
+  match f:
+    case Ctx.Gitea{}:
+      gitea.prot(env, repo, tok, w)
+    case Ctx.GitHub{}:
+      gh.prot(env, repo, tok, w)
+
+def protection(+env: Cli.Env) -> IO(Unit):
+  match env:
+    case Cli.Env{+repo, +tok, on, json, +args}:
+      do IO<Unit>:
+        Cli.check(env, "repo protection", args, ["--json"])
+        +w : String = Cli.arg(args, 1n)
+        prot.run(env, forge.of(repo), repo, tok, w)
+
 # dispatch
 # --------
 
 def names() -> List<&2, String>:
-  ["view", "labels", "label-create", "branches", "file", "tree", "create", "delete"]
+  ["view", "labels", "label-create", "branches", "branch-delete", "protection", "file", "tree", "create", "delete"]
 
 def index.at(eq: Bool, +i: Nat, +later: Nat) -> Nat:
   match eq:
@@ -715,14 +1007,18 @@ def run.at(+env: Cli.Env, n: Nat) -> IO(Unit):
     case 3n:
       branches(env)
     case 4n:
-      file(env)
+      branch.delete(env)
     case 5n:
-      tree(env)
+      protection(env)
     case 6n:
-      repo.create(env)
+      file(env)
     case 7n:
+      tree(env)
+    case 8n:
+      repo.create(env)
+    case 9n:
       repo.delete(env)
-    case 8n+k:
+    case 10n+k:
       Cli.fail(Unit, env, "repo: unknown subcommand, try cha help")
 
 def run.sub(+env: Cli.Env, +sub: String, empty: Bool) -> IO(Unit):
