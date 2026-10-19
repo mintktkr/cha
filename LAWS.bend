@@ -135,6 +135,18 @@ law parse_remote_drops_credentials:
 law parse_remote_drops_token:
   {Ctx.parse_remote("https://SECRET@example.org/o/r") == Some{Ctx.Repo{Ctx.Gitea{}, "example.org", "o", "r"}} : Maybe<&2, Ctx.Repo>}
 
+# LAW: a mirror URL's user and password are dropped before it is printed.
+law no_credentials_user_pass:
+  {Ctx.no_credentials("https://x:SECRET@example.org/o/r.git") == "https://example.org/o/r.git" : String}
+
+# LAW: a bare token before a mirror URL's host is dropped too.
+law no_credentials_token:
+  {Ctx.no_credentials("https://SECRET@example.org/o/r") == "https://example.org/o/r" : String}
+
+# LAW: a URL that carries no credentials is printed as it is, its path untouched.
+law no_credentials_plain:
+  {Ctx.no_credentials("https://example.org/a@b/c.git") == "https://example.org/a@b/c.git" : String}
+
 # LAW: a Link header without rel="next" has no next page.
 law link_no_next:
   {Api.link.next("</issues?page=2>; rel=\"last\"") == "" : String}

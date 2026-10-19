@@ -157,6 +157,15 @@ def Laws.parse_remote_drops_credentials():
 def Laws.parse_remote_drops_token():
   {==}
 
+def Laws.no_credentials_user_pass():
+  {==}
+
+def Laws.no_credentials_token():
+  {==}
+
+def Laws.no_credentials_plain():
+  {==}
+
 def Laws.link_no_next():
   {==}
 
