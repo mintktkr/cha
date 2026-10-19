@@ -77,7 +77,7 @@ def main() -> IO(Unit):
     expect("merge.stop merged with no commit", Pr.merge.stop.text("3", "", Pr.merge.kind(True{}, True{})), "pr merge: #3 is already merged")
     expect("merge.stop closed", Pr.merge.stop.text("3", "abcdef1", Pr.merge.kind(True{}, False{})), "pr merge: #3 is closed")
     expect("merge.stop open", Pr.merge.stop.text("3", "", Pr.merge.kind(False{}, False{})), "")
-    expect("pull.guard.msg", Pr.pull.guard.msg("1"), "pr comment: #1 is an issue, not a pull request")
+    expect("pull.guard.msg", Pr.pull.guard.msg("1"), "pr comment: #1 is not a pull request (an issue, or no such number)")
     expect("mergeable yes", Pr.mergeable.line(False{}, "True"), "mergeable")
     expect("mergeable no", Pr.mergeable.line(False{}, "False"), "conflicts")
     expect("mergeable unknown", Pr.mergeable.line(False{}, ""), "mergeable: ?")

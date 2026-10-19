@@ -963,7 +963,7 @@ def edit(+env: Cli.Env) -> IO(Unit):
 # `pulls/N` answers 404 for a number that is an issue on both forges: one request, and
 # the comment never lands where it wasn't asked to.
 def pull.guard.msg(+n: String) -> String:
-  "pr comment: #" ++ n ++ " is an issue, not a pull request"
+  "pr comment: #" ++ n ++ " is not a pull request (an issue, or no such number)"
 
 def pull.guard.ok(+env: Cli.Env, body: Bytes.Bytes, +status: U32, good: Bool) -> IO(Unit):
   match good:
