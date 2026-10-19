@@ -1,7 +1,7 @@
 # offline checks for cha repo and cha release: the forge-specific field names, label
 # colours and release flags, on synthetic rows. Run: bend test/repo_check.bend
 import Base
-import 0x584fc27920487ceab242392391418d7f/json.bend as Json
+import ../lib/chaki/json.bend as Json
 import ../src/ctx.bend as Ctx
 import ../src/api.bend as Api
 import ../src/cli.bend as Cli
@@ -90,7 +90,7 @@ def named() -> Ctx.Repo:
   named.if(Repo.target.of(checkout(), "OWNER/cha-sandbox"))
 
 def json.text(v: Json.Val) -> String:
-  Api.raw.text(Json.encode.bytes(v))
+  Json.encode(v)
 
 def main() -> IO(Unit):
   do IO<Unit>:

@@ -1,7 +1,8 @@
 # offline checks for the shared comment pieces: the endpoint an edit and a delete use on
 # both forges, the edit's JSON body, the id that goes into the path, and the --yes refusal
 import Base
-import 0x584fc27920487ceab242392391418d7f/json.bend as Json
+import ../lib/chaki/json.bend as Json
+import ../lib/chaki/utf8.bend as Utf8
 import ../src/ctx.bend as Ctx
 import ../src/api.bend as Api
 import ../src/comment.bend as Comment
@@ -17,7 +18,7 @@ def y(x: Bool) -> String:
 
 # an edit's body as the forge would read it back
 def body.of(+s: String) -> String:
-  Api.raw.f(Api.obj(Json.encode.bytes(Comment.edit.body(s))), "body")
+  Api.raw.f(Api.obj(Utf8.encode(Json.encode(Comment.edit.body(s)))), "body")
 
 def report.if(good: Bool, +name: String, +got: String, +want: String) -> String:
   match good:

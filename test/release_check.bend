@@ -1,7 +1,8 @@
 # offline checks for the release command's pure pieces: no network, no forge.
 import Base
-import 0x49814d83de8f70993a43e1002be29ecd/bytes.bend as Bytes
-import 0x3bfb4ae4d3b87b90f01bfcd298211455/time.bend as Time
+import ../lib/chaki/bytes.bend as Bytes
+import ../lib/chaki/utf8.bend as Utf8
+import ../lib/chaki/http1.bend as Http1
 import ../src/ctx.bend as Ctx
 import ../src/cli.bend as Cli
 import ../src/api.bend as Api
@@ -32,7 +33,7 @@ def bare() -> String:
   "{\"tag_name\":\"v0.1.0\",\"assets\":[]}"
 
 def row(+s: String) -> Map<&2, String>:
-  Release.release.row(Api.obj(Bytes.from_string(s)))
+  Release.release.row(Api.obj(Utf8.encode(s)))
 
 def joined(xs: List<&2, String>) -> String:
   String.join(xs, ",")
@@ -46,21 +47,31 @@ def github() -> Ctx.Repo:
 # a release as each forge sends it: Gitea by id, GitHub also carrying its upload template
 
 def gitea.release() -> Map<&2, String>:
-  Api.obj(Bytes.from_string("{\"id\":7}"))
+  Api.obj(Utf8.encode("{\"id\":7}"))
 
 def github.release() -> Map<&2, String>:
-  Api.obj(Bytes.from_string("{\"id\":402102889,\"upload_url\":\"https://uploads.github.com/repos/memu/sandbox/releases/402102889/assets{?name,label}\"}"))
+  Api.obj(Utf8.encode("{\"id\":402102889,\"upload_url\":\"https://uploads.github.com/repos/memu/sandbox/releases/402102889/assets{?name,label}\"}"))
 
 def env() -> Cli.Env:
   Cli.Env{gitea(), "", False{}, Cli.Off{}, Nil{}}
 
-# the one value a header map holds for k, "" when it holds none
-def header.last(r: Map<&2, List<&2, String>> & List<&2, String>) -> String:
-  (m, vs) = r
-  Ctx.last(vs)
+# the one value headers hold for k, "" when they hold none
+def header.keep(+acc: String, +v: String, same: Bool) -> String:
+  match same:
+    case True{}:
+      v
+    case False{}:
+      acc
 
-def header(+m: Map<&2, List<&2, String>>, +k: String) -> String:
-  header.last(Map.get(List<&2, String>, Nil{}, m, k))
+def header.go(+hs: List<&2, Http1.Field()>, +k: String, +acc: String) -> String:
+  match hs:
+    case Nil{}:
+      acc
+    case Con{(n, v), t}:
+      header.go(t, k, header.keep(acc, v, String.eq(n, k)))
+
+def header(+hs: List<&2, Http1.Field()>, +k: String) -> String:
+  header.go(hs, k, "")
 
 # the framing a multipart body must have around data, built from the head and the tail
 # so the checks compare the whole request framing, not just its pieces
@@ -68,7 +79,7 @@ def framed(+name: String, +data: String) -> String:
   Release.mp.head("B", "attachment", name) ++ data ++ Release.mp.tail("B")
 
 def framed.body(+name: String, +data: String) -> String:
-  Bytes.to_string(Release.mp.body("B", "attachment", name, Bytes.from_string(data)))
+  Bytes.to_ascii(Release.mp.body("B", "attachment", name, Bytes.of_ascii(data)))
 
 # bytes no text field may lose: a NUL, a high byte and an A
 
@@ -78,18 +89,13 @@ def binary() -> String:
 # the bytes a read gave back, from a list of bytes text cannot hold
 
 def listed() -> String:
-  Bytes.to_string(Release.read.bytes.of([0, 255, 128, 65], Bytes.new(4), 0))
+  Bytes.to_ascii(Release.read.bytes.of([0, 255, 128, 65]))
 
 # a file with known bytes, so the read path is checked without a text decode
 # (File.read decodes UTF-8 on the JS lane, which is why an upload reads bytes)
 
 def asset() -> String:
   "test/release_check_asset.txt"
-
-# an instant, from the epoch, so the boundary can be checked without a clock
-
-def at(+ms: U32) -> Time.Instant:
-  Time.Instant.add(Time.Instant.epoch(), Time.Duration.of_ms(ms))
 
 def main() -> IO(Unit):
   do IO<Unit>:
@@ -110,18 +116,19 @@ def main() -> IO(Unit):
     expect(Release.upload.template("https://uploads.example.org/repos/memu/sandbox/releases/7/assets", "cha.pkg"), "https://uploads.example.org/repos/memu/sandbox/releases/7/assets?name=cha.pkg")
     expect(header(Release.upload.headers(Ctx.GitHub{}, "B"), "content-type"), "application/octet-stream")
     expect(header(Release.upload.headers(Ctx.Gitea{}, "B"), "content-type"), "multipart/form-data; boundary=B")
-    expect(Bytes.to_string(Release.upload.body(Ctx.GitHub{}, "B", "cha.pkg", Bytes.from_string("hi"))), "hi")
-    expect(Bytes.to_string(Release.upload.body(Ctx.Gitea{}, "B", "cha.pkg", Bytes.from_string("hi"))), framed("cha.pkg", "hi"))
+    expect(Bytes.to_ascii(Release.upload.body(Ctx.GitHub{}, "B", "cha.pkg", Bytes.of_ascii("hi"))), "hi")
+    expect(Bytes.to_ascii(Release.upload.body(Ctx.Gitea{}, "B", "cha.pkg", Bytes.of_ascii("hi"))), framed("cha.pkg", "hi"))
     expect(Release.mp.name("a.pkg"), "a.pkg")
     expect(Release.mp.name("a\"b\\c\r\nd.pkg"), "abcd.pkg")
     expect(Release.mp.name("cha-0.1.0-1-x86_64.pkg.tar.zst"), "cha-0.1.0-1-x86_64.pkg.tar.zst")
-    expect(Release.mp.boundary(at(1500)), "----cha-1-500000000")
-    expect.differs(Release.mp.boundary(at(1500)), Release.mp.boundary(at(1501)))
+    expect(Release.mp.boundary(1500, 7), "----cha-1500-7")
+    expect.differs(Release.mp.boundary(1500, 7), Release.mp.boundary(1500, 8))
+    expect.differs(Release.mp.boundary(1500, 7), Release.mp.boundary(1501, 7))
     expect(framed.body("a.pkg", "hi"), framed("a.pkg", "hi"))
     expect(framed.body("a\"b.pkg", binary()), framed("ab.pkg", binary()))
     expect(framed.body("cha.pkg", binary()), "--B\r\nContent-Disposition: form-data; name=\"attachment\"; filename=\"cha.pkg\"\r\nContent-Type: application/octet-stream\r\n\r\n" ++ binary() ++ "\r\n--B--\r\n")
     text : String <- Release.read.file(env(), asset(), False{})
     expect(text, "cha asset fixture\n")
-    data : Bytes.Bytes <- Release.read.bytes(env(), asset())
-    expect(Bytes.to_string(data), "cha asset fixture\n")
+    data : List<&2, U32> <- Release.read.bytes(env(), asset())
+    expect(Bytes.to_ascii(data), "cha asset fixture\n")
     expect(listed(), binary())

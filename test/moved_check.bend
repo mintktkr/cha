@@ -1,20 +1,19 @@
 import Base
-import 0x3bfb4ae4d3b87b90f01bfcd298211455/time.bend as Time
 import ../src/cmd/moved.bend as Moved
 import ../src/since.bend as Since
 
 # 2026-09-30T12:00:00Z, so every window below is fixed text
-def NOW() -> Time.Instant:
-  Time.Instant{Time.i64(1790769600), 0}
+def NOW() -> U32:
+  1790769600
 
 # a key and a value, so the rows below stay one line each
 type KV is Data:
   KV{k: String, v: String}
 
-def window.of(m: Maybe<&2, Time.Instant>, +none: String) -> String:
+def window.of(m: Maybe<&2, U32>, +none: String) -> String:
   match m:
-    case Some{i}:
-      Since.rfc(i)
+    case Some{t}:
+      Since.rfc(t)
     case None{}:
       none
 

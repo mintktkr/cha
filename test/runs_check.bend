@@ -2,8 +2,9 @@ import Base
 import ../src/ctx.bend as Ctx
 import ../src/api.bend as Api
 import ../src/cmd/runs.bend as Runs
-import 0x49814d83de8f70993a43e1002be29ecd/bytes.bend as Bytes
-import 0x3bfb4ae4d3b87b90f01bfcd298211455/time.bend as Time
+import ../lib/chaki/utf8.bend as Utf8
+import ../lib/chaki/sys.bend as Sys
+import ../lib/chaki/json.bend as Json
 
 def expect.if(+got: String, +want: String, same: Bool) -> IO(Unit):
   match same:
@@ -22,16 +23,16 @@ def is_true(+got: Bool) -> IO(Unit):
 
 # 2026-01-02T10:00:00Z, the instant noted before the POST, so every case below is
 # fixed text
-def T0() -> Time.Instant:
-  Time.Instant{Time.i64(1767348000), 0}
+def T0() -> U32:
+  1767348000
 
 # 2026-01-02T10:00:10Z, past the last run on a page
-def LATER() -> Time.Instant:
-  Time.Instant{Time.i64(1767348010), 0}
+def LATER() -> U32:
+  1767348010
 
 # 2026-01-02T08:00:00Z, before the older run on a page
-def EARLIER() -> Time.Instant:
-  Time.Instant{Time.i64(1767340800), 0}
+def EARLIER() -> U32:
+  1767340800
 
 # one run object as Api.obj flattens it
 def fake() -> Map<&2, String>:
@@ -132,11 +133,15 @@ def github.page() -> String:
 def queued.page() -> String:
   "{\"workflow_runs\":[{\"id\":\"61\",\"event\":\"workflow_dispatch\",\"path\":\"ci.yml@refs/heads/main\",\"head_branch\":\"main\",\"html_url\":\"https://example.org/runs/61\",\"started_at\":\"0001-01-01T00:00:00Z\"},{\"id\":\"60\",\"event\":\"workflow_dispatch\",\"path\":\"ci.yml@refs/heads/main\",\"head_branch\":\"main\",\"html_url\":\"https://example.org/runs/60\"}]}"
 
+# a field of a request body, read back the way a forge would: encoded, then flat
+def body.f(v: Json.Val, +k: String) -> String:
+  Api.f(Api.obj(Utf8.encode(Json.encode(v))), k)
+
 # the url dispatch.scan names for a page, with a fixed clock
-def picked.for(+forge: Ctx.Forge, +src: Map<&2, String>, +wf: String, +ref: String, +t0: Time.Instant) -> String:
+def picked.for(+forge: Ctx.Forge, +src: Map<&2, String>, +wf: String, +ref: String, +t0: U32) -> String:
   Runs.dispatch.url.of(Runs.dispatch.scan(Api.count(src, "workflow_runs"), 0, src, forge, LATER(), wf, ref, t0))
 
-def picked(+src: Map<&2, String>, +wf: String, +ref: String, +t0: Time.Instant) -> String:
+def picked(+src: Map<&2, String>, +wf: String, +ref: String, +t0: U32) -> String:
   picked.for(Ctx.Gitea{}, src, wf, ref, t0)
 
 def main() -> IO(Unit):
@@ -162,7 +167,7 @@ def main() -> IO(Unit):
     is_true(Runs.want.job("2", "success", "2", False{}))
     is_true(Runs.want.job("2", "success", "", False{}))
     expect(Bool.show(Runs.want.job("2", "success", "3", False{})), "False")
-    +now : Time.Instant <- Time.now()
+    +now : U32 <- Sys.now()
     +src : Map<&2, String> = fake()
     +row : Map<&2, String> = Runs.run.row(src, "workflow_runs.0", Ctx.Gitea{}, now)
     expect(Api.f(row, "workflow"), "ci.yml")
@@ -175,30 +180,30 @@ def main() -> IO(Unit):
     +xs : List<&2, Map<&2, String>> = Runs.rows.of(src, "workflow_runs", Ctx.Gitea{}, now)
     expect(Nat.show(List.length(&2, Map<&2, String>, xs)), "2")
     expect(Nat.show(Api.count(src, "workflow_runs")), "2")
-    +fsrc : Map<&2, String> = Api.obj(Bytes.from_string(fj.body()))
+    +fsrc : Map<&2, String> = Api.obj(Utf8.encode(fj.body()))
     fj.check.finished(Runs.run.row(fsrc, "workflow_runs.0", Ctx.Gitea{}, now))
     fj.check.skipped(Runs.run.row(fsrc, "workflow_runs.1", Ctx.Gitea{}, now))
     fj.check.running(Runs.run.row(fsrc, "workflow_runs.2", Ctx.Gitea{}, now))
     fj.check.approval(Runs.run.row(fsrc, "workflow_runs.3", Ctx.Gitea{}, now))
     # the run a dispatch made is the only run of its workflow, event and ref that
     # appeared at or after the instant noted before the POST
-    +t0 : Time.Instant = T0()
-    +gpage : Map<&2, String> = Api.obj(Bytes.from_string(gitea.page()))
+    +t0 : U32 = T0()
+    +gpage : Map<&2, String> = Api.obj(Utf8.encode(gitea.page()))
     expect(picked(gpage, "ci.yml", "main", t0), "https://example.org/runs/45")
     expect(picked(gpage, "slow.yml", "main", t0), "https://example.org/runs/43")
     expect(picked(gpage, "ci.yml", "dev", t0), "https://example.org/runs/44")
     expect(picked(gpage, "ci.yml", "refs/heads/main", t0), "https://example.org/runs/45")
     expect(picked(gpage, "other.yml", "main", t0), "")
-    +later : Time.Instant = LATER()
+    +later : U32 = LATER()
     expect(picked(gpage, "ci.yml", "main", later), "")
     is_true(Runs.dispatch.hit(Runs.run.row(gpage, "workflow_runs.0", Ctx.Gitea{}, now), Runs.created.at(gpage, "workflow_runs.0"), "ci.yml", "main", EARLIER()))
     expect(Bool.show(Runs.dispatch.hit(Runs.run.row(gpage, "workflow_runs.0", Ctx.Gitea{}, now), Runs.created.at(gpage, "workflow_runs.0"), "ci.yml", "main", t0)), "False")
-    +opage : Map<&2, String> = Api.obj(Bytes.from_string(offset.page()))
+    +opage : Map<&2, String> = Api.obj(Utf8.encode(offset.page()))
     expect(picked(opage, "ci.yml", "main", t0), "https://example.org/runs/51")
-    +ghpage : Map<&2, String> = Api.obj(Bytes.from_string(github.page()))
+    +ghpage : Map<&2, String> = Api.obj(Utf8.encode(github.page()))
     expect(picked.for(Ctx.GitHub{}, ghpage, "ci.yml", "main", t0), "https://example.org/runs/72")
     expect(Runs.created.at(ghpage, "workflow_runs.1"), "2026-01-02T10:00:04Z")
-    +qpage : Map<&2, String> = Api.obj(Bytes.from_string(queued.page()))
+    +qpage : Map<&2, String> = Api.obj(Utf8.encode(queued.page()))
     expect(picked(qpage, "ci.yml", "main", t0), "")
     is_true(Runs.ref.same("main", "refs/heads/main"))
     is_true(Runs.ref.same("refs/tags/v1", "v1"))
@@ -207,6 +212,6 @@ def main() -> IO(Unit):
     expect(Runs.dispatch.runs(Ctx.GitHub{}), "actions/runs?page=1&per_page=20&event=workflow_dispatch")
     expect(Runs.dispatch.page(Ctx.Gitea{}, "ci.yml"), "actions?workflow=ci.yml")
     expect(Runs.dispatch.page(Ctx.GitHub{}, "ci.yml"), "actions/workflows/ci.yml")
-    expect(Api.str(Runs.dispatch.body("main", Nil{}, True{}), "ref"), "main")
-    expect(Api.str(Runs.dispatch.body("main", Nil{}, True{}), "return_run_details"), "true")
-    expect(Api.str(Runs.dispatch.body("main", Nil{}, False{}), "return_run_details"), "")
+    expect(body.f(Runs.dispatch.body("main", Nil{}, True{}), "ref"), "main")
+    expect(body.f(Runs.dispatch.body("main", Nil{}, True{}), "return_run_details"), "true")
+    expect(body.f(Runs.dispatch.body("main", Nil{}, False{}), "return_run_details"), "")

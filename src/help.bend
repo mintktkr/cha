@@ -4,7 +4,8 @@
 import Base
 import ./ui.bend as Ui
 import ./cli.bend as Cli
-import 0xd60fd658d4bdabf892f8041a7a731848/tty.bend as Tty
+import ../lib/chaki/sys.bend as Sys
+import ../lib/chaki/width.bend as Width
 
 # one line of a command list: the name and its args, a description, an example
 type Row is Data:
@@ -153,19 +154,16 @@ def lines.fit(xs: List<&2, String>, +cols: U32) -> Bool:
     case Nil{}:
       True{}
     case Con{+x, rest}:
-      (Tty.width(x) < cols : U32) && lines.fit(rest, cols)
+      (Width.text(x) < cols : U32) && lines.fit(rest, cols)
 
 def fits.wh(+lines: List<&2, String>, wh: U32 & U32) -> Bool:
   (cols, rows) = wh
   lines.fit(lines, cols) && Nat.is_lt(List.length(&2, String, lines), U32.to_nat(rows))
 
-# the whole page is on screen without wrapping, so jumping back up lands on the banner
-def fits.of(+lines: List<&2, String>, size: Maybe<&1, U32 & U32>) -> Bool:
-  match size:
-    case None{}:
-      False{}
-    case Some{wh}:
-      fits.wh(lines, wh)
+# the whole page is on screen without wrapping, so jumping back up lands on the banner.
+# A size of 0 (not a terminal, or it won't say) never fits.
+def fits.of(+lines: List<&2, String>, +cols: U32, +rows: U32) -> Bool:
+  fits.wh(lines, (cols, rows))
 
 # cha help
 # --------
@@ -217,9 +215,10 @@ def top.at(+on: Bool, anim: Bool) -> IO(Unit):
   match anim:
     case True{}:
       do IO<Unit>:
-        size : Maybe<&1, U32 & U32> <- Tty.size()
+        +cols : U32 <- Sys.cols()
+        +rows : U32 <- Sys.rows()
         +lines : List<&2, String> = String.split(banner.of(False{}, 0n, True{}) ++ "\n\n" ++ top.rest(False{}), '\n')
-        +fits : Bool = fits.of(lines, size)
+        +fits : Bool = fits.of(lines, cols, rows)
         IO.write(banner.of(on, 0n, Bool.not(fits)) ++ "\n\n" ++ top.rest(on))
         anim.if(on, Nat.sub(List.length(&2, String, lines), 1n), fits)
     case False{}:

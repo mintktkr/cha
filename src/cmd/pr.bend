@@ -1,9 +1,6 @@
 # cha pr: list, view, diff, create, merge, edit, comment, comment-edit, comment-delete, checks.
 import Base
-import bend-kit-hairpin@0.1.0.0/hairpin.bend as Hairpin
-import bend-kit-http@0.23.0.1/http.bend as Http
-import 0x584fc27920487ceab242392391418d7f/json.bend as Json
-import 0x49814d83de8f70993a43e1002be29ecd/bytes.bend as Bytes
+import ../../lib/chaki/json.bend as Json
 import ../ctx.bend as Ctx
 import ../api.bend as Api
 import ../ui.bend as Ui
@@ -53,8 +50,7 @@ def note(+env: Cli.Env, msg: String) -> IO(Unit):
     case Cli.Env{r, t, +c, j, a}:
       Ui.info(c, msg)
 
-# a flattened JSON bool reads as True or False
-# (Api.flat turns every Json.Flag into Bool.show)
+# a flattened JSON bool reads as true or false
 def flag.of(+s: String) -> Bool:
   String.eq(String.to_lower(s), "true")
 
@@ -74,10 +70,10 @@ def state.merged(+s: String, merged: Bool) -> String:
 # -------
 
 # the changed item's html_url, or the browser URL we know when the reply has none
-def url.of(body: Bytes.Bytes, +fallback: String) -> String:
+def url.of(body: List<&2, U32>, +fallback: String) -> String:
   Ctx.or(Api.f(Api.obj(body), "html_url"), fallback)
 
-def written.if(+env: Cli.Env, body: Bytes.Bytes, +status: U32, +fallback: String, good: Bool) -> IO(Unit):
+def written.if(+env: Cli.Env, body: List<&2, U32>, +status: U32, +fallback: String, good: Bool) -> IO(Unit):
   match good:
     case True{}:
       IO.print(url.of(body, fallback))
@@ -186,10 +182,7 @@ def body.text(+env: Cli.Env, +args: List<&2, String>) -> IO(String):
 
 # A GET with its own accept header: GitHub answers a diff only for its diff media type.
 def accept.get(repo: Ctx.Repo, +tok: String, url: String, +accept: String) -> IO(Api.Reply):
-  do IO<Api.Reply>:
-    c : Hairpin.Client = Hairpin.header(Api.client(repo, tok), "accept", accept)
-    r : Hairpin.Client & Result<&1, &1, Http.Err, Http.Res> <- Hairpin.request(c, "GET", url, Map.new(&2, List<&2, String>), Http.from_string(""))
-    Api.reply(r)
+  Api.get.accept(repo, tok, url, accept)
 
 # Reviews
 # -------
@@ -231,7 +224,7 @@ def reviews.line(+on: Bool, +t: Tally) -> String:
     case Tally{a, c, n}:
       "reviews: " ++ Ui.fg(on, Ui.mint(), Nat.show(a) ++ " approved") ++ ", " ++ Ui.fg(on, Ui.pink(), Nat.show(c) ++ " changes requested") ++ ", " ++ Ui.dim(on, Nat.show(n) ++ " commented")
 
-def reviews.ok(+env: Cli.Env, body: Bytes.Bytes, +status: U32, good: Bool) -> IO(Tally):
+def reviews.ok(+env: Cli.Env, body: List<&2, U32>, +status: U32, good: Bool) -> IO(Tally):
   match good:
     case True{}:
       IO.pure(Tally, tally.of(Api.rows(body)))
@@ -282,7 +275,7 @@ def comment.lines(+on: Bool, xs: List<&2, Map<&2, String>>) -> String:
     case Con{+x, rest}:
       Ui.dim(on, "@" ++ Api.f(x, "user.login") ++ "  " ++ Api.f(x, "created_at") ++ "  id " ++ Api.f(x, "id")) ++ "\n" ++ Api.f.lines(x, "body") ++ "\n\n" ++ comment.lines(on, rest)
 
-def comment.ok(+env: Cli.Env, +on: Bool, body: Bytes.Bytes, +status: U32, good: Bool) -> IO(Unit):
+def comment.ok(+env: Cli.Env, +on: Bool, body: List<&2, U32>, +status: U32, good: Bool) -> IO(Unit):
   match good:
     case True{}:
       IO.write(comment.lines(on, Api.rows(body)))
@@ -333,7 +326,7 @@ def view.pick(+env: Cli.Env, +n: String, json: Cli.Json, +row: Map<&2, String>) 
     case Cli.Env{r, t, +on, k, a} j:
       Cli.json.emit(on, j, Con{row, Nil{}}, ["number", "title", "state", "head.ref", "base.ref", "user.login", "mergeable", "html_url", "body"])
 
-def view.good(+env: Cli.Env, +n: String, json: Cli.Json, body: Bytes.Bytes, +status: U32, good: Bool) -> IO(Unit):
+def view.good(+env: Cli.Env, +n: String, json: Cli.Json, body: List<&2, U32>, +status: U32, good: Bool) -> IO(Unit):
   match good:
     case True{}:
       view.pick(env, n, json, Api.obj(body))
@@ -522,18 +515,18 @@ def checks.print(+env: Cli.Env, +rows: List<&2, Map<&2, String>>) -> IO(Unit):
     checks.emit(env, rows)
     checks.exit(env, rows)
 
-def got.body(+env: Cli.Env, body: Bytes.Bytes, +status: U32, good: Bool) -> IO(Bytes.Bytes):
+def got.body(+env: Cli.Env, body: List<&2, U32>, +status: U32, good: Bool) -> IO(List<&2, U32>):
   match good:
     case True{}:
-      IO.pure(Bytes.Bytes, body)
+      IO.pure(List<&2, U32>, body)
     case False{}:
-      Cli.fail(Bytes.Bytes, env, Api.message(status, body))
+      Cli.fail(List<&2, U32>, env, Api.message(status, body))
 
 # the body of a good reply, or a failure carrying the forge's message
-def checks.bytes(+env: Cli.Env, r: Api.Reply) -> IO(Bytes.Bytes):
+def checks.bytes(+env: Cli.Env, r: Api.Reply) -> IO(List<&2, U32>):
   match r:
     case Api.Broke{w}:
-      Cli.fail(Bytes.Bytes, env, w)
+      Cli.fail(List<&2, U32>, env, w)
     case Api.Reply{+status, next, body}:
       got.body(env, body, status, Api.ok(status))
 
@@ -600,7 +593,7 @@ def check.walk(n: Nat, +row: Map<&2, String>, +list: String, +host: String, +s: 
 def checks.gitea.rows(+env: Cli.Env, +host: String, +row: Map<&2, String>) -> IO(Unit):
   checks.print(env, check.walk(Api.count(row, "statuses"), row, "statuses", host, Gitea{}, 0, Nil{}))
 
-def checks.gitea.if(+env: Cli.Env, +host: String, body: Bytes.Bytes, +status: U32, good: Bool) -> IO(Unit):
+def checks.gitea.if(+env: Cli.Env, +host: String, body: List<&2, U32>, +status: U32, good: Bool) -> IO(Unit):
   match good:
     case True{}:
       checks.gitea.rows(env, host, Api.obj(body))
@@ -626,9 +619,9 @@ def checks.github.rows(+env: Cli.Env, +host: String, +runs: Map<&2, String>, +st
 def checks.github(+env: Cli.Env, +repo: Ctx.Repo, +tok: String, +sha: String) -> IO(Unit):
   do IO<Unit>:
     a : Api.Reply <- Api.get(repo, tok, Api.path(repo, "commits/" ++ sha ++ "/check-runs?per_page=100"))
-    ra : Bytes.Bytes <- checks.bytes(env, a)
+    ra : List<&2, U32> <- checks.bytes(env, a)
     b : Api.Reply <- Api.get(repo, tok, Api.path(repo, "commits/" ++ sha ++ "/status"))
-    rb : Bytes.Bytes <- checks.bytes(env, b)
+    rb : List<&2, U32> <- checks.bytes(env, b)
     checks.github.rows(env, host.of(repo), Api.obj(ra), Api.obj(rb))
 
 def checks.sha(f: Ctx.Forge, +env: Cli.Env, +repo: Ctx.Repo, +tok: String, +sha: String) -> IO(Unit):
@@ -641,7 +634,7 @@ def checks.sha(f: Ctx.Forge, +env: Cli.Env, +repo: Ctx.Repo, +tok: String, +sha:
 def checks.pr(+env: Cli.Env, +repo: Ctx.Repo, +tok: String, +n: String) -> IO(Unit):
   do IO<Unit>:
     r : Api.Reply <- Api.get(repo, tok, Api.path(repo, "pulls/" ++ n))
-    body : Bytes.Bytes <- checks.bytes(env, r)
+    body : List<&2, U32> <- checks.bytes(env, r)
     checks.sha(forge.of(repo), env, repo, tok, Api.f(Api.obj(body), "head.sha"))
 
 def checks(+env: Cli.Env) -> IO(Unit):
@@ -673,21 +666,21 @@ def diff.url(f: Ctx.Forge, +n: String) -> String:
 # a diff a pipe or a redirect carries keeps the bytes the forge sent, for a file or a
 # patch tool; on a terminal the diff is printed without escape sequences, as a file of its
 # own can carry them
-def diff.text(body: Bytes.Bytes, tty: Bool) -> String:
+def diff.text(body: List<&2, U32>, tty: Bool) -> String:
   match tty:
     case True{}:
       Api.text(body)
     case False{}:
       Api.raw.text(body)
 
-def diff.write(body: Bytes.Bytes) -> IO(Unit):
+def diff.write(body: List<&2, U32>) -> IO(Unit):
   do IO<Unit>:
     # the stream decides, not the colour flag: NO_COLOR in a terminal still means a human
     # is reading the diff, and only a pipe or a redirect needs the bytes exact
     tty : Bool <- Ui.tty()
     IO.write(nled(diff.text(body, tty)))
 
-def diff.ok(+env: Cli.Env, body: Bytes.Bytes, +status: U32, good: Bool) -> IO(Unit):
+def diff.ok(+env: Cli.Env, body: List<&2, U32>, +status: U32, good: Bool) -> IO(Unit):
   match good:
     case True{}:
       diff.write(body)
@@ -715,7 +708,7 @@ def diff(+env: Cli.Env) -> IO(Unit):
 # ------
 
 def create.body(+head: String, +base: String, +title: String, +body: String) -> Json.Val:
-  Json.Obj{[(Json.utf8("head"), Api.utf8(head)), (Json.utf8("base"), Api.utf8(base)), (Json.utf8("title"), Api.utf8(title)), (Json.utf8("body"), Api.utf8(body))]}
+  Json.Obj{[("head", Api.utf8(head)), ("base", Api.utf8(base)), ("title", Api.utf8(title)), ("body", Api.utf8(body))]}
 
 def create(+env: Cli.Env) -> IO(Unit):
   match env:
@@ -775,7 +768,7 @@ def merge.guard(+env: Cli.Env, +n: String, +row: Map<&2, String>) -> IO(Unit):
   +msg = merge.stop.text(n, Api.f(row, "merge_commit_sha"), merge.kind(String.eq(Api.f(row, "state"), "closed"), merged.of(row)))
   merge.stop.if(env, msg, String.is_empty(msg))
 
-def merge.guard.at(+env: Cli.Env, +n: String, body: Bytes.Bytes, +status: U32, good: Bool) -> IO(Unit):
+def merge.guard.at(+env: Cli.Env, +n: String, body: List<&2, U32>, +status: U32, good: Bool) -> IO(Unit):
   match good:
     case True{}:
       merge.guard(env, n, Api.obj(body))
@@ -809,20 +802,20 @@ def merge.pick(squash: Bool, plain: Bool, rebase: Bool) -> String:
 def merge.body(f: Ctx.Forge, +method: String, delete: Bool) -> Json.Val:
   match f:
     case Ctx.Gitea{}:
-      Json.Obj{[(Json.utf8("Do"), Api.utf8(method)), (Json.utf8("delete_branch_after_merge"), Json.Flag{delete})]}
+      Json.Obj{[("Do", Api.utf8(method)), ("delete_branch_after_merge", Json.Flag{delete})]}
     case Ctx.GitHub{}:
-      Json.Obj{[(Json.utf8("merge_method"), Api.utf8(method))]}
+      Json.Obj{[("merge_method", Api.utf8(method))]}
 
 # Gitea answers 405 "Please try again later" when the pull request conflicts or its
 # base moved; that is not a rate limit
-def merge.fail(+env: Cli.Env, body: Bytes.Bytes, +status: U32, gone: Bool) -> IO(Unit):
+def merge.fail(+env: Cli.Env, body: List<&2, U32>, +status: U32, gone: Bool) -> IO(Unit):
   match gone:
     case True{}:
       Cli.fail(Unit, env, "pr merge: the pull request conflicts or its base branch moved; update the branch and try again")
     case False{}:
       Cli.fail(Unit, env, Api.message(status, body))
 
-def merged.if(+env: Cli.Env, body: Bytes.Bytes, +status: U32, +fallback: String, gone: Bool, good: Bool) -> IO(Unit):
+def merged.if(+env: Cli.Env, body: List<&2, U32>, +status: U32, +fallback: String, gone: Bool, good: Bool) -> IO(Unit):
   match good:
     case True{}:
       IO.print(url.of(body, fallback))
@@ -842,7 +835,7 @@ def same.repo(+repo: Ctx.Repo, +full: String) -> Bool:
       String.eq(full, o ++ "/" ++ n)
 
 # the head ref of a merged GitHub pull request
-def gh.ref.ok(+env: Cli.Env, body: Bytes.Bytes, +status: U32, good: Bool) -> IO(Unit):
+def gh.ref.ok(+env: Cli.Env, body: List<&2, U32>, +status: U32, good: Bool) -> IO(Unit):
   match good:
     case True{}:
       IO.pure(Unit, Unit{})
@@ -868,7 +861,7 @@ def gh.ref.if(+env: Cli.Env, +repo: Ctx.Repo, +tok: String, +ref: String, mine: 
 def gh.ref.row(+env: Cli.Env, +repo: Ctx.Repo, +tok: String, +row: Map<&2, String>) -> IO(Unit):
   gh.ref.if(env, repo, tok, Api.f(row, "head.ref"), same.repo(repo, Api.f(row, "head.repo.full_name")))
 
-def gh.ref.maybe(+env: Cli.Env, +repo: Ctx.Repo, +tok: String, body: Bytes.Bytes, +status: U32, good: Bool) -> IO(Unit):
+def gh.ref.maybe(+env: Cli.Env, +repo: Ctx.Repo, +tok: String, body: List<&2, U32>, +status: U32, good: Bool) -> IO(Unit):
   match good:
     case True{}:
       gh.ref.row(env, repo, tok, Api.obj(body))
@@ -924,14 +917,14 @@ def merge(+env: Cli.Env) -> IO(Unit):
 # edit
 # ----
 
-def edit.pair.if(+k: String, +v: String, rest: List<&1, Bytes.Bytes & Json.Val>, keep: Bool) -> List<&1, Bytes.Bytes & Json.Val>:
+def edit.pair.if(+k: String, +v: String, rest: List<&2, Json.Member()>, keep: Bool) -> List<&2, Json.Member()>:
   match keep:
     case True{}:
-      Con{(Json.utf8(k), Api.utf8(v)), rest}
+      Con{(k, Api.utf8(v)), rest}
     case False{}:
       rest
 
-def edit.pairs(+title: String, +body: String, has_title: Bool, has_body: Bool) -> List<&1, Bytes.Bytes & Json.Val>:
+def edit.pairs(+title: String, +body: String, has_title: Bool, has_body: Bool) -> List<&2, Json.Member()>:
   edit.pair.if("title", title, edit.pair.if("body", body, Nil{}, has_body), has_title)
 
 def edit.check(+env: Cli.Env, neither: Bool) -> IO(Unit):
@@ -966,14 +959,14 @@ def edit(+env: Cli.Env) -> IO(Unit):
 def pull.guard.msg(+n: String) -> String:
   "pr comment: #" ++ n ++ " is not a pull request (an issue, or no such number)"
 
-def pull.guard.ok(+env: Cli.Env, body: Bytes.Bytes, +status: U32, good: Bool) -> IO(Unit):
+def pull.guard.ok(+env: Cli.Env, body: List<&2, U32>, +status: U32, good: Bool) -> IO(Unit):
   match good:
     case True{}:
       IO.pure(Unit, Unit{})
     case False{}:
       Cli.fail(Unit, env, Api.message(status, body))
 
-def pull.guard.at(+env: Cli.Env, +n: String, body: Bytes.Bytes, +status: U32, missing: Bool, good: Bool) -> IO(Unit):
+def pull.guard.at(+env: Cli.Env, +n: String, body: List<&2, U32>, +status: U32, missing: Bool, good: Bool) -> IO(Unit):
   match missing:
     case True{}:
       Cli.fail(Unit, env, pull.guard.msg(n))
@@ -993,7 +986,7 @@ def pull.guard.get(+env: Cli.Env, +repo: Ctx.Repo, +tok: String, +n: String) -> 
     pull.guard.reply(env, n, r)
 
 def comment.body(+body: String) -> Json.Val:
-  Json.Obj{[(Json.utf8("body"), Api.utf8(body))]}
+  Json.Obj{[("body", Api.utf8(body))]}
 
 def comment(+env: Cli.Env) -> IO(Unit):
   match env:

@@ -1,8 +1,8 @@
 # cha issue: list, view, create, comment, comment-edit, comment-delete, edit, close, reopen,
 # labels.
 import Base
-import 0x49814d83de8f70993a43e1002be29ecd/bytes.bend as Bytes
-import 0x584fc27920487ceab242392391418d7f/json.bend as Json
+import ../../lib/chaki/json.bend as Json
+import ../../lib/chaki/sys.bend as Sys
 import ../ctx.bend as Ctx
 import ../api.bend as Api
 import ../ui.bend as Ui
@@ -10,7 +10,6 @@ import ../cli.bend as Cli
 import ../comment.bend as Comment
 import ../url.bend as Url
 import ../since.bend as Since
-import 0x3bfb4ae4d3b87b90f01bfcd298211455/time.bend as Time
 
 # list
 # ----
@@ -99,7 +98,7 @@ def query(f: Ctx.Forge, +size: Nat, +state: String, +label: String, +assignee: S
       "issues?per_page=" ++ Nat.show(size) ++ "&state=" ++ Url.encode(state) ++ param.q("&labels=", label) ++ param.q("&assignee=", assignee) ++ param.q("&since=", since)
 
 # --since as the RFC 3339 text a forge query takes, "" when the flag wasn't given
-def since.text(+env: Cli.Env, m: Maybe<&2, Time.Instant>) -> IO(String):
+def since.text(+env: Cli.Env, m: Maybe<&2, U32>) -> IO(String):
   match m:
     case Some{i}:
       IO.pure(String, Since.rfc(i))
@@ -112,7 +111,7 @@ def since.empty.if(+env: Cli.Env, +arg: String, empty: Bool) -> IO(String):
       IO.pure(String, "")
     case False{}:
       do IO<String>:
-        now : Time.Instant <- Time.now()
+        now : U32 <- Sys.now()
         v : String <- since.text(env, Since.of(now, arg))
         return v
 
@@ -199,7 +198,7 @@ def list(+env: Cli.Env) -> IO(Unit):
 # replies
 # -------
 
-def obj.if(+status: U32, body: Bytes.Bytes, good: Bool) -> Result<&1, &1, String, Map<&2, String>>:
+def obj.if(+status: U32, body: List<&2, U32>, good: Bool) -> Result<&1, &1, String, Map<&2, String>>:
   match good:
     case True{}:
       Done{Api.obj(body)}
@@ -494,17 +493,17 @@ def label.check.names(+env: Cli.Env, +repo: Ctx.Repo, +tok: String, +names: List
 # json
 # ----
 
-def field(+k: String, v: Json.Val) -> Bytes.Bytes & Json.Val:
-  (Json.utf8(k), v)
+def field(+k: String, v: Json.Val) -> Json.Member():
+  (k, v)
 
-def kv.if(+k: String, +v: String, give: Bool, rest: List<&1, Bytes.Bytes & Json.Val>) -> List<&1, Bytes.Bytes & Json.Val>:
+def kv.if(+k: String, +v: String, give: Bool, rest: List<&2, Json.Member()>) -> List<&2, Json.Member()>:
   match give:
     case True{}:
       Con{field(k, Api.utf8(v)), rest}
     case False{}:
       rest
 
-def strs.go(ss: List<&2, String>) -> List<&1, Json.Val>:
+def strs.go(ss: List<&2, String>) -> List<&2, Json.Val>:
   match ss:
     case Nil{}:
       Nil{}
@@ -514,12 +513,12 @@ def strs.go(ss: List<&2, String>) -> List<&1, Json.Val>:
 def strs.items(ss: List<&2, String>) -> Json.Val:
   Json.Arr{strs.go(ss)}
 
-def nums.go(ss: List<&2, String>) -> List<&1, Json.Val>:
+def nums.go(ss: List<&2, String>) -> List<&2, Json.Val>:
   match ss:
     case Nil{}:
       Nil{}
     case Con{+s, rest}:
-      Json.Num{Bytes.from_string(s)} <> nums.go(rest)
+      Json.Num{s} <> nums.go(rest)
 
 def nums.items(ss: List<&2, String>) -> Json.Val:
   Json.Arr{nums.go(ss)}

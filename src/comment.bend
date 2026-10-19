@@ -2,8 +2,7 @@
 # pull request's conversation comments are the issue's comments, so issue and pr share
 # this file: one endpoint, PATCH to edit and DELETE to remove.
 import Base
-import 0x584fc27920487ceab242392391418d7f/json.bend as Json
-import 0x49814d83de8f70993a43e1002be29ecd/bytes.bend as Bytes
+import ../lib/chaki/json.bend as Json
 import ./ctx.bend as Ctx
 import ./api.bend as Api
 import ./cli.bend as Cli
@@ -60,10 +59,10 @@ def path(+repo: Ctx.Repo, +id: String) -> String:
 
 # an edit's body: the comment as it should read now
 def edit.body(+body: String) -> Json.Val:
-  Json.Obj{[(Json.utf8("body"), Api.utf8(body))]}
+  Json.Obj{[("body", Api.utf8(body))]}
 
 # the edited comment's url, or the forge's error
-def edit.if(+env: Cli.Env, body: Bytes.Bytes, +status: U32, good: Bool) -> IO(Unit):
+def edit.if(+env: Cli.Env, body: List<&2, U32>, +status: U32, good: Bool) -> IO(Unit):
   match good:
     case True{}:
       IO.print(Api.f(Api.obj(body), "html_url"))
@@ -83,7 +82,7 @@ def edit(+env: Cli.Env, +repo: Ctx.Repo, +tok: String, +id: String, +body: Strin
     edit.got(env, r)
 
 # a delete answers no item, so it prints nothing: exit 0 is the receipt
-def delete.if(+env: Cli.Env, body: Bytes.Bytes, +status: U32, good: Bool) -> IO(Unit):
+def delete.if(+env: Cli.Env, body: List<&2, U32>, +status: U32, good: Bool) -> IO(Unit):
   match good:
     case True{}:
       IO.pure(Unit, Unit{})
