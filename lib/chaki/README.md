@@ -51,6 +51,11 @@ hidden state, and has a surface you can read in one sitting.
   is listed among the defs that rely on unsafe code.
 - `width.bend` counts code points, not grapheme clusters: an emoji ZWJ sequence measures
   wider than it shows.
+- A response may take 64 MiB, head and body together (`Http1.ROOM`), since a body is held as
+  a list of bytes. A bigger one fails with "the response is too large".
+- With OpenSSL, a server that closes without close_notify is an error, not the end of the
+  response. A body framed by content-length or chunks is read to its end before the close,
+  so only a body that runs to the close depends on it.
 - AES's S-box is a table lookup, so AES isn't constant-time. The client prefers ChaCha20.
 - Big-number work runs at a similar speed on both lanes: a 4096-bit RSA verify is ~0.2 s and
   a P-384 ECDSA verify ~0.4 s. Loading the system trust store is ~0.25 s.
