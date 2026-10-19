@@ -91,6 +91,28 @@ law unknown_flag_eq:
 law unknown_flag_help:
   {Cli.unknown(Nil{}, ["-h", "--help"]) == Nil{} : List<&2, String>}
 
+# LAW: a flag that takes a value and is given none is named, so it can fail loud instead of
+# vanishing. At the end of the line:
+law missing_flag_end:
+  {Cli.missing(["--limit"], ["list", "--limit"]) == "--limit" : String}
+
+# LAW: ...or before a flag the command reads:
+law missing_flag_next:
+  {Cli.missing(["--limit", "--json"], ["list", "--limit", "--json"]) == "--limit" : String}
+
+# LAW: ...or with nothing after its =:
+law missing_flag_blank:
+  {Cli.missing(["--limit"], ["list", "--limit="]) == "--limit" : String}
+
+# LAW: a value that starts with a dash is a value, not a flag without one.
+law missing_flag_dash:
+  {Cli.missing(["--body"], ["--body", "-1 from me"]) == "" : String}
+
+# LAW: a word that is not a flag the command reads is a value, so --title "--limit" keeps
+# its title.
+law missing_flag_other:
+  {Cli.missing(["--title"], ["--title", "--limit"]) == "" : String}
+
 # Concrete examples
 # -----------------
 

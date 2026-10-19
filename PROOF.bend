@@ -129,6 +129,21 @@ def Laws.unknown_flag_eq():
 def Laws.unknown_flag_help():
   {==}
 
+def Laws.missing_flag_end():
+  {==}
+
+def Laws.missing_flag_next():
+  {==}
+
+def Laws.missing_flag_blank():
+  {==}
+
+def Laws.missing_flag_dash():
+  {==}
+
+def Laws.missing_flag_other():
+  {==}
+
 # Concrete examples
 # -----------------
 
