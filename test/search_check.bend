@@ -93,6 +93,14 @@ def gitea.repos() -> Map<&2, String>:
           ("data.0.forks_count", "1"),
           ("data.0.open_issues_count", "2")])
 
+# a github search's next page, as its Link header points at it
+def next.link() -> String:
+  "https://api.github.com/search/issues?q=kettle&per_page=100&page=2"
+
+# two rows, as a page's hits arrive
+def two.rows() -> List<&2, Map<&2, String>>:
+  Con{row.of([("number", "1")]), Con{row.of([("number", "2")]), Nil{}}}
+
 def issue.show(+x: Map<&2, String>) -> String:
   Api.f(x, "repo") ++ " #" ++ Api.f(x, "number") ++ " " ++ Api.f(x, "state") ++ " " ++ Api.f(x, "title") ++ " " ++ Api.f(x, "user.login") ++ " [" ++ Api.f(x, "labels") ++ "]"
 
@@ -135,14 +143,28 @@ def main() -> IO(Unit):
     IO.print(check("gitea prs, closed and an owner", Search.issue.url(Ctx.Gitea{}, gitea.repo(), "forgejo", "kettle", "closed", 20n, True{}), "repos/issues/search?limit=20&state=closed&type=pulls&q=kettle&owner=forgejo"))
     IO.print(check("gitea issues, the whole forge", Search.issue.url(Ctx.Gitea{}, whole.repo(), "", "kettle", "", 20n, False{}), "repos/issues/search?limit=20&state=all&type=issues&q=kettle"))
     IO.print(check("gitea issues, a query can't inject a parameter", Search.issue.url(Ctx.Gitea{}, gitea.repo(), "", "a&type=pulls", "", 20n, False{}), "repos/forgejo/forgejo/issues?limit=20&state=all&type=issues&q=a%26type%3Dpulls"))
-    IO.print(check("github repos, an owner", Search.repo.url(Ctx.GitHub{}, "bendlang", "bend", 20n), "search/repositories?q=bend%20user%3Abendlang&per_page=20"))
-    IO.print(check("github repos, the whole forge", Search.repo.url(Ctx.GitHub{}, "", "bend", 20n), "search/repositories?q=bend&per_page=20"))
-    IO.print(check("gitea repos, the whole forge", Search.repo.url(Ctx.Gitea{}, "", "forgejo", 50n), "repos/search?limit=50&q=forgejo"))
+    IO.print(check("github repos, an owner", Search.repo.url(Ctx.GitHub{}, "bendlang", "", "bend", 20n), "search/repositories?q=bend%20user%3Abendlang&per_page=20"))
+    IO.print(check("github repos, the whole forge", Search.repo.url(Ctx.GitHub{}, "", "", "bend", 20n), "search/repositories?q=bend&per_page=20"))
+    IO.print(check("gitea repos, the whole forge", Search.repo.url(Ctx.Gitea{}, "", "", "forgejo", 50n), "repos/search?limit=50&q=forgejo"))
+    IO.print(check("gitea repos, an owner's id", Search.repo.url(Ctx.Gitea{}, "forgejo", "42", "forgejo", 50n), "repos/search?limit=50&q=forgejo&uid=42"))
     IO.print(check("github code, repo scope", Search.code.url(Ctx.GitHub{}, gh.repo(), "", "IO.now", 20n), "search/code?q=IO.now%20repo%3Abendlang%2Fbend&per_page=20"))
     IO.print(check("github code, an owner", Search.code.url(Ctx.GitHub{}, gh.repo(), "bendlang", "IO.now", 20n), "search/code?q=IO.now%20user%3Abendlang&per_page=20"))
     IO.print(check("gitea code asks nothing", Search.code.url(Ctx.Gitea{}, gitea.repo(), "", "IO.now", 20n), ""))
-    IO.print(check("url.of: issues", Search.url.of(0n, Ctx.GitHub{}, whole.repo(), "", "kettle", "", 20n), "search/issues?q=kettle%20is%3Aissue&per_page=20"))
-    IO.print(check("url.of: code", Search.url.of(3n, Ctx.GitHub{}, whole.repo(), "", "kettle", "", 20n), "search/code?q=kettle&per_page=20"))
+    IO.print(check("url.of: issues", Search.url.of(0n, Ctx.GitHub{}, whole.repo(), "", "", "kettle", "", 20n), "search/issues?q=kettle%20is%3Aissue&per_page=20"))
+    IO.print(check("url.of: code", Search.url.of(3n, Ctx.GitHub{}, whole.repo(), "", "", "kettle", "", 20n), "search/code?q=kettle&per_page=20"))
+    IO.print(check("uid.path: a name on the users route", Search.uid.path("forgejo"), "users/forgejo"))
+    IO.print(check("uid.path: a name is encoded", Search.uid.path("a b"), "users/a%20b"))
+    IO.print(check("gh.next.url: the Link header's page", Search.gh.next.url(next.link(), 100n, 200n, False{}), next.link()))
+    IO.print(check("gh.next.url: no Link ends the walk", Search.gh.next.url("", 100n, 200n, False{}), ""))
+    IO.print(check("gh.next.url: an empty page ends it", Search.gh.next.url(next.link(), 0n, 200n, True{}), ""))
+    IO.print(check("gh.next.url: --limit reached mid-page ends it", Search.gh.next.url(next.link(), 200n, 200n, False{}), ""))
+    IO.print(check("gitea.next.url: the page after this one", Search.gitea.next.url("repos/search?limit=50&q=forgejo", 1, 50n, 200n, False{}), "repos/search?limit=50&q=forgejo&page=2"))
+    IO.print(check("gitea.next.url: a short page is the last", Search.gitea.next.url("repos/search?limit=50&q=forgejo", 1, 12n, 200n, True{}), ""))
+    IO.print(check("gitea.next.url: --limit reached ends it", Search.gitea.next.url("repos/search?limit=50&q=forgejo", 2, 100n, 100n, False{}), ""))
+    IO.print(check("page.take: --limit cuts a page in the middle", count(Search.page.take(Nil{}, two.rows(), 1n)), "1"))
+    IO.print(check("page.seen: rows read so far", Nat.show(Search.page.seen(two.rows(), two.rows())), "4"))
+    IO.print(check("pages.of: github takes eleven for a thousand", Nat.show(Search.pages.of(Ctx.GitHub{}, 1000n)), "11"))
+    IO.print(check("pages.of: gitea takes twenty-one", Nat.show(Search.pages.of(Ctx.Gitea{}, 1000n)), "21"))
     +rows : List<&2, Map<&2, String>> = Search.rows.of(0n, issues.map(), "items", Ctx.GitHub{})
     IO.print(check("rows.of: one github issue", count(rows), "1"))
     IO.print(check("rows.of: an issue, as issue list prints it", issue.show(head(rows)), "bendlang/bend #7 open kettle leak memu [bug,tea]"))

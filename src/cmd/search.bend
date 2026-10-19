@@ -126,13 +126,17 @@ def issue.url(+f: Ctx.Forge, +repo: Ctx.Repo, +owner: String, +q: String, +state
     case Ctx.Gitea{}:
       gitea.issues.path(repo, owner) ++ "?limit=" ++ Nat.show(size) ++ "&state=" ++ Url.encode(Ctx.or(state, "all")) ++ type.q(prs) ++ Issue.param.q("&q=", q) ++ gitea.scope.q(owner)
 
+# gitea's repo search filters by the owner's numeric id, not its name
+def uid.q(+uid: String) -> String:
+  Ctx.or.if("&uid=" ++ Url.encode(uid), "", String.is_empty(uid))
+
 # repos ignore the repo scope: --owner narrows them, or the whole forge is searched
-def repo.url(+f: Ctx.Forge, +owner: String, +q: String, size: Nat) -> String:
+def repo.url(+f: Ctx.Forge, +owner: String, +uid: String, +q: String, size: Nat) -> String:
   match f:
     case Ctx.GitHub{}:
       gh.url("repositories", q ++ qual("user", owner), size)
     case Ctx.Gitea{}:
-      "repos/search?limit=" ++ Nat.show(size) ++ Issue.param.q("&q=", q)
+      "repos/search?limit=" ++ Nat.show(size) ++ Issue.param.q("&q=", q) ++ uid.q(uid)
 
 def code.url(+f: Ctx.Forge, +repo: Ctx.Repo, +owner: String, +q: String, size: Nat) -> String:
   match f:
@@ -156,15 +160,16 @@ def size.of(+f: Ctx.Forge, +limit: Nat) -> Nat:
     case Ctx.GitHub{}:
       min.at(limit, 100n, Nat.is_gt(limit, 100n))
 
-# the url one search asks, relative to the forge's API root
-def url.of(+k: Nat, +f: Ctx.Forge, +repo: Ctx.Repo, +owner: String, +q: String, +state: String, +limit: Nat) -> String:
+# the url one search asks, relative to the forge's API root. uid is the owner's numeric id
+# where the forge takes one and "" everywhere else
+def url.of(+k: Nat, +f: Ctx.Forge, +repo: Ctx.Repo, +owner: String, +uid: String, +q: String, +state: String, +limit: Nat) -> String:
   match k:
     case 0n:
       issue.url(f, repo, owner, q, state, size.of(f, limit), False{})
     case 1n:
       issue.url(f, repo, owner, q, state, size.of(f, limit), True{})
     case 2n:
-      repo.url(f, owner, q, size.of(f, limit))
+      repo.url(f, owner, uid, q, size.of(f, limit))
     case j:
       code.url(f, repo, owner, q, size.of(f, limit))
 
@@ -326,45 +331,133 @@ def print.rows(+on: Bool, json: Cli.Json, xs: List<&2, Map<&2, String>>, +k: Nat
     case j:
       Cli.json.emit(on, j, xs, json.fields(k))
 
-# replies
-# -------
+# paging
+# ------
+# A search answers an object holding its hits (github: items, gitea's repo search: data),
+# which Api.all's array walker cannot read, so the object-bodied walk below reads them a
+# page at a time and stops at --limit rows. Github pages through its Link header; gitea's
+# repo search takes a page parameter and never says where its pages end. Gitea's issue and
+# pr search answers a bare array, which Api.all walks.
 
-def reply.rows.if(+status: U32, body: Bytes.Bytes, +k: Nat, +root: String, +f: Ctx.Forge, good: Bool) -> Result<&1, &1, String, List<&2, Map<&2, String>>>:
+# the rows the pages read so far hold plus one page's, cut to --limit
+def page.take(+acc: List<&2, Map<&2, String>>, +rows: List<&2, Map<&2, String>>, +limit: Nat) -> List<&2, Map<&2, String>>:
+  List.take(&2, Map<&2, String>, List.append(&2, Map<&2, String>, acc, rows), limit)
+
+# how many rows the pages read so far hold, before --limit cuts them
+def page.seen(+acc: List<&2, Map<&2, String>>, +rows: List<&2, Map<&2, String>>) -> Nat:
+  Nat.add(List.length(&2, Map<&2, String>, acc), List.length(&2, Map<&2, String>, rows))
+
+# github's next page is its Link header's, until --limit rows are in, a page comes back
+# empty, or the Link is gone: the last page, or the search's last hit.
+def gh.next.url(+next: String, +got: Nat, +limit: Nat, empty: Bool) -> String:
+  Ctx.or.if(next, "", empty || Nat.is_ge(got, limit))
+
+# gitea's repo search names a page by parameter, and reads limit only when it gets one
+def at.page(+base: String, +page: U32) -> String:
+  base ++ "&page=" ++ U32.show(page)
+
+# Gitea's repo search never says where its pages end, so the next is one further while the
+# page came back full and --limit rows aren't in yet.
+def gitea.next.url(+base: String, +page: U32, +got: Nat, +limit: Nat, short: Bool) -> String:
+  Ctx.or.if(at.page(base, (page + 1 : U32)), "", short || Nat.is_ge(got, limit))
+
+# the hits one search page holds, under the field its forge wraps them in
+def page.rows(+k: Nat, body: Bytes.Bytes, +f: Ctx.Forge, github: Bool) -> List<&2, Map<&2, String>>:
+  match github:
+    case True{}:
+      rows.of(k, Api.obj(body), "items", f)
+    case False{}:
+      rows.of(k, Api.obj(body), "data", f)
+
+# --limit rows of the pages read so far, and the url of the page after this one, "" when
+# the walk is done
+def page.next(+acc: List<&2, Map<&2, String>>, +rows: List<&2, Map<&2, String>>, +f: Ctx.Forge, +next: String, +base: String, +page: U32, +limit: Nat, github: Bool) -> List<&2, Map<&2, String>> & String:
+  match github:
+    case True{}:
+      (page.take(acc, rows, limit), gh.next.url(next, page.seen(acc, rows), limit, Nat.is_eq(List.length(&2, Map<&2, String>, rows), 0n)))
+    case False{}:
+      (page.take(acc, rows, limit), gitea.next.url(base, page, page.seen(acc, rows), limit, Nat.is_lt(List.length(&2, Map<&2, String>, rows), size.of(f, limit))))
+
+# where a paged search is: about to ask a page, holding one page's rows and next url, or
+# holding the page it just finished
+type Pages is Type:
+  FetchPage{url: String, acc: List<&2, Map<&2, String>>}
+  ReadPage{got: Result<&1, &1, String, List<&2, Map<&2, String>> & String>}
+  NextPage{last: Bool, got: List<&2, Map<&2, String>>, next: String}
+
+def pages.done(st: Pages) -> Result<&1, &1, String, List<&2, Map<&2, String>>>:
+  match st:
+    case FetchPage{u, acc}:
+      Done{acc}
+    case ReadPage{Fail{w}}:
+      Fail{w}
+    case ReadPage{Done{(got, next)}}:
+      Done{got}
+    case NextPage{l, got, n}:
+      Done{got}
+
+def page.step.ok(+status: U32, +next: String, +k: Nat, +f: Ctx.Forge, +limit: Nat, +base: String, +page: U32, body: Bytes.Bytes, +acc: List<&2, Map<&2, String>>, +github: Bool, good: Bool) -> Result<&1, &1, String, List<&2, Map<&2, String>> & String>:
   match good:
     case True{}:
-      Done{rows.of(k, Api.obj(body), root, f)}
+      +rows = page.rows(k, body, f, github)
+      Done{page.next(acc, rows, f, next, base, page, limit, github)}
     case False{}:
       Fail{Api.message(status, body)}
 
-def reply.rows(r: Api.Reply, +k: Nat, +root: String, +f: Ctx.Forge) -> Result<&1, &1, String, List<&2, Map<&2, String>>>:
+def page.step(r: Api.Reply, +k: Nat, +f: Ctx.Forge, +limit: Nat, +base: String, +page: U32, +acc: List<&2, Map<&2, String>>, github: Bool) -> Result<&1, &1, String, List<&2, Map<&2, String>> & String>:
   match r:
     case Api.Broke{w}:
       Fail{w}
-    case Api.Reply{+status, next, body}:
-      reply.rows.if(status, body, k, root, f, Api.ok(status))
+    case Api.Reply{+status, +next, body}:
+      page.step.ok(status, next, k, f, limit, base, page, body, acc, github, Api.ok(status))
 
-# github wraps a search's hits in items
-def gh.rows(+f: Ctx.Forge, +repo: Ctx.Repo, +tok: String, +k: Nat, url: String) -> IO(Result<&1, &1, String, List<&2, Map<&2, String>>>):
-  do IO<Result<&1, &1, String, List<&2, Map<&2, String>>>>:
-    r : Api.Reply <- Api.get(repo, tok, url)
-    return reply.rows(r, k, "items", f)
+# how many pages --limit rows can take: a page holds the forge's cap at most, plus the one
+# short page that ends the walk
+def pages.of(+f: Ctx.Forge, +limit: Nat) -> Nat:
+  Nat.add(Nat.div(Nat.add(limit, Nat.sub(size.of(f, limit), 1n)), size.of(f, limit)), 1n)
 
-# gitea's issue search answers a bare array, which Api.all walks; its repo search an object
-def gitea.rows(+f: Ctx.Forge, +repo: Ctx.Repo, +tok: String, +k: Nat, url: String) -> IO(Result<&1, &1, String, List<&2, Map<&2, String>>>):
+# every hit of a search, a page at a time, until --limit rows or the forge's last page.
+# A page costs three steps, so pages.of bounds the walk.
+def search.walk(fuel: Nat, +repo: Ctx.Repo, +tok: String, +k: Nat, +f: Ctx.Forge, +limit: Nat, +base: String, +page: U32, +github: Bool, st: Pages) -> IO(Result<&1, &1, String, List<&2, Map<&2, String>>>):
+  match fuel st:
+    case 0n s:
+      IO.pure(Result<&1, &1, String, List<&2, Map<&2, String>>>, pages.done(s))
+    case 1n+p FetchPage{url, acc}:
+      IO.bind(Api.Reply, Result<&1, &1, String, List<&2, Map<&2, String>>>, Api.get(repo, tok, url), r => search.walk(p, repo, tok, k, f, limit, base, page, github, ReadPage{page.step(r, k, f, limit, base, page, acc, github)}))
+    case 1n+p ReadPage{Fail{w}}:
+      IO.pure(Result<&1, &1, String, List<&2, Map<&2, String>>>, Fail{w})
+    case 1n+p ReadPage{Done{(got, +next)}}:
+      search.walk(p, repo, tok, k, f, limit, base, page, github, NextPage{String.is_empty(next), got, next})
+    case 1n+p NextPage{True{}, got, n}:
+      IO.pure(Result<&1, &1, String, List<&2, Map<&2, String>>>, Done{got})
+    case 1n+p NextPage{False{}, got, next}:
+      search.walk(p, repo, tok, k, f, limit, base, (page + 1 : U32), github, FetchPage{next, got})
+
+# at most --limit rows, whatever the forge listed
+def capped(r: Result<&1, &1, String, List<&2, Map<&2, String>>>, +limit: Nat) -> Result<&1, &1, String, List<&2, Map<&2, String>>>:
+  match r:
+    case Done{xs}:
+      Done{List.take(&2, Map<&2, String>, xs, limit)}
+    case Fail{w}:
+      Fail{w}
+
+# gitea's issue and pr search answers a bare array, which Api.all walks; its repo search
+# an object, which the walk above reads
+def gitea.fetch(+f: Ctx.Forge, +repo: Ctx.Repo, +tok: String, +k: Nat, +limit: Nat, +url: String) -> IO(Result<&1, &1, String, List<&2, Map<&2, String>>>):
   match k:
     case 2n:
-      do IO<Result<&1, &1, String, List<&2, Map<&2, String>>>>:
-        r : Api.Reply <- Api.get(repo, tok, url)
-        return reply.rows(r, 2n, "data", f)
+      search.walk(Nat.mul(3n, pages.of(f, limit)), repo, tok, k, f, limit, url, 0, False{}, FetchPage{at.page(url, 1), Nil{}})
     case j:
-      Api.all(1n, repo, tok, url)
+      do IO<Result<&1, &1, String, List<&2, Map<&2, String>>>>:
+        r : Result<&1, &1, String, List<&2, Map<&2, String>>> <- Api.all(pages.of(f, limit), repo, tok, url)
+        return capped(r, limit)
 
-def fetch(+f: Ctx.Forge, +repo: Ctx.Repo, +tok: String, +k: Nat, url: String) -> IO(Result<&1, &1, String, List<&2, Map<&2, String>>>):
-  match f:
-    case Ctx.GitHub{}:
-      gh.rows(f, repo, tok, k, url)
-    case Ctx.Gitea{}:
-      gitea.rows(f, repo, tok, k, url)
+def fetch(+f: Ctx.Forge, +repo: Ctx.Repo, +tok: String, +k: Nat, +limit: Nat, +url: String, +github: Bool) -> IO(Result<&1, &1, String, List<&2, Map<&2, String>>>):
+  match github:
+    case True{}:
+      search.walk(Nat.mul(3n, pages.of(f, limit)), repo, tok, k, f, limit, url, 0, github, FetchPage{url, Nil{}})
+    case False{}:
+      gitea.fetch(f, repo, tok, k, limit, url)
 
 def show(+env: Cli.Env, +k: Nat, +f: Ctx.Forge, r: Result<&1, &1, String, List<&2, Map<&2, String>>>, wide: Bool) -> IO(Unit):
   match env r:
@@ -402,27 +495,78 @@ def code.if(+env: Cli.Env, code: Bool, github: Bool, anon: Bool) -> IO(Unit):
     case x y z:
       IO.pure(Unit, Unit{})
 
-# gitea can search issues by owner but not repos, so the flag would silently search the forge
-def owner.if(+env: Cli.Env, repos: Bool, github: Bool, empty: Bool) -> IO(Unit):
-  match repos github empty:
-    case True{} False{} False{}:
-      Cli.fail(Unit, env, "search repos: --owner is GitHub-only")
-    case x y z:
-      IO.pure(Unit, Unit{})
+# github narrows a repo search with user:NAME in the query; gitea's takes the owner's
+# numeric id, so a name costs one request first. A user and an organization answer alike at
+# GET /users/{name} on gitea: organizations are users there.
+def uid.path(+owner: String) -> String:
+  "users/" ++ Url.encode(owner)
+
+def uid.id.if(+i: String, +owner: String, empty: Bool) -> Result<&1, &1, String, String>:
+  match empty:
+    case True{}:
+      Fail{"search repos: no such owner: " ++ owner}
+    case False{}:
+      Done{i}
+
+def uid.reply(+status: U32, body: Bytes.Bytes, +owner: String, good: Bool) -> Result<&1, &1, String, String>:
+  match good:
+    case True{}:
+      +i = Api.f(Api.obj(body), "id")
+      uid.id.if(i, owner, String.is_empty(i))
+    case False{}:
+      Fail{Api.message(status, body)}
+
+def uid.of(r: Api.Reply, +owner: String) -> Result<&1, &1, String, String>:
+  match r:
+    case Api.Broke{w}:
+      Fail{w}
+    case Api.Reply{+status, next, body}:
+      uid.reply(status, body, owner, Api.ok(status))
+
+def uid.take(+env: Cli.Env, r: Result<&1, &1, String, String>) -> IO(String):
+  match r:
+    case Done{+i}:
+      IO.pure(String, i)
+    case Fail{w}:
+      Cli.fail(String, env, w)
+
+def gitea.uid(+env: Cli.Env, +owner: String) -> IO(String):
+  match env:
+    case Cli.Env{+repo, +tok, on, json, args}:
+      do IO<String>:
+        r : Api.Reply <- Api.get(repo, tok, uid.path(owner))
+        uid.take(env, uid.of(r, owner))
+
+def owner.uid.if(+env: Cli.Env, want: Bool, +owner: String) -> IO(String):
+  match want:
+    case True{}:
+      gitea.uid(env, owner)
+    case False{}:
+      IO.pure(String, "")
+
+# the owner's id where the forge filters by one, "" everywhere else. Gitea searches issues
+# by owner name but filters repos by uid only, so a repo search narrowed by an owner
+# resolves the name first.
+def owner.uid(+env: Cli.Env, +f: Ctx.Forge, +k: Nat, +owner: String) -> IO(String):
+  match f:
+    case Ctx.Gitea{}:
+      owner.uid.if(env, Nat.is_eq(k, 2n) && Bool.not(String.is_empty(owner)), owner)
+    case Ctx.GitHub{}:
+      IO.pure(String, "")
 
 def limit.check(+env: Cli.Env, v: U32, ok: Bool) -> IO(Nat):
   match ok:
     case True{}:
       IO.pure(Nat, U32.to_nat(v))
     case False{}:
-      Cli.fail(Nat, env, "search: --limit must be an integer from 1 to 100")
+      Cli.fail(Nat, env, "search: --limit must be an integer from 1 to 1000")
 
 def limit.got(+env: Cli.Env, m: Maybe<&2, U32>) -> IO(Nat):
   match m:
     case Some{+v}:
-      limit.check(env, v, (v > 0 : U32) && (v <= 100 : U32))
+      limit.check(env, v, (v > 0 : U32) && (v <= 1000 : U32))
     case None{}:
-      Cli.fail(Nat, env, "search: --limit must be an integer from 1 to 100")
+      Cli.fail(Nat, env, "search: --limit must be an integer from 1 to 1000")
 
 def limit.of(+env: Cli.Env, +v: String) -> IO(Nat):
   limit.got(env, U32.read(v))
@@ -463,7 +607,7 @@ def run(+env: Cli.Env) -> IO(Unit):
         +f : Ctx.Forge = Issue.forge.of(repo)
         +limit : Nat <- limit.of(env, Cli.flag(args, "--limit", "20"))
         code.if(env, Nat.is_eq(k, 3n), Issue.is.github(f), String.is_empty(tok))
-        owner.if(env, Nat.is_eq(k, 2n), Issue.is.github(f), String.is_empty(owner))
         query.check(env, q)
-        r : Result<&1, &1, String, List<&2, Map<&2, String>>> <- fetch(f, repo, tok, k, url.of(k, f, repo, owner, q, state, limit))
+        +uid : String <- owner.uid(env, f, k, owner)
+        r : Result<&1, &1, String, List<&2, Map<&2, String>>> <- fetch(f, repo, tok, k, limit, url.of(k, f, repo, owner, uid, q, state, limit), Issue.is.github(f))
         show(env, k, f, r, wide.of(repo, owner))
