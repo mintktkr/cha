@@ -7,6 +7,7 @@ import ./src/cli.bend as Cli
 import ./src/api.bend as Api
 import ./src/cmd/packages.bend as Packages
 import ./src/hooks.bend as Hooks
+import ./src/cmd/secrets.bend as Secrets
 import ./LAWS.bend as Laws
 
 # Colour off
@@ -171,6 +172,14 @@ def Laws.link_no_next():
   {==}
 
 def Laws.link_next_url():
+  {==}
+
+# Both sides are closed text, so the walk through String.contains and the message builder
+# normalizes to the same string.
+def Laws.secrets_set_hides_value():
+  {==}
+
+def Laws.secrets_set_keeps_message():
   {==}
 
 # Terminal escape

@@ -96,6 +96,13 @@ cha hooks [--org O] [--json]           # a repo's or an org's webhooks
 cha hooks create URL --events push,pull_request [--secret-file F] [--content-type json|form] [--org O]
 cha hooks delete ID --yes             # hooks test ID sends a test delivery
 
+cha secrets [--org O] [--json]        # an Actions secret's name and when it last changed, never its value
+cha secrets set NAME (--value V | --value-file F) [--org O]
+cha secrets delete NAME --yes [--org O]
+cha variables [--org O] [--json]      # an Actions variable's name and value
+cha variables set NAME (--value V | --value-file F) [--org O]   # creates, or updates
+cha variables delete NAME --yes [--org O]
+
 cha help [command]
 cha completions fish
 ```
@@ -138,6 +145,7 @@ cha completions fish
 - Find a repo before cloning it: `cha search repos kettle --json full_name,html_url`.
 - Long comment or body from a heredoc: `cha issue comment 12 --body-file - <<'EOF' ... EOF`.
 - Update a bot's marker comment instead of posting another: `cha issue view 12 --comments`, then `cha issue comment-edit ID --body-file -`.
+- A secret without leaving it in the shell's history: `cha secrets set TOKEN --value-file - <<'EOF' ... EOF`, or `... --value-file /run/secrets/token`.
 - Check the latest upstream version: `cha -R github.com/owner/repo release latest`.
 - Attach a build to a release: `cha release upload v0.1.0 out/cha`. The asset name is the file's basename, each asset's URL is printed, and `cha release view v0.1.0` lists the assets afterwards.
 - Read a file without cloning: `cha -R host/owner/repo repo file README.md --ref main`.
@@ -149,6 +157,8 @@ cha completions fish
 - `pr comment N` checks that N is a pull request first. Both forges share the comment endpoint between issues and pull requests, so a number that is an issue (or none at all) exits 1 with `#N is not a pull request (an issue, or no such number)` instead of commenting on the issue.
 - Label names are checked before any write, because Gitea silently ignores unknown names, or wipes the set on replace.
 - Gitea 1.25 has no API to rerun or cancel an Actions run. `cha runs rerun|cancel` exit 1 with a hint: push a commit, or use the web UI.
+- A secret's value goes one way. The forges never send one back, and cha prints none: not in a list, not in `--json`, not in an error, even when a failed reply's body repeats it (the message is dropped instead, and `LAWS.bend` proves it). Pass it with `--value-file -` so it stays out of the shell's history; a trailing newline from a heredoc or `echo` is dropped. Names are checked before any request: letters, digits and underscores, no leading digit, no `GITHUB_` prefix.
+- `secrets set` on GitHub exits 1 without a request: a GitHub secret has to be sealed with the repo's public key (libsodium's sealed box), which cha can't build yet. `secrets list|delete` and everything under `variables` work there. Variables take `PUT` on Gitea, `POST` then `PATCH` on GitHub.
 - GitHub's issue list includes pull requests. `cha issue list` drops them.
 - GitHub scopes runners to a repo or an org: `cha runners --user` and `--admin` exit 1 there. On Gitea and Forgejo, `--admin` lists every runner on the site and needs a site-admin token; a 403 says so. A runner id must be digits only, and a delete without `--yes` names the runner and exits 1.
 - GitHub's package endpoints need a token with `read:packages`: an anonymous 401 or 403 says so. Gitea's version list is a name query, so `packages versions NAME` keeps only the rows named exactly.
