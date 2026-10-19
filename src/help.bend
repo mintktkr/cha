@@ -339,16 +339,24 @@ def repo.rows() -> List<&2, Row>:
    Row{"label-create NAME [--color HEX]", "make a label", "cha repo label-create tea --color ff6eb4"},
    Row{"branches", "the repo's branches", "cha repo branches"},
    Row{"file PATH [--ref R]", "a file's contents", "cha repo file README.md --ref main"},
-   Row{"tree [--ref R]", "the repo's file tree", "cha repo tree"}]
+   Row{"tree [--ref R]", "the repo's file tree", "cha repo tree"},
+   Row{"create NAME [--org O] [--private] [--description D]", "make a repo, on the checkout's host", "cha repo create cha-sandbox --private"},
+   Row{"delete OWNER/NAME --yes", "delete a repo; it must be named, and --yes is required", "cha repo delete OWNER/cha-sandbox --yes"}]
 
 def repo.flags() -> List<&2, Row>:
   [Row{"--color HEX", "the label's colour, like ff6eb4", ""},
-   Row{"--ref R", "read from this branch or tag", ""}]
+   Row{"--ref R", "read from this branch or tag", ""},
+   Row{"--org O", "create the repo in this org", ""},
+   Row{"--private", "create the repo private", ""},
+   Row{"--description D", "the new repo's description", ""},
+   Row{"--yes", "confirm a delete; cha never prompts", ""}]
 
 def repo.examples() -> List<&2, String>:
   ["cha repo view",
    "cha repo label-create tea --color ff6eb4",
-   "cha repo file README.md --ref main"]
+   "cha repo file README.md --ref main",
+   "cha repo create cha-sandbox --private --description 'a sandbox'",
+   "cha repo delete OWNER/cha-sandbox --yes"]
 
 def repo.page() -> Page:
   Page{"cha repo", "cha repo <command> [flags]", repo.rows(), repo.flags(), repo.examples()}
@@ -580,7 +588,7 @@ def comp.groups() -> List<&2, String>:
   ["complete -c cha -n '__cha_needs_command' -a issue -d 'issues: list, view, create, comment, edit, close, reopen, labels'",
    "complete -c cha -n '__cha_needs_command' -a pr -d 'pull requests: list, view, diff, create, merge, edit, comment, checks'",
    "complete -c cha -n '__cha_needs_command' -a runs -d 'actions: list, view, logs, watch, dispatch, rerun, cancel'",
-   "complete -c cha -n '__cha_needs_command' -a repo -d 'repo: view, labels, label-create, branches, file, tree'",
+   "complete -c cha -n '__cha_needs_command' -a repo -d 'repo: view, labels, label-create, branches, file, tree, create, delete'",
    "complete -c cha -n '__cha_needs_command' -a release -d 'releases: list, view, latest, create, upload'",
    "complete -c cha -n '__cha_needs_command' -a moved -d 'what changed since a time'",
    "complete -c cha -n '__cha_needs_command' -a auth -d 'login and token source'",
@@ -675,7 +683,13 @@ def comp.repo() -> List<&2, String>:
    "complete -c cha -n '__cha_sub_command repo' -a branches -d \"the repo's branches\"",
    "complete -c cha -n '__cha_sub_command repo' -a file -d \"a file's contents\"",
    "complete -c cha -n '__cha_sub_command repo' -a tree -d \"the repo's file tree\"",
+   "complete -c cha -n '__cha_sub_command repo' -a create -d 'make a repo'",
+   "complete -c cha -n '__cha_sub_command repo' -a delete -d 'delete a repo; --yes is required'",
    "complete -c cha -n '__cha_using_sub repo label-create' -l color -x -d 'the colour, like ff6eb4'",
+   "complete -c cha -n '__cha_using_sub repo create' -l org -x -d 'the org to create the repo in'",
+   "complete -c cha -n '__cha_using_sub repo create' -l private -d 'create the repo private'",
+   "complete -c cha -n '__cha_using_sub repo create' -l description -x -d \"the new repo's description\"",
+   "complete -c cha -n '__cha_using_sub repo delete' -l yes -d 'confirm a delete; cha never prompts'",
    "complete -c cha -n '__cha_using_sub repo file' -l ref -x -d 'a branch or tag'",
    "complete -c cha -n '__cha_using_sub repo tree' -l ref -x -d 'a branch or tag'",
    ""]

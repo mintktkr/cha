@@ -509,11 +509,174 @@ def tree(+env: Cli.Env) -> IO(Unit):
         b : List<&2, U32> <- body.reply(env, r)
         tree.out(env, b)
 
+# create and delete
+# -----------------
+
+# an owner, repo or org name as a forge allows it, so it can't reach a URL path as
+# anything else: a name with a space, a ? or a % is refused before any request is built
+def name.char(+c: Char) -> Bool:
+  Bool.or(Bool.or(Char.is_alpha(c), Char.is_digit(c)), Bool.or(Char.is_eq(c, '-'), Bool.or(Char.is_eq(c, '_'), Char.is_eq(c, '.'))))
+
+def name.ok(cs: List<&2, Char>) -> Bool:
+  match cs:
+    case Nil{}:
+      True{}
+    case Con{+c, t}:
+      Bool.and(name.char(c), name.ok(t))
+
+# where a repo is made: the token's own account, or an org
+# both forges spell it the same way
+# create.url("", True{}) is POST /user/repos, otherwise POST /orgs/{org}/repos
+def create.url(+org: String, empty: Bool) -> String:
+  match empty:
+    case True{}:
+      "user/repos"
+    case False{}:
+      "orgs/" ++ org ++ "/repos"
+
+def create.body(+name: String, +desc: String, private: Bool) -> Json.Val:
+  Json.Obj{[("name", Api.utf8(name)), ("description", Api.utf8(desc)), ("private", Json.Flag{private})]}
+
+# an org is a URL path segment too, so it gets the same letters, digits, . _ - check
+# as a delete's owner and name
+def org.bad(+org: String, empty: Bool) -> Bool:
+  match empty:
+    case True{}:
+      False{}
+    case False{}:
+      Bool.not(name.ok(String.to_list(org)))
+
+def create.org.check(+env: Cli.Env, +org: String, bad: Bool) -> IO(Unit):
+  match bad:
+    case True{}:
+      Cli.fail(Unit, env, "repo create: --org takes a name of letters, digits, . _ -")
+    case False{}:
+      IO.pure(Unit, Unit{})
+
+def create.send(+env: Cli.Env, +repo: Ctx.Repo, +tok: String, +name: String, +args: List<&2, String>) -> IO(Unit):
+  do IO<Unit>:
+    +org : String = Cli.flag(args, "--org", "")
+    r : Api.Reply <- Api.send(repo, tok, "POST", create.url(org, String.is_empty(org)), Some{create.body(name, Cli.flag(args, "--description", ""), Cli.has(args, "--private"))})
+    b : List<&2, U32> <- body.reply(env, r)
+    +x : Map<&2, String> = Api.obj(b)
+    created(env, "repo " ++ Api.f(x, "full_name"), Api.f(x, "html_url"))
+
+def repo.create(+env: Cli.Env) -> IO(Unit):
+  match env:
+    case Cli.Env{+repo, +tok, on, json, +args}:
+      do IO<Unit>:
+        Cli.check(env, "repo create", args, ["--org", "--private", "--description"])
+        +raw : String = Cli.arg(args, 1n)
+        name : String <- arg.of(env, "repo create: a name is required", raw, String.is_empty(raw))
+        +org : String = Cli.flag(args, "--org", "")
+        create.org.check(env, org, org.bad(org, String.is_empty(org)))
+        create.send(env, repo, tok, name, args)
+
+# delete
+# ------
+
+def target.make(f: Ctx.Forge, +host: String, +o: String, +n: String, blank: Bool) -> Maybe<&2, Ctx.Repo>:
+  match blank:
+    case True{}:
+      None{}
+    case False{}:
+      Some{Ctx.Repo{f, host, o, n}}
+
+def target.seg(f: Ctx.Forge, +host: String, segs: List<&2, String>) -> Maybe<&2, Ctx.Repo>:
+  match segs:
+    case Con{+o, Con{+n, Nil{}}}:
+      blank = Bool.not(Bool.and(Bool.and(name.ok(String.to_list(o)), name.ok(String.to_list(n))), Bool.and(Bool.not(String.is_empty(o)), Bool.not(String.is_empty(n)))))
+      target.make(f, host, o, n, blank)
+    case x:
+      None{}
+
+# the repo a delete names, as OWNER/NAME on the checkout's (or -R's) host
+# never the checkout's own repo: the name has to be written out
+def target(f: Ctx.Forge, +host: String, +s: String) -> Maybe<&2, Ctx.Repo>:
+  target.seg(f, host, String.split(s, '/'))
+
+def target.of(+repo: Ctx.Repo, +s: String) -> Maybe<&2, Ctx.Repo>:
+  match repo:
+    case Ctx.Repo{f, h, o, n}:
+      target(f, h, s)
+
+def name.of(r: Ctx.Repo) -> String:
+  match r:
+    case Ctx.Repo{f, h, +o, +n}:
+      o ++ "/" ++ n
+
+# cha never prompts, so every destructive command needs --yes and says what it would do
+# without it, before it builds a request
+def delete.confirmed(+name: String, yes: Bool) -> String:
+  match yes:
+    case True{}:
+      ""
+    case False{}:
+      "repo delete: this deletes " ++ name ++ "; rerun with --yes to confirm"
+
+def delete.scope(f: Ctx.Forge) -> String:
+  match f:
+    case Ctx.GitHub{}:
+      "github: delete_repo"
+    case Ctx.Gitea{}:
+      "gitea: write:repository"
+
+def delete.why(f: Ctx.Forge, +status: U32) -> String:
+  "repo delete: the token lacks the delete scope (" ++ delete.scope(f) ++ ", HTTP " ++ U32.show(status) ++ ")"
+
+def delete.bad(+env: Cli.Env, f: Ctx.Forge, +status: U32, body: List<&2, U32>, denied: Bool) -> IO(Unit):
+  match denied:
+    case True{}:
+      Cli.fail(Unit, env, delete.why(f, status))
+    case False{}:
+      Cli.fail(Unit, env, Api.message(status, body))
+
+def delete.if(+env: Cli.Env, f: Ctx.Forge, +name: String, +status: U32, body: List<&2, U32>, good: Bool) -> IO(Unit):
+  match env good:
+    case Cli.Env{r, t, +on, j, a} True{}:
+      Ui.done(on, "deleted " ++ name)
+    case e False{}:
+      delete.bad(env, f, status, body, U32.is_eq(status, 403))
+
+def delete.check(+env: Cli.Env, f: Ctx.Forge, +name: String, r: Api.Reply) -> IO(Unit):
+  match r:
+    case Api.Broke{w}:
+      Cli.fail(Unit, env, w)
+    case Api.Reply{+status, next, body}:
+      delete.if(env, f, name, status, body, Api.ok(status))
+
+def delete.named.if(+env: Cli.Env, +m: Maybe<&2, Ctx.Repo>) -> IO(Ctx.Repo):
+  match m:
+    case Some{+r}:
+      IO.pure(Ctx.Repo, r)
+    case None{}:
+      Cli.fail(Ctx.Repo, env, "repo delete: name the repo to delete, as OWNER/NAME")
+
+def delete.named(+env: Cli.Env, +repo: Ctx.Repo, +raw: String) -> IO(Ctx.Repo):
+  delete.named.if(env, target.of(repo, raw))
+
+def delete.ready(+env: Cli.Env, +r: Ctx.Repo, yes: Bool) -> IO(Unit):
+  match yes:
+    case True{}:
+      IO.pure(Unit, Unit{})
+    case False{}:
+      Cli.fail(Unit, env, delete.confirmed(name.of(r), False{}))
+
+def repo.delete(+env: Cli.Env) -> IO(Unit):
+  match env:
+    case Cli.Env{+repo, +tok, on, json, +args}:
+      do IO<Unit>:
+        Cli.check(env, "repo delete", args, ["--yes"])
+        +r : Ctx.Repo <- delete.named(env, repo, Cli.arg(args, 1n))
+        delete.ready(env, r, Cli.has(args, "--yes"))
+        rep : Api.Reply <- Api.send(r, tok, "DELETE", Api.path(r, ""), None{})
+        delete.check(env, forge.of(r), name.of(r), rep)
+
 # dispatch
 # --------
 
 def names() -> List<&2, String>:
-  ["view", "labels", "label-create", "branches", "file", "tree"]
+  ["view", "labels", "label-create", "branches", "file", "tree", "create", "delete"]
 
 def index.at(eq: Bool, +i: Nat, +later: Nat) -> Nat:
   match eq:
@@ -544,7 +707,11 @@ def run.at(+env: Cli.Env, n: Nat) -> IO(Unit):
       file(env)
     case 5n:
       tree(env)
-    case 6n+k:
+    case 6n:
+      repo.create(env)
+    case 7n:
+      repo.delete(env)
+    case 8n+k:
       Cli.fail(Unit, env, "repo: unknown subcommand, try cha help")
 
 def run.sub(+env: Cli.Env, +sub: String, empty: Bool) -> IO(Unit):
