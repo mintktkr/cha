@@ -217,6 +217,56 @@ def Laws.runner_id_digits():
 def Laws.runner_id_not_digits():
   {==}
 
+# Path segments
+# -------------
+# Each law names a closed name, so its walk through String.split and segs.ok reduces to a
+# Bool: the two sides of the claim are the same Bool, and reflexivity proves it.
+
+def Laws.path_dotdot():
+  {==}
+
+def Laws.path_dotdot_mid():
+  {==}
+
+def Laws.path_dot():
+  {==}
+
+def Laws.path_leading():
+  {==}
+
+def Laws.path_double():
+  {==}
+
+def Laws.path_ok_branch():
+  {==}
+
+def Laws.path_ok_version():
+  {==}
+
+def Laws.path_ok_release():
+  {==}
+
+def Laws.path_one_seg_slash():
+  {==}
+
+def Laws.path_one_seg_dots():
+  {==}
+
+def Laws.path_one_seg_plain():
+  {==}
+
+# A repo target is read through String.split and name.ok on a closed name, so it reduces to
+# None{} on both sides.
+
+def Laws.repo_delete_dot_owner():
+  {==}
+
+def Laws.repo_delete_dot_name():
+  {==}
+
+def Laws.repo_delete_empty_half():
+  {==}
+
 # Packages
 # --------
 

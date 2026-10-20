@@ -1,13 +1,16 @@
 # laws: what the pure core must keep. Each law is a claim; PROOF.bend proves it.
-# They cover the four things a wrong turn would break quietly: colour off must leave text
-# unchanged, the string and flag helpers must behave at their edges, a remote URL must
-# parse to the repo it names, and a runner id must not reach a path with anything but digits.
+# They cover what a wrong turn would break quietly: colour off must leave text unchanged,
+# the string and flag helpers must behave at their edges, a remote URL must parse to the
+# repo it names, a runner id must not reach a path with anything but digits, and a name
+# that goes into a path must not carry a segment that walks out of it.
 import Base
 import ./src/clean.bend as Clean
 import ./src/ui.bend as Ui
 import ./src/ctx.bend as Ctx
 import ./src/cli.bend as Cli
 import ./src/api.bend as Api
+import ./src/url.bend as Url
+import ./src/cmd/repo.bend as Repo
 import ./src/cmd/runners.bend as Runners
 import ./src/cmd/packages.bend as Packages
 import ./src/hooks.bend as Hooks
@@ -222,6 +225,68 @@ law runner_id_digits:
 # LAW: a path, a letter or a space in a runner id is refused.
 law runner_id_not_digits:
   {Runners.digits("1/registration-token") == False{} : Bool}
+
+# Path segments
+# -------------
+# A name that keeps its slashes goes into a URL path as it is, so no segment of it may be
+# empty or a dot: "../x" would leave the path for another endpoint. A command refuses such
+# a name before it sends anything.
+
+# LAW: a .. segment is refused.
+law path_dotdot:
+  {Url.encode.path.ok("../x") == False{} : Bool}
+
+# LAW: a .. segment in the middle is refused.
+law path_dotdot_mid:
+  {Url.encode.path.ok("a/../b") == False{} : Bool}
+
+# LAW: a . segment is refused.
+law path_dot:
+  {Url.encode.path.ok("a/./b") == False{} : Bool}
+
+# LAW: a leading slash, so an empty first segment, is refused.
+law path_leading:
+  {Url.encode.path.ok("/a") == False{} : Bool}
+
+# LAW: a doubled slash, so an empty middle segment, is refused.
+law path_double:
+  {Url.encode.path.ok("a//b") == False{} : Bool}
+
+# LAW: a branch name whose segments are plain is safe.
+law path_ok_branch:
+  {Url.encode.path.ok("memu/foo") == True{} : Bool}
+
+# LAW: a dotted version is safe, since only a whole . or .. segment is refused.
+law path_ok_version:
+  {Url.encode.path.ok("v1.0.2") == True{} : Bool}
+
+# LAW: a release branch with a dotted segment is safe.
+law path_ok_release:
+  {Url.encode.path.ok("release/1.0") == True{} : Bool}
+
+# LAW: a value with a slash of its own is two segments, which one segment may not be.
+law path_one_seg_slash:
+  {Url.encode.seg.ok("ci.yml/ci.yml") == False{} : Bool}
+
+# LAW: a . or .. is not one segment either.
+law path_one_seg_dots:
+  {Url.encode.seg.ok("..") == False{} : Bool}
+
+# LAW: a workflow file name is one segment, and goes in the path.
+law path_one_seg_plain:
+  {Url.encode.seg.ok("ci.yml") == True{} : Bool}
+
+# LAW: a repo delete of . as the owner names no repo, so it can't reach a path.
+law repo_delete_dot_owner:
+  {Repo.target(Ctx.Gitea{}, "codeberg.org", "./x") == None{} : Maybe<&2, Ctx.Repo>}
+
+# LAW: ...and neither does .. as the name.
+law repo_delete_dot_name:
+  {Repo.target(Ctx.GitHub{}, "github.com", "x/..") == None{} : Maybe<&2, Ctx.Repo>}
+
+# LAW: ...and neither does an empty half.
+law repo_delete_empty_half:
+  {Repo.target(Ctx.Gitea{}, "codeberg.org", "x/") == None{} : Maybe<&2, Ctx.Repo>}
 
 # Packages
 # --------

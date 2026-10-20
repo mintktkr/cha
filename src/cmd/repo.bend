@@ -416,6 +416,15 @@ def default.branch(+env: Cli.Env, +repo: Ctx.Repo, +tok: String) -> IO(String):
     b : Bytes.Bytes <- body.reply(env, r)
     IO.pure(String, Api.f(Api.obj(b), "default_branch"))
 
+# a branch name keeps its slashes in the path, so a . or .. segment in it would walk to
+# another endpoint: the delete refuses it before it sends anything
+def delete.segments(ok: Bool) -> String:
+  match ok:
+    case True{}:
+      ""
+    case False{}:
+      "repo branch-delete: a branch name can't have . or .. segments"
+
 def deleted(+env: Cli.Env, +msg: String) -> IO(Unit):
   match env:
     case Cli.Env{r, t, +on, j, a}:
@@ -431,10 +440,13 @@ def delete.send(+env: Cli.Env, +repo: Ctx.Repo, +tok: String, +name: String) -> 
 def delete.compare(+env: Cli.Env, +name: String, +dflt: String) -> IO(Unit):
   Cli.check.if(env, delete.default(name, String.eq(name, dflt)), Bool.not(String.eq(name, dflt)))
 
-# the --yes guard comes first, so a delete without it makes no request at all
+# the --yes guard and the path guard come first, so a delete without --yes, or of a name
+# that would walk out of the path, makes no request at all
 def delete.go(+env: Cli.Env, +repo: Ctx.Repo, +tok: String, +name: String, +ok: Bool) -> IO(Unit):
   do IO<Unit>:
     Cli.check.if(env, delete.ask(name, ok), ok)
+    +bad : String = delete.segments(Url.encode.path.ok(name))
+    Cli.check.if(env, bad, String.is_empty(bad))
     dflt : String <- default.branch(env, repo, tok)
     delete.compare(env, name, dflt)
     delete.send(env, repo, tok, name)
@@ -669,10 +681,12 @@ def target.make(f: Ctx.Forge, +host: String, +o: String, +n: String, blank: Bool
     case False{}:
       Some{Ctx.Repo{f, host, o, n}}
 
+# an owner or a name is one path segment: the forge's letters, digits, . _ - , and not a
+# . or .. that would walk out of the path. An empty half names no repo.
 def target.seg(f: Ctx.Forge, +host: String, segs: List<&2, String>) -> Maybe<&2, Ctx.Repo>:
   match segs:
     case Con{+o, Con{+n, Nil{}}}:
-      blank = Bool.not(Bool.and(Bool.and(name.ok(String.to_list(o)), name.ok(String.to_list(n))), Bool.and(Bool.not(String.is_empty(o)), Bool.not(String.is_empty(n)))))
+      blank = Bool.not(Bool.and(Bool.and(name.ok(String.to_list(o)), name.ok(String.to_list(n))), Bool.and(Url.seg.ok(o), Url.seg.ok(n))))
       target.make(f, host, o, n, blank)
     case x:
       None{}

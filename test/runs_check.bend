@@ -1,6 +1,7 @@
 import Base
 import ../src/ctx.bend as Ctx
 import ../src/api.bend as Api
+import ../src/url.bend as Url
 import ../src/cmd/runs.bend as Runs
 import 0x49814d83de8f70993a43e1002be29ecd/bytes.bend as Bytes
 import 0x3bfb4ae4d3b87b90f01bfcd298211455/time.bend as Time
@@ -207,6 +208,11 @@ def main() -> IO(Unit):
     expect(Runs.dispatch.runs(Ctx.GitHub{}), "actions/runs?page=1&per_page=20&event=workflow_dispatch")
     expect(Runs.dispatch.page(Ctx.Gitea{}, "ci.yml"), "actions?workflow=ci.yml")
     expect(Runs.dispatch.page(Ctx.GitHub{}, "ci.yml"), "actions/workflows/ci.yml")
+    expect(Runs.dispatch.path("ci.yml"), "actions/workflows/ci.yml/dispatches")
+    expect(Runs.dispatch.path("a b.yml"), "actions/workflows/a%20b.yml/dispatches")
+    expect(Runs.dispatch.wf.bad(Url.encode.seg.ok("a/b")), "runs dispatch: a workflow file can't have a slash, or be . or ..")
+    expect(Runs.dispatch.wf.bad(Url.encode.seg.ok("..")), "runs dispatch: a workflow file can't have a slash, or be . or ..")
+    expect(Runs.dispatch.wf.bad(Url.encode.seg.ok("ci.yml")), "")
     expect(Api.str(Runs.dispatch.body("main", Nil{}, True{}), "ref"), "main")
     expect(Api.str(Runs.dispatch.body("main", Nil{}, True{}), "return_run_details"), "true")
     expect(Api.str(Runs.dispatch.body("main", Nil{}, False{}), "return_run_details"), "")
