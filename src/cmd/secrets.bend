@@ -414,9 +414,11 @@ def value.of(+env: Cli.Env, +inline: String, +path: String, from_file: Bool) -> 
 def value(+env: Cli.Env, +cmd: String, +args: List<&2, String>) -> IO(String):
   do IO<String>:
     +path : String = Cli.flag(args, "--value-file", "")
-    +from_file : Bool = Cli.has(args, "--value-file")
-    value.need(env, cmd, Bool.or(from_file, Cli.has(args, "--value")))
-    value.of(env, Cli.flag(args, "--value", ""), path, from_file)
+    +inline : String = Cli.flag(args, "--value", "")
+    # read by value, not by Cli.has, so --value=x and --value-file=F count too
+    +from_file : Bool = Bool.not(String.is_empty(path))
+    value.need(env, cmd, Bool.or(from_file, Bool.not(String.is_empty(inline))))
+    value.of(env, inline, path, from_file)
 
 # Secrets: set
 # ------------
