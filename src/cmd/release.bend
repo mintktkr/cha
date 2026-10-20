@@ -338,7 +338,8 @@ def create(+env: Cli.Env) -> IO(Unit):
         Cli.check(env, "release create", args, ["--notes", "--notes-file", "--title", "--draft", "--prerelease", "--target"])
         +tag : String = Cli.arg(flag.drop(flag.drop(args, "--draft"), "--prerelease"), 1n)
         t : String <- create.tag(env, tag, String.is_empty(tag))
-        notes : String <- notes.of(env, Cli.flag(args, "--notes", ""), Cli.flag(args, "--notes-file", ""), Cli.has(args, "--notes-file"))
+        +path : String = Cli.flag(args, "--notes-file", "")
+        notes : String <- notes.of(env, Cli.flag(args, "--notes", ""), path, Bool.not(String.is_empty(path)))
         create.send(env, repo, tok, t, Cli.flag(args, "--title", ""), notes, Cli.has(args, "--draft"), Cli.has(args, "--prerelease"), Cli.flag(args, "--target", ""))
 
 # upload
