@@ -111,6 +111,15 @@ def colour.check() -> IO(Unit):
 def json.check() -> IO(Unit):
   expect(Cli.json.rows(all.pulls(), Mirror.fields()), "[{\"kind\":\"pull\",\"address\":\"https://upstream.example/sample/repo.git\",\"interval\":\"8h0m0s\",\"updated\":\"2026-01-02T03:04:05Z\",\"error\":\"\"}]")
 
+# a push mirror's last error is git's own text: it quotes the remote URL it failed on,
+# credentials and all, and can carry the control bytes of a terminal sequence
+def error.check() -> IO(Unit):
+  do IO<Unit>:
+    +row : Map<&2, String> = Mirror.row.of("push", "https://other.example/sample/repo.git", "8h0m0s", "", "Push to https://x:SECRET@upstream.example/sample/repo.git failed")
+    expect(Api.f(row, "error"), "Push to https://upstream.example/sample/repo.git failed")
+    expect(Mirror.error.text("\u{1b}[31mPush to https://x:SECRET@other.example/o/r.git failed\u{7}"), "Push to https://other.example/o/r.git failed")
+    expect(Mirror.error.text("dial tcp: connection refused"), "dial tcp: connection refused")
+
 def env() -> Cli.Env:
   Cli.Env{sample(), "", False{}, Cli.Off{}, Nil{}}
 
@@ -151,11 +160,16 @@ def main() -> IO(Unit):
     expect(Ctx.no_credentials("https://SECRET@example.org/o/r"), "https://example.org/o/r")
     expect(Ctx.no_credentials("https://example.org/o/r.git"), "https://example.org/o/r.git")
     expect(Ctx.no_credentials("https://example.org/a@b/c.git"), "https://example.org/a@b/c.git")
+    expect(Ctx.no_credentials("https://u:p/ss@example.org/o/r"), "https://example.org/o/r")
+    expect(Ctx.no_credentials("https://u:p/ss@host/o/r"), "https://host/o/r")
+    expect(Ctx.no_credentials("https://u:p@ss@example.org/o/r"), "https://example.org/o/r")
+    expect(Ctx.no_credentials("https://example.org/o/r?token=SECRET#top"), "https://example.org/o/r")
     expect(Ctx.no_credentials(""), "")
     pull.check(all.pulls())
     push.check(all.pushes())
     text.check()
     colour.check()
     json.check()
+    error.check()
     denied.check()
     view.check()
