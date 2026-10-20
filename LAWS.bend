@@ -356,6 +356,23 @@ law hooks_row_fields_url:
 law hooks_row_fields_case:
   {Hooks.row.fields(["config.Secret", "Config.Password", "TOKEN"]) == Nil{} : List<&2, String>}
 
+# LAW: a webhook URL is shown as its scheme and host and /… for its path: a Slack URL
+# carries its token in the path.
+law hooks_url_path:
+  {Hooks.url.redact("https://hooks.slack.com/services/T000/B000/XXXX") == "https://hooks.slack.com/…" : String}
+
+# LAW: user:pass@ in a webhook URL is dropped.
+law hooks_url_userinfo:
+  {Hooks.url.redact("https://user:pass@hooks.example/hook") == "https://hooks.example/…" : String}
+
+# LAW: a query is dropped, so a ?token= can't reach the output.
+law hooks_url_query:
+  {Hooks.url.redact("https://hooks.example/hook?token=s3cr3t") == "https://hooks.example/…" : String}
+
+# LAW: a URL with no path, query or userinfo is shown as it is.
+law hooks_url_plain:
+  {Hooks.url.redact("https://hooks.example") == "https://hooks.example" : String}
+
 # LAW: a hook id may go into a path only as digits: ".." reads as a number but is not one.
 law hooks_id_dots:
   {Hooks.id.ok("..") == False{} : Bool}
