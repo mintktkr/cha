@@ -843,7 +843,7 @@ def logs(+env: Cli.Env) -> IO(Unit):
         Cli.check(env, "runs logs", args, ["--job", "--step", "--failed"])
         +id : String <- require.at(env, 1n, "run id")
         +job : String = Cli.flag(args, "--job", "")
-        +step : String <- require.if(env, Cli.flag(args, "--step", ""), "step name", (Cli.has(args, "--step") || Cli.has(args, "--step=")) && (String.is_empty(Cli.flag(args, "--step", "")) || String.starts_with(Cli.flag(args, "--step", ""), "--")))
+        +step : String <- require.if(env, Cli.flag(args, "--step", ""), "step name", Cli.has(args, "--step") && (String.is_empty(Cli.flag(args, "--step", "")) || String.starts_with(Cli.flag(args, "--step", ""), "--")))
         +all : List<&2, Map<&2, String>> <- jobs.fetch(env, id)
         +ks : List<&2, Map<&2, String>> = keep.rows(all, job, Cli.has(args, "--failed"))
         +named : List<&2, Map<&2, String>> = keep.rows(all, job, False{})
@@ -1243,7 +1243,7 @@ def rerun(+env: Cli.Env) -> IO(Unit):
         Cli.check(env, "runs rerun", args, ["--job", "--failed"])
         +id : String <- require.at(env, 1n, "run id")
         +job : String = Cli.flag(args, "--job", "")
-        rerun.args(env, repo, id, job, Cli.has(args, "--failed"), (Cli.has(args, "--job") || Cli.has(args, "--job=")) && (String.is_empty(job) || String.starts_with(job, "--")))
+        rerun.args(env, repo, id, job, Cli.has(args, "--failed"), Cli.has(args, "--job") && (String.is_empty(job) || String.starts_with(job, "--")))
 
 def cancel.bad(+env: Cli.Env, +status: U32, body: Bytes.Bytes, missing: Bool) -> IO(Unit):
   match missing:
