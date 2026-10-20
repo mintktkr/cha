@@ -15,6 +15,7 @@ import ./src/cmd/runners.bend as Runners
 import ./src/cmd/packages.bend as Packages
 import ./src/hooks.bend as Hooks
 import ./src/cmd/secrets.bend as Secrets
+import ./src/cmd/mirror.bend as Mirror
 
 # Colour off
 # ----------
@@ -151,6 +152,24 @@ law no_credentials_token:
 # LAW: a URL that carries no credentials is printed as it is, its path untouched.
 law no_credentials_plain:
   {Ctx.no_credentials("https://example.org/a@b/c.git") == "https://example.org/a@b/c.git" : String}
+
+# LAW: the forge stores a mirror's password raw, so a / in it doesn't end the userinfo.
+law no_credentials_pass_slash:
+  {Ctx.no_credentials("https://u:p/ss@host/o/r") == "https://host/o/r" : String}
+
+# LAW: an @ in the password doesn't end the userinfo either.
+law no_credentials_pass_at:
+  {Ctx.no_credentials("https://u:p@ss@host/o/r") == "https://host/o/r" : String}
+
+# LAW: a query and a fragment can carry a token, so neither is printed.
+law no_credentials_query:
+  {Ctx.no_credentials("https://example.org/o/r?token=SECRET#top") == "https://example.org/o/r" : String}
+
+# A push mirror's last error is git's own text, and git quotes the remote URL it failed on.
+
+# LAW: a mirror's error text loses the credentials of the URL it quotes.
+law mirror_error_url:
+  {Mirror.error.text("Push to https://x:tok@github.com/o/r.git failed") == "Push to https://github.com/o/r.git failed" : String}
 
 # LAW: a Link header without rel="next" has no next page.
 law link_no_next:

@@ -10,6 +10,7 @@ import ../ctx.bend as Ctx
 import ../api.bend as Api
 import ../ui.bend as Ui
 import ../cli.bend as Cli
+import ../clean.bend as Clean
 
 # Repo
 # ----
@@ -79,6 +80,67 @@ def check.ok(+env: Cli.Env, r: Api.Reply) -> IO(Unit):
     case Api.Reply{+status, +next, body}:
       check.ok.if(env, status, body, Api.ok(status))
 
+# Error text
+# ----------
+# A push mirror's last_error is git's own text: it quotes the remote URL it failed on,
+# credentials and all, and it can carry the control bytes of a terminal sequence.
+
+# What one character of an error's text means to the walk: part of a word, or the blank
+# that ends one. A URL holds no blank, so the word holding one is where the rewrite goes.
+type Piece is Data:
+  Part{c: Char}
+  Gap{c: Char}
+
+# a blank ends a word: no URL holds a space, a tab, a newline or a carriage return
+def blank(+u: U32) -> Bool:
+  U32.is_eq(u, 32) || U32.is_eq(u, 9) || U32.is_eq(u, 10) || U32.is_eq(u, 13)
+
+def piece.if(+c: Char, blank: Bool) -> Piece:
+  match blank:
+    case True{}:
+      Gap{c}
+    case False{}:
+      Part{c}
+
+def piece(+c: Char) -> Piece:
+  piece.if(c, blank(Char.to_u32(c)))
+
+def pieces(cs: String) -> List<&2, Piece>:
+  match cs:
+    case SNil{}:
+      Nil{}
+    case SCon{+c, t}:
+      Con{piece(c), pieces(t)}
+
+# a word held backwards, written forwards, its URL's credentials dropped
+def written.if(+t: String, url: Bool) -> String:
+  match url:
+    case True{}:
+      Ctx.no_credentials(t)
+    case False{}:
+      t
+
+def written(+w: String) -> String:
+  +t = String.reverse(w)
+  written.if(t, String.contains(t, "://"))
+
+# the text's words rewritten, with the blanks between them kept: acc holds the output
+# backwards and w the word in hand, since a word is only known once the blank after it or
+# the end of the text arrives
+def unfold(ps: List<&2, Piece>, +w: String, +acc: String) -> String:
+  match ps:
+    case Nil{}:
+      String.reverse(acc) ++ written(w)
+    case Con{Gap{+c}, rest}:
+      unfold(rest, SNil{}, SCon{c, String.reverse(written(w)) ++ acc})
+    case Con{Part{+c}, rest}:
+      unfold(rest, SCon{c, w}, acc)
+
+# a push mirror's last error safe to print: every URL in it without its credentials, and
+# no escape sequence or control byte
+def error.text(+s: String) -> String:
+  Clean.text(unfold(pieces(s), SNil{}, SNil{}))
+
 # Rows
 # ----
 # One flat row per mirror, pull or push, so the text printer and --json read one shape.
@@ -93,7 +155,7 @@ def row.of(+kind: String, +address: String, +interval: String, +updated: String,
   m = Map.set(&2, String, m, "address", Ctx.no_credentials(address))
   m = Map.set(&2, String, m, "interval", interval)
   m = Map.set(&2, String, m, "updated", updated)
-  Map.set(&2, String, m, "error", error)
+  Map.set(&2, String, m, "error", error.text(error))
 
 def pull.rows.if(+x: Map<&2, String>, mirrored: Bool) -> List<&2, Map<&2, String>>:
   match mirrored:

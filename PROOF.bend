@@ -168,6 +168,18 @@ def Laws.no_credentials_token():
 def Laws.no_credentials_plain():
   {==}
 
+def Laws.no_credentials_pass_slash():
+  {==}
+
+def Laws.no_credentials_pass_at():
+  {==}
+
+def Laws.no_credentials_query():
+  {==}
+
+def Laws.mirror_error_url():
+  {==}
+
 def Laws.link_no_next():
   {==}
 
