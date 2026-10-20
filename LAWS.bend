@@ -1,13 +1,21 @@
 # laws: what the pure core must keep. Each law is a claim; PROOF.bend proves it.
-# They cover the three things a wrong turn would break quietly: colour off must leave text
-# unchanged, the string and flag helpers must behave at their edges, and a remote URL must
-# parse to the repo it names.
+# They cover what a wrong turn would break quietly: colour off must leave text unchanged,
+# the string and flag helpers must behave at their edges, a remote URL must parse to the
+# repo it names, a runner id must not reach a path with anything but digits, and a name
+# that goes into a path must not carry a segment that walks out of it.
 import Base
 import ./src/clean.bend as Clean
 import ./src/ui.bend as Ui
 import ./src/ctx.bend as Ctx
 import ./src/cli.bend as Cli
 import ./src/api.bend as Api
+import ./src/url.bend as Url
+import ./src/cmd/repo.bend as Repo
+import ./src/cmd/runners.bend as Runners
+import ./src/cmd/packages.bend as Packages
+import ./src/hooks.bend as Hooks
+import ./src/cmd/secrets.bend as Secrets
+import ./src/cmd/mirror.bend as Mirror
 
 # Colour off
 # ----------
@@ -133,6 +141,36 @@ law parse_remote_drops_credentials:
 law parse_remote_drops_token:
   {Ctx.parse_remote("https://SECRET@example.org/o/r") == Some{Ctx.Repo{Ctx.Gitea{}, "example.org", "o", "r"}} : Maybe<&2, Ctx.Repo>}
 
+# LAW: a mirror URL's user and password are dropped before it is printed.
+law no_credentials_user_pass:
+  {Ctx.no_credentials("https://x:SECRET@example.org/o/r.git") == "https://example.org/o/r.git" : String}
+
+# LAW: a bare token before a mirror URL's host is dropped too.
+law no_credentials_token:
+  {Ctx.no_credentials("https://SECRET@example.org/o/r") == "https://example.org/o/r" : String}
+
+# LAW: a URL that carries no credentials is printed as it is, its path untouched.
+law no_credentials_plain:
+  {Ctx.no_credentials("https://example.org/a@b/c.git") == "https://example.org/a@b/c.git" : String}
+
+# LAW: the forge stores a mirror's password raw, so a / in it doesn't end the userinfo.
+law no_credentials_pass_slash:
+  {Ctx.no_credentials("https://u:p/ss@host/o/r") == "https://host/o/r" : String}
+
+# LAW: an @ in the password doesn't end the userinfo either.
+law no_credentials_pass_at:
+  {Ctx.no_credentials("https://u:p@ss@host/o/r") == "https://host/o/r" : String}
+
+# LAW: a query and a fragment can carry a token, so neither is printed.
+law no_credentials_query:
+  {Ctx.no_credentials("https://example.org/o/r?token=SECRET#top") == "https://example.org/o/r" : String}
+
+# A push mirror's last error is git's own text, and git quotes the remote URL it failed on.
+
+# LAW: a mirror's error text loses the credentials of the URL it quotes.
+law mirror_error_url:
+  {Mirror.error.text("Push to https://x:tok@github.com/o/r.git failed") == "Push to https://github.com/o/r.git failed" : String}
+
 # LAW: a Link header without rel="next" has no next page.
 law link_no_next:
   {Api.link.next("</issues?page=2>; rel=\"last\"") == "" : String}
@@ -140,6 +178,37 @@ law link_no_next:
 # LAW: a Link header with rel="next" yields that URL.
 law link_next_url:
   {Api.link.next("</issues?page=2>; rel=\"next\", </issues?page=5>; rel=\"last\"") == "/issues?page=2" : String}
+
+# Failed secrets set
+# ------------------
+# A secret's value goes out in one request and never comes back. A failed reply's body can
+# echo it whole, in part, re-cased or escaped, and a control byte in it would only be
+# dropped after a check, so the message a failed `secrets set` prints is built from the
+# status alone: no word of the forge's body, and so no value.
+
+# LAW: a 422's message is the fixed text, whatever the forge's body echoed.
+law secrets_set_422_text:
+  {Secrets.set.why(422) == "the forge refused the name or the value (HTTP 422)" : String}
+
+# LAW: a 404's message is the fixed text too.
+law secrets_set_404_text:
+  {Secrets.set.why(404) == "no such repo or org (HTTP 404)" : String}
+
+# LAW: a 401 names the token, with its own status.
+law secrets_set_401_text:
+  {Secrets.set.why(401) == "the token can't write secrets here (HTTP 401)" : String}
+
+# LAW: a 403 names the token, with its own status.
+law secrets_set_403_text:
+  {Secrets.set.why(403) == "the token can't write secrets here (HTTP 403)" : String}
+
+# LAW: any other status is the status alone, with nothing quoted from the body.
+law secrets_set_other_text:
+  {Secrets.set.why(500) == "HTTP 500" : String}
+
+# LAW: the message holds no value, for a status whose body repeated one.
+law secrets_set_hides_value:
+  {String.contains(Secrets.set.why(422), "hunter2") == False{} : Bool}
 
 # Terminal escape
 # ---------------
@@ -180,3 +249,142 @@ law clean_plain:
 # the escapes are gone, so a title can't start a row of its own.
 law clean_line:
   {Clean.line("a\nb\tc\r\nd\u{1b}[2J") == "a b c d" : String}
+
+# Runner ids
+# ----------
+# A runner id reaches a URL path, so it must be digits only: "1/registration-token"
+# would otherwise name one of the scope's other endpoints.
+
+# LAW: a digit string is a runner id.
+law runner_id_digits:
+  {Runners.digits("1234") == True{} : Bool}
+
+# LAW: a path, a letter or a space in a runner id is refused.
+law runner_id_not_digits:
+  {Runners.digits("1/registration-token") == False{} : Bool}
+
+# Path segments
+# -------------
+# A name that keeps its slashes goes into a URL path as it is, so no segment of it may be
+# empty or a dot: "../x" would leave the path for another endpoint. A command refuses such
+# a name before it sends anything.
+
+# LAW: a .. segment is refused.
+law path_dotdot:
+  {Url.encode.path.ok("../x") == False{} : Bool}
+
+# LAW: a .. segment in the middle is refused.
+law path_dotdot_mid:
+  {Url.encode.path.ok("a/../b") == False{} : Bool}
+
+# LAW: a . segment is refused.
+law path_dot:
+  {Url.encode.path.ok("a/./b") == False{} : Bool}
+
+# LAW: a leading slash, so an empty first segment, is refused.
+law path_leading:
+  {Url.encode.path.ok("/a") == False{} : Bool}
+
+# LAW: a doubled slash, so an empty middle segment, is refused.
+law path_double:
+  {Url.encode.path.ok("a//b") == False{} : Bool}
+
+# LAW: a branch name whose segments are plain is safe.
+law path_ok_branch:
+  {Url.encode.path.ok("memu/foo") == True{} : Bool}
+
+# LAW: a dotted version is safe, since only a whole . or .. segment is refused.
+law path_ok_version:
+  {Url.encode.path.ok("v1.0.2") == True{} : Bool}
+
+# LAW: a release branch with a dotted segment is safe.
+law path_ok_release:
+  {Url.encode.path.ok("release/1.0") == True{} : Bool}
+
+# LAW: a value with a slash of its own is two segments, which one segment may not be.
+law path_one_seg_slash:
+  {Url.encode.seg.ok("ci.yml/ci.yml") == False{} : Bool}
+
+# LAW: a . or .. is not one segment either.
+law path_one_seg_dots:
+  {Url.encode.seg.ok("..") == False{} : Bool}
+
+# LAW: a workflow file name is one segment, and goes in the path.
+law path_one_seg_plain:
+  {Url.encode.seg.ok("ci.yml") == True{} : Bool}
+
+# LAW: a repo delete of . as the owner names no repo, so it can't reach a path.
+law repo_delete_dot_owner:
+  {Repo.target(Ctx.Gitea{}, "codeberg.org", "./x") == None{} : Maybe<&2, Ctx.Repo>}
+
+# LAW: ...and neither does .. as the name.
+law repo_delete_dot_name:
+  {Repo.target(Ctx.GitHub{}, "github.com", "x/..") == None{} : Maybe<&2, Ctx.Repo>}
+
+# LAW: ...and neither does an empty half.
+law repo_delete_empty_half:
+  {Repo.target(Ctx.Gitea{}, "codeberg.org", "x/") == None{} : Maybe<&2, Ctx.Repo>}
+
+# Packages
+# --------
+# A package delete is destructive and cha never prompts, so a pipeline can only delete when
+# it says --yes.
+
+# LAW: a package delete without --yes is refused, and names the version it would remove.
+law packages_refuses_without_yes:
+  {Packages.refusal("cha", "0.1.0", False{}) == "packages delete: would remove cha 0.1.0 for good; rerun with --yes" : String}
+
+# LAW: --yes lets the delete through.
+law packages_allows_with_yes:
+  {Packages.refusal("cha", "0.1.0", True{}) == "" : String}
+
+# Hooks
+# -----
+# A webhook's config carries its secret: GitHub masks it, Gitea can hand it back. A hook
+# row drops every field named secret, password or token, so neither the text line nor
+# --json can print one.
+
+# LAW: config.secret is dropped, and the fields around it stay.
+law hooks_row_fields:
+  {Hooks.row.fields(["id", "config.url", "config.content_type", "config.secret"]) == ["id", "config.url", "config.content_type"] : List<&2, String>}
+
+# LAW: a field is judged by its last path segment, so a url that mentions a token is kept.
+law hooks_row_fields_url:
+  {Hooks.row.fields(["config.url?token=x", "config.password", "metadata.token"]) == ["config.url?token=x"] : List<&2, String>}
+
+# LAW: the last segment is read in any case.
+law hooks_row_fields_case:
+  {Hooks.row.fields(["config.Secret", "Config.Password", "TOKEN"]) == Nil{} : List<&2, String>}
+
+# LAW: a webhook URL is shown as its scheme and host and /… for its path: a Slack URL
+# carries its token in the path.
+law hooks_url_path:
+  {Hooks.url.redact("https://hooks.slack.com/services/T000/B000/XXXX") == "https://hooks.slack.com/…" : String}
+
+# LAW: a / in a raw password doesn't put any of it in the shown url.
+law hooks_url_pass_slash:
+  {Hooks.url.redact("https://u:p/ss@hooks.slack.com/services/T000/B000/XXXX") == "https://hooks.slack.com/…" : String}
+
+# LAW: user:pass@ in a webhook URL is dropped.
+law hooks_url_userinfo:
+  {Hooks.url.redact("https://user:pass@hooks.example/hook") == "https://hooks.example/…" : String}
+
+# LAW: a query is dropped, so a ?token= can't reach the output.
+law hooks_url_query:
+  {Hooks.url.redact("https://hooks.example/hook?token=s3cr3t") == "https://hooks.example/…" : String}
+
+# LAW: a URL with no path, query or userinfo is shown as it is.
+law hooks_url_plain:
+  {Hooks.url.redact("https://hooks.example") == "https://hooks.example" : String}
+
+# LAW: a hook id may go into a path only as digits: ".." reads as a number but is not one.
+law hooks_id_dots:
+  {Hooks.id.ok("..") == False{} : Bool}
+
+# LAW: ...and neither is a number with anything but digits in it.
+law hooks_id_letters:
+  {Hooks.id.ok("12a") == False{} : Bool}
+
+# LAW: ...and neither is an empty id.
+law hooks_id_empty:
+  {Hooks.id.ok("") == False{} : Bool}

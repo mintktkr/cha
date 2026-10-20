@@ -12,13 +12,18 @@ import ./src/cmd/release.bend as Release
 import ./src/cmd/moved.bend as Moved
 import ./src/cmd/auth.bend as Auth
 import ./src/cmd/runners.bend as Runners
+import ./src/cmd/search.bend as Search
+import ./src/cmd/packages.bend as Packages
+import ./src/cmd/mirror.bend as Mirror
+import ./src/cmd/hooks.bend as Hooks
+import ./src/cmd/secrets.bend as Secrets
 
 def version() -> String:
   "0.1.0"
 
 # the command word's index in this list, or its length when unknown
 def names() -> List<&2, String>:
-  ["issue", "pr", "runs", "repo", "release", "moved", "auth", "runners", "help", "version"]
+  ["issue", "pr", "runs", "repo", "release", "moved", "auth", "runners", "search", "packages", "mirror", "hooks", "secrets", "variables", "help", "version"]
 
 def index.at(eq: Bool, +i: Nat, +later: Nat) -> Nat:
   match eq:
@@ -52,7 +57,19 @@ def dispatch(+env: Cli.Env, n: Nat) -> IO(Unit):
       Auth.run(env)
     case 7n:
       Runners.run(env)
-    case 8n+k:
+    case 8n:
+      Search.run(env)
+    case 9n:
+      Packages.run(env)
+    case 10n:
+      Mirror.run(env)
+    case 11n:
+      Hooks.run(env)
+    case 12n:
+      Secrets.run(env)
+    case 13n:
+      Secrets.vars(env)
+    case 14n+k:
       Cli.fail(Unit, env, "unknown command, try cha help")
 
 # the command's arguments: everything after the command word
@@ -82,6 +99,15 @@ def repo.pick(+flag: String, +cur: Maybe<&2, Ctx.Repo>, none: Bool) -> Maybe<&2,
     case False{}:
       Ctx.flag.repo(flag, cur)
 
+# search is the one command that works with no repo at all: it searches github.com when
+# neither the checkout nor -R names a forge
+def whole.if(m: Maybe<&2, Ctx.Repo>, whole: Bool) -> Maybe<&2, Ctx.Repo>:
+  match m whole:
+    case None{} True{}:
+      Some{Ctx.Repo{Ctx.GitHub{}, "github.com", "", ""}}
+    case x y:
+      x
+
 def start(+on: Bool, sel: Cli.Json, +args: List<&2, String>, +w: String, simple: Nat) -> IO(Unit):
   match simple:
     case 0n:
@@ -89,8 +115,9 @@ def start(+on: Bool, sel: Cli.Json, +args: List<&2, String>, +w: String, simple:
         +cfg : String <- Ctx.git_config()
         +flag : String = Cli.flag(args, "-R", "")
         +m : Maybe<&2, Ctx.Repo> = repo.pick(flag, Ctx.parse_remote(Ctx.origin_url(cfg)), String.is_empty(flag))
-        +tok : String <- token.of(m)
-        go(on, sel, args, m, tok, w)
+        +scoped : Maybe<&2, Ctx.Repo> = whole.if(m, String.eq(w, "search"))
+        +tok : String <- token.of(scoped)
+        go(on, sel, args, scoped, tok, w)
     case 1n:
       Help.run(on, Cli.positional(args))
     case 2n:

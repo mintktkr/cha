@@ -21,6 +21,8 @@ $ cha issue list
 $ cha pr view 42 --comments
 $ cha runs logs 1337 --failed
 $ cha runs watch 1337
+$ cha search issues kettle --owner bendlang
+$ cha packages --type container
 $ cha moved --since 1d
 ```
 
@@ -53,6 +55,7 @@ $ cha completions fish > ~/.config/fish/completions/cha.fish
   - exit codes mean something
   - an unknown flag is an error that lists the flags the command takes, never silently ignored, and so is a flag left without its value
 - **Gitea Actions included.** List runs, read job logs, dispatch workflows.
+- **Mirrors too.** `cha mirror` says whether a repo is a pull mirror and what it pushes to, and asks for a sync when you need one.
 - **Nothing to install.** cha speaks HTTPS and JSON itself. Credentials come from git's credential store or an environment variable.
 
 ## 🌈 Colours
@@ -73,7 +76,7 @@ In a terminal, cha uses a pink → lavender → mint palette where every colour 
 
 cha is written in [Bend](https://bend-lang.com). The rules that must never break live in `LAWS.bend`, and a commit only lands if they still prove:
 
-- 🔐 a token never reaches the output
+- 🔐 a token, a webhook secret or a webhook URL's path and query never reach the output
 - 🎨 with colour off, no escape byte is printed
 - 🔁 pagination always terminates
 

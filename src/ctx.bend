@@ -115,6 +115,98 @@ def parse_remote(+url: String) -> Maybe<&2, Repo>:
   +u = strip_suffix(strip_suffix(String.trim(url), "/"), ".git")
   repo.at(split.if(u, String.contains(u, "://")))
 
+# u without the user[:password]@ in front of its host: a mirror's original_url or a push
+# mirror's remote_address can carry a token, and a URL cha prints never carries one
+
+def scheme.if(+s: String, has: Bool) -> String:
+  match has:
+    case True{}:
+      s ++ "://"
+    case False{}:
+      ""
+
+def has.scheme(+u: String) -> Bool:
+  String.contains(u, "://")
+
+def scheme(+u: String) -> String:
+  scheme.if(first(String.split(u, ':')), has.scheme(u))
+
+# the part of u after its scheme: the authority, then the path
+def after.scheme(+u: String) -> String:
+  String.drop(u, String.length(scheme(u)))
+
+# the userinfo of an authority is everything before its last @, so it is dropped by
+# keeping what follows it; an authority with no @ is itself. The forge stores those
+# credentials raw, so a password can hold a / and put the authority past the first /: the
+# @ only ends the userinfo when a host follows it, or a user:password comes before it.
+# A query or a fragment can carry a token too, so neither is printed.
+
+# the text before the first / of an address without its scheme, and the path after it
+def head.of(+t: String) -> String:
+  first(String.split(t, '/'))
+
+def path.of(+t: String) -> String:
+  rest(String.split(t, '/'), "/")
+
+# the host of an authority that ends at its first /: what follows its last @
+def auth.of(+head: String) -> String:
+  last(String.split(head, '@'))
+
+# what follows an address's last @: host and path, when that @ ends the userinfo
+def past.auth(+t: String) -> String:
+  last(String.split(t, '@'))
+
+# how far a host runs: to the next /, ? or #
+def host.run(+cand: String) -> String:
+  first(String.split(first(String.split(first(String.split(cand, '/')), '?')), '#'))
+
+# a host is a domain or carries a port, and a bare path segment is neither: an @ before one
+# is part of the path
+def host.like(+host: String) -> Bool:
+  Bool.or(String.contains(host, "."), String.contains(host, ":"))
+
+# the text an address's last @ ends the userinfo of: the scheme, then the userinfo
+def userinfo(+t: String, +cand: String) -> String:
+  String.take(t, Nat.sub(String.length(t), String.length(cand)))
+
+# a / in a raw password puts the authority past the first /, so the last @ ends the
+# userinfo when a host follows it, or when what comes before it is a user:password (a bare
+# token holds no :)
+def past.ends(+t: String, +cand: String) -> Bool:
+  Bool.or(host.like(host.run(cand)), String.contains(userinfo(t, cand), ":"))
+
+def past.authority.if(+t: String, +cand: String, hostlike: Bool) -> String:
+  match hostlike:
+    case True{}:
+      cand
+    case False{}:
+      t
+
+# an address whose first / came before any @: the address, unless its last @ ends a
+# userinfo
+def past.authority(+t: String) -> String:
+  +cand = past.auth(t)
+  past.authority.if(t, cand, past.ends(t, cand))
+
+def authority.if(+t: String, +head: String, +path: String, authed: Bool) -> String:
+  match authed:
+    case True{}:
+      auth.of(head) ++ or.if("/" ++ path, "", String.is_empty(path))
+    case False{}:
+      past.authority(t)
+
+# an authority with its userinfo dropped
+def authority(+t: String) -> String:
+  +h = head.of(t)
+  authority.if(t, h, path.of(t), String.contains(h, "@"))
+
+# everything before s's first ? or #: a query or a fragment can carry a token
+def cut.query(+s: String) -> String:
+  first(String.split(first(String.split(s, '?')), '#'))
+
+def no_credentials(+u: String) -> String:
+  cut.query(scheme(u) ++ authority(after.scheme(u)))
+
 # Git config
 # ----------
 

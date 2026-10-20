@@ -1,6 +1,6 @@
 ---
 name: cha
-description: Use cha for Gitea, Forgejo and GitHub work from the terminal - issues, pull requests, Actions runs and logs, releases, repo files, and "what moved since yesterday" sweeps. Prefer it over gh, tea or raw API calls for those. One binary, plain output when piped, --json for scripting.
+description: Use cha for Gitea, Forgejo and GitHub work from the terminal - issues, pull requests, Actions runs and logs, releases, packages, repo files, mirrors, search across a forge, and "what moved since yesterday" sweeps. Prefer it over gh, tea or raw API calls for those. One binary, plain output when piped, --json for scripting.
 ---
 
 # cha
@@ -29,9 +29,11 @@ description: Use cha for Gitea, Forgejo and GitHub work from the terminal - issu
 - A flag the subcommand doesn't take exits 1 and names the flags it does, for example `unknown flag --bogus for issue list; flags: --state --label ...`. `-h`, `--help` and `-R` are taken everywhere; `-h` or `--help` after a command prints its usage page instead of running it (`cha issue list --help` prints `cha issue`).
 - A flag that takes a value and is given none exits 1 with `--limit needs a value`: at the end of the line, before another flag the command reads, or with nothing after its `=`. A value may start with a dash, or be another command's flag name, so `--body "-1 from me"` and `--title "--limit"` keep their words.
 - Forge text is printed with its control characters and escape sequences removed, on stderr too, so a title, a body, a label, a branch name or a CI log line cannot move the cursor or spoof output. One-line fields (titles, labels, branches, names) also turn a newline or tab into a space, so they can't add rows to a list; bodies, comments and release notes keep their lines. Raw content stays byte-exact when piped: `repo file` and `pr diff` print the bytes unchanged into a redirect, and `--json` keeps the data, escaping control characters as `\uXXXX`.
-- Bodies come from `--body TEXT` or `--body-file PATH`. `--body-file -` reads stdin. cha never opens an editor or prompts, so a destructive command such as `repo delete` requires `--yes`, and without it exits 1 naming the repo it would delete and sends no request.
+- Bodies come from `--body TEXT` or `--body-file PATH`. `--body-file -` reads stdin. cha never opens an editor or prompts. A destructive command therefore needs `--yes`: without it, it exits 1 naming what it would remove and makes no request.
 - `view N --comments` prints each comment's `id` beside its author and date, and `--json` carries it: that id is what `comment-edit` and `comment-delete` take. A PR's conversation comments are issue comments, so an id works under both `issue` and `pr`.
 - `comment-delete` always needs `--yes`: without it cha names the comment it would delete, sends no request and exits 1. cha never prompts.
+- `hooks` needs a token that can administer the repo or org: GitHub and Gitea both refuse even the list without one, so anonymous `hooks` exits 1 with HTTP 401.
+- `hooks` never prints a hook's secret. Every row is redacted first: a field named `secret`, `password` or `token` (in any case, at any depth, so `config.secret` too) is dropped from the text line and from `--json`. A hook's URL is shown redacted too, as `scheme://host[:port]/…` (`https://hooks.slack.com/…`): a webhook URL is often the secret itself, since a Slack or Discord URL carries its token in the path and any URL can carry `user:pass@` or `?token=`. The secret comes from `--secret-file F` (`-` is stdin), never from a flag value; trailing whitespace from the file is trimmed. `hooks create` prints `#ID  URL` on stdout, the URL redacted the same way.
 
 ## Commands
 
@@ -67,6 +69,8 @@ cha runs rerun ID [--failed | --job ID]  /  cha runs cancel ID
 cha repo [view] [--json]
 cha repo labels  /  cha repo label-create NAME [--color HEX] [--description D]
 cha repo branches
+cha repo branch-delete NAME --yes    # delete a branch; the default branch is refused
+cha repo protection [BRANCH] [--json]   # protection rules: pattern, approvals, checks
 cha repo file PATH [--ref R]          # raw file content, no clone needed
 cha repo tree [--ref R]
 cha repo create NAME [--org O] [--private] [--description D]   # make a repo, prints its URL
@@ -77,12 +81,37 @@ cha release create TAG [--title T] [--notes N | --notes-file F] [--draft] [--pre
 cha release upload TAG FILE...        # attach files; the asset name is the file's basename
 
 cha moved [--since 1d|6h|30m|ISO8601] [--json]   # issues/PRs, comments, commits, runs since then
+cha search issues QUERY [--state open|closed|all] [--owner O] [--limit N] [--json]
+cha search prs QUERY [--state open|closed|all] [--owner O] [--limit N] [--json]
+cha search repos QUERY [--owner O] [--limit N] [--json]
+cha search code QUERY [--owner O] [--limit N] [--json]   # GitHub only, needs a token
 cha auth status [--json]               # host, forge, login, token source; exit 1 without a working token
-cha runners [--org O] [--json]         # a repo's or an org's self-hosted runners
+cha runners [list] [--org O | --user | --admin] [--json]   # self-hosted runners of a scope
+cha runners delete ID --yes [--org O | --user | --admin]   # deregister one; cha never prompts
+cha packages [list] [--type T] [--owner O] [--json]   # name, type, version, created
+cha packages versions NAME [--type T] [--owner O]     # one package's versions
+cha packages delete NAME VERSION --type T [--owner O] --yes
+cha mirror [status|sync|push-sync] [--json]   # pull mirror, push mirrors, a sync on demand
+cha hooks [--org O] [--json]           # a repo's or an org's webhooks
+cha hooks create URL --events push,pull_request [--secret-file F] [--content-type json|form] [--org O]
+cha hooks delete ID --yes             # hooks test ID sends a test delivery
+
+cha secrets [--org O] [--json]        # an Actions secret's name and when it last changed, never its value
+cha secrets set NAME (--value V | --value-file F) [--org O]
+cha secrets delete NAME --yes [--org O]
+cha variables [--org O] [--json]      # an Actions variable's name and value
+cha variables set NAME (--value V | --value-file F) [--org O]   # creates, or updates
+cha variables delete NAME --yes [--org O]
 
 cha help [command]
 cha completions fish
 ```
+
+## Branches and branch protection
+
+- A destructive command never prompts, so `repo branch-delete NAME` needs `--yes`. Without it cha names the branch it would delete, exits 1, and makes no request. It reads the repo's default branch first and refuses that one: `repo branch-delete: main is the default branch`. Branch names are path-encoded with their slashes kept, so `memu/foo` is the branch `memu/foo` on both forges.
+- `repo protection` is read-only. On GitHub it reads one branch's protection, the default branch when none is named: a 404 `Branch not protected` means the branch has none, and any other refusal (403, or 401 without a token) exits 1 saying the token can't read it, since branch protection takes admin rights. On Gitea and Forgejo it lists the repo's protection rules and `BRANCH` picks the rule of that name, so a pattern rule is named as it is: `release/*`, not `release/1.0`.
+- `--json` fields, the same on both forges: `branch` (the branch or the rule's pattern), `approvals` (required approvals, `0` when none), `checks` (required status check contexts, comma-separated), `push_restricted` and `force_push_blocked` (`"true"`/`"false"`).
 
 ## Runs output and filters
 
@@ -95,6 +124,17 @@ cha completions fish
 - `runs rerun --job` requires a job id belonging to the supplied run. It cannot be combined with `--failed`.
 - `runs dispatch` prints the URL of the run it created. GitHub names that run in its reply (`return_run_details`); Gitea and Forgejo answer 204, so cha notes the instant before the POST and polls the repo's `workflow_dispatch` runs a few times, taking the newest run of that workflow file, on that ref, that appeared at or after it. When no such run has shown up after ~8s, it says the dispatch was accepted and prints the workflow's runs page instead of naming an older run.
 
+## Search
+
+- `issues`, `prs` and `code` search the current repo (the checkout, or `-R host/owner/repo`) unless `--owner O` narrows them to one owner instead. `repos` ignores the repo scope: it searches the whole forge, or one owner with `--owner`.
+- Outside a checkout and without `-R`, `search` talks to github.com.
+- Rows print like `issue list` (`#12  open  title  [labels]  @user`) and `repo view` (`full_name  visibility  stars N  forks N  description`). A search wider than one repo puts the repo name in front of every issue, pr and code row.
+- `--state` takes open, closed or all (default: every state). `--limit` takes 1-1000 and defaults to 20. Pages are followed until `--limit` rows or the forge's last page; a forge's page size caps how many one page carries (50 on Gitea, 100 on GitHub), and GitHub stops a search at 1000 hits.
+- `code` needs a token on GitHub: anonymous code search answers 401, so cha says `search code: GitHub code search needs a token` and exits 1. Gitea and Forgejo have no code search API at all, and cha says so and exits 1.
+- `search repos --owner O` works on Gitea and GitHub alike, narrowing to that user or organization. Gitea filters repos by a numeric owner id, so cha resolves the name with `GET /users/{name}` first, one extra request, and exits 1 naming the owner when no such user or organization exists.
+- `--json` fields: issues and prs `repo,number,title,state,user.login,labels,html_url`; repos `full_name,forge,description,default_branch,visibility,stars,forks,open_issues,html_url`; code `repo,name,path,html_url`.
+- `packages` lists the repo owner's packages, or `--owner O` for another user or org. Every row is `name`, `type`, `version` and `created`; GitHub's package list has no version, so that field is empty there, and its versions list carries it. `--type` is required on GitHub (`npm`, `maven`, `rubygems`, `nuget`, `container`) and optional on Gitea. `packages delete` removes one version for good and needs `--yes`; it never prompts, and without `--yes` it exits 1 with `would remove NAME VERSION for good; rerun with --yes` before any request.
+
 ## Recipes
 
 - What changed for me this week: `cha issue list --assignee LOGIN --since 7d`. `--assignee none` (unassigned) works on GitHub only.
@@ -102,8 +142,10 @@ cha completions fish
 - Why did CI fail: `cha runs list --limit 5`, then `cha runs logs ID --failed`.
 - Failing run ids for a script: `cha runs list --status failure --json=id,workflow`.
 - Catch up on a repo: `cha moved --since 1d`.
+- Find a repo before cloning it: `cha search repos kettle --json full_name,html_url`.
 - Long comment or body from a heredoc: `cha issue comment 12 --body-file - <<'EOF' ... EOF`.
 - Update a bot's marker comment instead of posting another: `cha issue view 12 --comments`, then `cha issue comment-edit ID --body-file -`.
+- A secret without leaving it in the shell's history: `cha secrets set TOKEN --value-file - <<'EOF' ... EOF`, or `... --value-file /run/secrets/token`.
 - Check the latest upstream version: `cha -R github.com/owner/repo release latest`.
 - Attach a build to a release: `cha release upload v0.1.0 out/cha`. The asset name is the file's basename, each asset's URL is printed, and `cha release view v0.1.0` lists the assets afterwards.
 - Read a file without cloning: `cha -R host/owner/repo repo file README.md --ref main`.
@@ -115,8 +157,13 @@ cha completions fish
 - `pr comment N` checks that N is a pull request first. Both forges share the comment endpoint between issues and pull requests, so a number that is an issue (or none at all) exits 1 with `#N is not a pull request (an issue, or no such number)` instead of commenting on the issue.
 - Label names are checked before any write, because Gitea silently ignores unknown names, or wipes the set on replace.
 - Gitea 1.25 has no API to rerun or cancel an Actions run. `cha runs rerun|cancel` exit 1 with a hint: push a commit, or use the web UI.
+- A secret's value goes one way. The forges never send one back, and cha prints none: not in a list, not in `--json`, not in an error: a failed `secrets set` says why from the status alone, so a reply body that repeats the value has nowhere to land, and `LAWS.bend` proves it. Pass it with `--value-file` (`-` for stdin) rather than `--value`, which is visible in the process list and the shell's history; a trailing newline from a heredoc or `echo` is dropped. Names are checked before any request: letters, digits and underscores, no leading digit, no `GITHUB_` prefix.
+- `secrets set` on GitHub exits 1 without a request: a GitHub secret has to be sealed with the repo's public key (libsodium's sealed box), which cha can't build yet. `secrets list|delete` and everything under `variables` work there. Variables take `PUT` on Gitea, `POST` then `PATCH` on GitHub.
 - GitHub's issue list includes pull requests. `cha issue list` drops them.
+- GitHub scopes runners to a repo or an org: `cha runners --user` and `--admin` exit 1 there. On Gitea and Forgejo, `--admin` lists every runner on the site and needs a site-admin token; a 403 says so. A runner id must be digits only, and a delete without `--yes` names the runner and exits 1.
+- GitHub's package endpoints need a token with `read:packages`: an anonymous 401 or 403 says so. Gitea's version list is a name query, so `packages versions NAME` keeps only the rows named exactly.
+- Mirrors are a Gitea and Forgejo feature: GitHub has no mirror API, so every `cha mirror` subcommand exits 1 there before a request. `cha mirror` reads a repo's own JSON and its `push_mirrors`, and a URL that carries credentials is printed with the `user:pass@` stripped. Listing push mirrors needs admin rights, so a 401 or 403 on them still prints the pull mirror (or `not a pull mirror`), says `push mirrors need admin rights on this repo` on stderr and exits 0, and `--json` carries the pull row only. `cha mirror sync` reads the repo first and says `mirror sync: o/r isn't a pull mirror` instead of passing on the forge's bare 400. `repo view` prints `mirror of <original_url>` for a pull mirror, and `--json` carries `mirror` and `original_url`.
 
 ## When cha isn't enough
 
-cha doesn't cover secrets, packages, webhooks, mirrors, branch protection or tokens yet. Call the forge's REST API directly for those (Gitea: `https://<host>/api/v1/`, GitHub: `https://api.github.com/`). If a missing command keeps coming up, that's worth an issue on cha.
+cha doesn't cover secrets or tokens yet. Call the forge's REST API directly for those (Gitea: `https://<host>/api/v1/`, GitHub: `https://api.github.com/`). If a missing command keeps coming up, that's worth an issue on cha.

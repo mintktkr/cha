@@ -5,6 +5,9 @@ import ./src/ui.bend as Ui
 import ./src/ctx.bend as Ctx
 import ./src/cli.bend as Cli
 import ./src/api.bend as Api
+import ./src/cmd/packages.bend as Packages
+import ./src/hooks.bend as Hooks
+import ./src/cmd/secrets.bend as Secrets
 import ./LAWS.bend as Laws
 
 # Colour off
@@ -156,10 +159,54 @@ def Laws.parse_remote_drops_credentials():
 def Laws.parse_remote_drops_token():
   {==}
 
+def Laws.no_credentials_user_pass():
+  {==}
+
+def Laws.no_credentials_token():
+  {==}
+
+def Laws.no_credentials_plain():
+  {==}
+
+def Laws.no_credentials_pass_slash():
+  {==}
+
+def Laws.no_credentials_pass_at():
+  {==}
+
+def Laws.no_credentials_query():
+  {==}
+
+def Laws.mirror_error_url():
+  {==}
+
 def Laws.link_no_next():
   {==}
 
 def Laws.link_next_url():
+  {==}
+
+# Failed secrets set
+# ------------------
+# Each law is closed text on both sides, so reflexivity is the whole proof: the message
+# builder matches on the status and reads no reply body.
+
+def Laws.secrets_set_422_text():
+  {==}
+
+def Laws.secrets_set_404_text():
+  {==}
+
+def Laws.secrets_set_401_text():
+  {==}
+
+def Laws.secrets_set_403_text():
+  {==}
+
+def Laws.secrets_set_other_text():
+  {==}
+
+def Laws.secrets_set_hides_value():
   {==}
 
 # Terminal escape
@@ -189,4 +236,110 @@ def Laws.clean_plain():
   {==}
 
 def Laws.clean_line():
+  {==}
+
+def Laws.runner_id_digits():
+  {==}
+
+def Laws.runner_id_not_digits():
+  {==}
+
+# Path segments
+# -------------
+# Each law names a closed name, so its walk through String.split and segs.ok reduces to a
+# Bool: the two sides of the claim are the same Bool, and reflexivity proves it.
+
+def Laws.path_dotdot():
+  {==}
+
+def Laws.path_dotdot_mid():
+  {==}
+
+def Laws.path_dot():
+  {==}
+
+def Laws.path_leading():
+  {==}
+
+def Laws.path_double():
+  {==}
+
+def Laws.path_ok_branch():
+  {==}
+
+def Laws.path_ok_version():
+  {==}
+
+def Laws.path_ok_release():
+  {==}
+
+def Laws.path_one_seg_slash():
+  {==}
+
+def Laws.path_one_seg_dots():
+  {==}
+
+def Laws.path_one_seg_plain():
+  {==}
+
+# A repo target is read through String.split and name.ok on a closed name, so it reduces to
+# None{} on both sides.
+
+def Laws.repo_delete_dot_owner():
+  {==}
+
+def Laws.repo_delete_dot_name():
+  {==}
+
+def Laws.repo_delete_empty_half():
+  {==}
+
+# Packages
+# --------
+
+def Laws.packages_refuses_without_yes():
+  {==}
+
+def Laws.packages_allows_with_yes():
+  {==}
+
+# Hooks
+# -----
+# Each law is one row's field list, so reflexivity is the whole proof: field.secret reads
+# the last segment of a literal key, which normalizes before the comparison.
+
+def Laws.hooks_row_fields():
+  {==}
+
+def Laws.hooks_row_fields_url():
+  {==}
+
+def Laws.hooks_row_fields_case():
+  {==}
+
+# url.redact splits a literal URL into segments and compares the pieces, so it normalizes
+# before the comparison like the field list does.
+
+def Laws.hooks_url_path():
+  {==}
+
+def Laws.hooks_url_userinfo():
+  {==}
+
+def Laws.hooks_url_query():
+  {==}
+
+def Laws.hooks_url_plain():
+  {==}
+
+def Laws.hooks_url_pass_slash():
+  {==}
+
+def Laws.hooks_id_dots():
+  {==}
+
+def Laws.hooks_id_letters():
+  {==}
+
+def Laws.hooks_id_empty():
   {==}

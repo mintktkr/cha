@@ -23,6 +23,8 @@ def main() -> IO(Unit):
     expect("missing: --limit at the end of the line", Cli.missing(flags(), ["list", "--limit"]), "--limit")
     expect("missing: --limit before a flag the command reads", Cli.missing(flags(), ["list", "--limit", "--json"]), "--limit")
     expect("missing: --limit= has no value", Cli.missing(flags(), ["list", "--limit="]), "--limit")
+    expect("missing: runs logs --step= has no value", Cli.missing(["--job", "--step", "--failed"], ["7", "--step="]), "--step")
+    expect("missing: runs rerun --job= has no value", Cli.missing(["--job", "--failed"], ["7", "--job="]), "--job")
     expect("missing: --limit=3 has one", Cli.missing(flags(), ["list", "--limit=3"]), "")
     expect("missing: --limit 3 has one", Cli.missing(flags(), ["list", "--limit", "3"]), "")
     expect("missing: a value that starts with a dash is a value", Cli.missing(flags(), ["list", "--state", "-1 from me"]), "")
@@ -34,3 +36,4 @@ def main() -> IO(Unit):
     expect("missing: no flags at all", Cli.missing(flags(), ["list", "7"]), "")
     expect("missing: every valued flag has one", Cli.missing(flags(), ["list", "--state", "open", "--limit", "2", "--json"]), "")
     expect("missing.msg: the error names the flag", Cli.missing.msg("--limit"), "--limit needs a value")
+    expect("missing.msg: runs logs --step= names --step", Cli.missing.msg(Cli.missing(["--job", "--step", "--failed"], ["7", "--step="])), "--step needs a value")

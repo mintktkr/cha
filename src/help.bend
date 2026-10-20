@@ -172,11 +172,17 @@ def groups() -> List<&2, Row>:
   [Row{"issue", "issues: list, view, create, comment, comment-edit, comment-delete, edit, close, reopen, labels", "cha issue list --state open"},
    Row{"pr", "pull requests: list, view, diff, create, merge, edit, comment, comment-edit, comment-delete, checks", "cha pr list"},
    Row{"runs", "actions: list, view, logs, watch, dispatch, rerun, cancel", "cha runs watch 4142"},
-   Row{"repo", "repo: view, labels, label-create, branches, file, tree", "cha repo labels"},
+   Row{"repo", "repo: view, labels, label-create, branches, branch-delete, protection, file, tree, create, delete", "cha repo labels"},
    Row{"release", "releases: list, view, latest, create, upload", "cha release latest"},
    Row{"moved", "what changed in the repo since a time", "cha moved --since 1d"},
    Row{"auth", "which login and token source a host uses", "cha auth status"},
-   Row{"runners", "a repo's or an org's self-hosted runners", "cha runners"},
+   Row{"runners", "self-hosted runners: list, delete", "cha runners"},
+   Row{"search", "issues, prs, repos and code across a forge", "cha search issues kettle"},
+   Row{"packages", "a forge's packages and their versions", "cha packages --type container"},
+   Row{"mirror", "a repo's pull mirror and push mirrors, and a sync", "cha mirror"},
+   Row{"hooks", "a repo's or an org's webhooks: list, create, delete, test", "cha hooks"},
+   Row{"secrets", "actions secrets: list, set, delete", "cha secrets set TOKEN --value-file -"},
+   Row{"variables", "actions variables: list, set, delete", "cha variables set REGION --value eu-west"},
    Row{"help", "this page, or one command's usage", "cha help issue"},
    Row{"version", "print the version", "cha version"},
    Row{"completions", "a fish completion script", "cha completions fish"}]
@@ -346,6 +352,8 @@ def repo.rows() -> List<&2, Row>:
    Row{"labels", "the repo's labels", "cha repo labels"},
    Row{"label-create NAME [--color HEX]", "make a label", "cha repo label-create tea --color ff6eb4"},
    Row{"branches", "the repo's branches", "cha repo branches"},
+   Row{"branch-delete NAME --yes", "delete a branch", "cha repo branch-delete memu/old --yes"},
+   Row{"protection [BRANCH]", "branch protection: rules, approvals, checks", "cha repo protection main"},
    Row{"file PATH [--ref R]", "a file's contents", "cha repo file README.md --ref main"},
    Row{"tree [--ref R]", "the repo's file tree", "cha repo tree"},
    Row{"create NAME [--org O] [--private] [--description D]", "make a repo, on the checkout's host", "cha repo create cha-sandbox --private"},
@@ -357,11 +365,14 @@ def repo.flags() -> List<&2, Row>:
    Row{"--org O", "create the repo in this org", ""},
    Row{"--private", "create the repo private", ""},
    Row{"--description D", "the new repo's description", ""},
-   Row{"--yes", "confirm a delete; cha never prompts", ""}]
+   Row{"--yes", "confirm a delete or a branch-delete; cha never prompts", ""},
+   Row{"--json [FIELDS]", "protection fields: branch, approvals, checks, push_restricted, force_push_blocked", ""}]
 
 def repo.examples() -> List<&2, String>:
   ["cha repo view",
    "cha repo label-create tea --color ff6eb4",
+   "cha repo branch-delete memu/old --yes",
+   "cha repo protection main --json",
    "cha repo file README.md --ref main",
    "cha repo create cha-sandbox --private --description 'a sandbox'",
    "cha repo delete OWNER/cha-sandbox --yes"]
@@ -423,7 +434,102 @@ def auth.page() -> Page:
 # ----------------
 
 def runners.page() -> Page:
-  Page{"cha runners", "cha runners [--org O] [--json]", [Row{"runners [--org O] [--json]", "a repo's or an org's self-hosted runners", "cha runners"}], [Row{"--org O", "the org whose runners to list, instead of the repo's", ""}, Row{"--json [FIELDS]", "id, name, status, busy, labels, os", ""}], ["cha runners", "cha runners --org sample-org --json"]}
+  Page{"cha runners", "cha runners [list] [--org O | --user | --admin] [--json]",
+    [Row{"list [--org O | --user | --admin]", "self-hosted runners of the repo, an org, your user or the site", "cha runners --org sample-org"},
+     Row{"delete ID --yes [--org O | --user | --admin]", "deregister a runner; cha never prompts, so it needs --yes", "cha runners delete 23 --yes"}],
+    [Row{"--org O", "an org's runners, instead of the repo's", ""},
+     Row{"--user", "the token owner's runners (gitea, forgejo)", ""},
+     Row{"--admin", "every runner on the site, with a site-admin token (gitea, forgejo)", ""},
+     Row{"--yes", "really delete; without it cha names the runner and exits 1", ""},
+     Row{"--json [FIELDS]", "id, name, status, busy, labels, os", ""}],
+    ["cha runners", "cha runners --org sample-org --json", "cha runners --admin", "cha runners delete 23 --yes --org sample-org"]}
+
+# cha help search
+# ----------------
+
+def search.rows() -> List<&2, Row>:
+  [Row{"issues QUERY [--state S] [--owner O] [--limit N]", "search issues", "cha search issues kettle"},
+   Row{"prs QUERY [--state S] [--owner O] [--limit N]", "search pull requests", "cha search prs kettle"},
+   Row{"repos QUERY [--owner O] [--limit N]", "search repos, on the whole forge", "cha search repos kettle"},
+   Row{"code QUERY [--owner O] [--limit N]", "search code (GitHub, needs a token)", "cha search code kettle"}]
+
+def search.flags() -> List<&2, Row>:
+  [Row{"--state open|closed|all", "issues and prs: which state (default all)", ""},
+   Row{"--owner O", "search one owner instead of the current repo", ""},
+   Row{"--limit N", "results to return (1-1000, default 20)", ""},
+   Row{"--json [FIELDS]", "machine-readable rows, optionally only FIELDS", ""}]
+
+def search.examples() -> List<&2, String>:
+  ["cha search issues kettle",
+   "cha search prs steam --owner bendlang",
+   "cha search repos bend -R github.com/bendlang/bend",
+   "cha search code IO.now --json path"]
+
+def search.page() -> Page:
+  Page{"cha search", "cha search issues|prs|repos|code QUERY [flags]", search.rows(), search.flags(), search.examples()}
+
+# cha help packages
+# -----------------
+
+def packages.page() -> Page:
+  Page{"cha packages", "cha packages [list|versions|delete] [flags]", [Row{"list [--type T] [--owner O]", "the owner's packages: name, type, version, created", "cha packages --type container"}, Row{"versions NAME", "one package's versions", "cha packages versions cha --type arch"}, Row{"delete NAME VERSION", "remove one version, for good", "cha packages delete cha 0.1.0 --type arch --yes"}], [Row{"--type T", "arch, debian, container, generic; GitHub requires it", ""}, Row{"--owner O", "whose packages to list; the repo's owner by default", ""}, Row{"--yes", "delete only: go ahead without asking", ""}, Row{"--json [FIELDS]", "name, type, version, created", ""}], ["cha packages", "cha packages --type container --owner sample-org", "cha packages versions cha --type arch", "cha packages delete cha 0.1.0 --type arch --yes"]}
+
+# cha help mirror
+# ---------------
+
+def mirror.page() -> Page:
+  Page{"cha mirror", "cha mirror [status|sync|push-sync] [--json]",
+    [Row{"status", "whether the repo is a pull mirror, and where it pushes (gitea and forgejo; github has no mirror API)", "cha mirror"},
+     Row{"sync", "ask the forge to sync the pull mirror now", "cha mirror sync"},
+     Row{"push-sync", "ask the forge to push to the push mirrors now", "cha mirror push-sync"}],
+    [Row{"--json [FIELDS]", "kind, address, interval, updated, error", ""}],
+    ["cha mirror", "cha mirror sync"]}
+
+# cha help hooks
+# --------------
+
+def hooks.page() -> Page:
+  Page{"cha hooks", "cha hooks [list] [--org O] [--json] | create | delete | test", [Row{"hooks [--org O] [--json]", "a repo's or an org's webhooks", "cha hooks"}, Row{"hooks create URL --events E", "add a webhook; prints its id and URL", "cha hooks create https://hooks.example/hook --events push,pull_request"}, Row{"hooks delete ID --yes", "remove a webhook", "cha hooks delete 12 --yes"}, Row{"hooks test ID", "send a test delivery", "cha hooks test 12"}], [Row{"--org O", "the org whose hooks to read or change, instead of the repo's", ""}, Row{"--events a,b", "create: the events to deliver, as the forge names them", ""}, Row{"--secret-file F", "create: the secret, from a file; - is stdin, never printed", ""}, Row{"--content-type json|form", "create: the payload format, json by default", ""}, Row{"--yes", "delete: required; cha never prompts", ""}, Row{"--json [FIELDS]", "id, url, events, active, content_type", ""}], ["cha hooks", "cha hooks --org sample-org", "cha hooks create https://hooks.example/hook --events push --secret-file .secret", "cha hooks delete 12 --yes"]}
+
+# cha help secrets
+# ----------------
+
+def secrets.rows() -> List<&2, Row>:
+  [Row{"list [--org O]", "the secrets' names and when they last changed", "cha secrets"},
+   Row{"set NAME (--value V | --value-file F) [--org O]", "set a secret", "cha secrets set TOKEN --value-file -"},
+   Row{"delete NAME --yes [--org O]", "delete a secret", "cha secrets delete TOKEN --yes"}]
+
+def actions.flags() -> List<&2, Row>:
+  [Row{"--org O", "the org to read or write, instead of the repo", ""},
+   Row{"--value V", "the value as an argument: ps and the shell's history see it, so prefer --value-file", ""},
+   Row{"--value-file F", "the value from a file; - is stdin, a trailing newline dropped", ""},
+   Row{"--yes", "a delete goes ahead; without it cha names what it would delete and exits 1", ""}]
+
+def secrets.examples() -> List<&2, String>:
+  ["cha secrets",
+   "cha secrets set TOKEN --value-file -",
+   "cha secrets --org sample-org --json name,updated",
+   "cha secrets delete TOKEN --yes"]
+
+def secrets.page() -> Page:
+  Page{"cha secrets", "cha secrets [list|set|delete] [flags]", secrets.rows(), actions.flags(), secrets.examples()}
+
+# cha help variables
+# ------------------
+
+def variables.rows() -> List<&2, Row>:
+  [Row{"list [--org O]", "the variables' names and values", "cha variables"},
+   Row{"set NAME (--value V | --value-file F) [--org O]", "create a variable, or update it", "cha variables set REGION --value eu-west"},
+   Row{"delete NAME --yes [--org O]", "delete a variable", "cha variables delete REGION --yes"}]
+
+def variables.examples() -> List<&2, String>:
+  ["cha variables",
+   "cha variables set REGION --value eu-west",
+   "cha variables set REGION --value-file - --org sample-org",
+   "cha variables delete REGION --yes"]
+
+def variables.page() -> Page:
+  Page{"cha variables", "cha variables [list|set|delete] [flags]", variables.rows(), actions.flags(), variables.examples()}
 
 # cha help help, version and completions
 # --------------------------------------
@@ -483,7 +589,13 @@ def group(+sub: String) -> Nat:
   pick(String.eq(sub, "version"), 8n,
   pick(String.eq(sub, "completions"), 9n,
   pick(String.eq(sub, "auth"), 10n,
-  pick(String.eq(sub, "runners"), 11n, 0n)))))))))))
+  pick(String.eq(sub, "runners"), 11n,
+  pick(String.eq(sub, "search"), 12n,
+  pick(String.eq(sub, "packages"), 13n,
+  pick(String.eq(sub, "mirror"), 14n,
+  pick(String.eq(sub, "hooks"), 15n,
+  pick(String.eq(sub, "secrets"), 16n,
+  pick(String.eq(sub, "variables"), 17n, 0n)))))))))))))))))
 
 # the word's index in args, or the length when it isn't there
 def idx.at(eq: Bool, i: Nat, later: Nat) -> Nat:
@@ -546,8 +658,20 @@ def show(+on: Bool, +sub: String, k: Nat) -> IO(Unit):
       page.show(on, completions.page())
     case 10n:
       page.show(on, auth.page())
-    case 11n+_:
+    case 11n:
       page.show(on, runners.page())
+    case 12n:
+      page.show(on, search.page())
+    case 13n:
+      page.show(on, packages.page())
+    case 14n:
+      page.show(on, mirror.page())
+    case 15n:
+      page.show(on, hooks.page())
+    case 16n:
+      page.show(on, secrets.page())
+    case 17n+_:
+      page.show(on, variables.page())
 
 # cha, cha help, cha help <command>
 def run(+on: Bool, +args: List<&2, String>) -> IO(Unit):
@@ -596,12 +720,21 @@ def comp.groups() -> List<&2, String>:
   ["complete -c cha -n '__cha_needs_command' -a issue -d 'issues: list, view, create, comment, comment-edit, comment-delete, edit, close, reopen, labels'",
    "complete -c cha -n '__cha_needs_command' -a pr -d 'pull requests: list, view, diff, create, merge, edit, comment, comment-edit, comment-delete, checks'",
    "complete -c cha -n '__cha_needs_command' -a runs -d 'actions: list, view, logs, watch, dispatch, rerun, cancel'",
-   "complete -c cha -n '__cha_needs_command' -a repo -d 'repo: view, labels, label-create, branches, file, tree, create, delete'",
+   "complete -c cha -n '__cha_needs_command' -a repo -d 'repo: view, labels, label-create, branches, branch-delete, protection, file, tree, create, delete'",
    "complete -c cha -n '__cha_needs_command' -a release -d 'releases: list, view, latest, create, upload'",
    "complete -c cha -n '__cha_needs_command' -a moved -d 'what changed since a time'",
    "complete -c cha -n '__cha_needs_command' -a auth -d 'login and token source'",
    "complete -c cha -n '__cha_in_group auth' -a status -d 'login and token source'",
-   "complete -c cha -n '__cha_needs_command' -a runners -d \"a repo's or an org's self-hosted runners\"",
+   "complete -c cha -n '__cha_needs_command' -a runners -d 'self-hosted runners: list, delete'",
+   "complete -c cha -n '__cha_needs_command' -a search -d 'issues, prs, repos and code across a forge'",
+   "complete -c cha -n '__cha_needs_command' -a packages -d \"a forge's packages and their versions\"",
+   "complete -c cha -n '__cha_needs_command' -a mirror -d \"a repo's pull mirror and push mirrors\"",
+   "complete -c cha -n '__cha_in_group mirror' -a status -d 'pull mirror and push mirrors'",
+   "complete -c cha -n '__cha_in_group mirror' -a sync -d 'sync the pull mirror now'",
+   "complete -c cha -n '__cha_in_group mirror' -a push-sync -d 'push to the push mirrors now'",
+   "complete -c cha -n '__cha_needs_command' -a hooks -d \"a repo's or an org's webhooks\"",
+   "complete -c cha -n '__cha_needs_command' -a secrets -d 'actions secrets: list, set, delete'",
+   "complete -c cha -n '__cha_needs_command' -a variables -d 'actions variables: list, set, delete'",
    "complete -c cha -n '__cha_needs_command' -a help -d 'help'",
    "complete -c cha -n '__cha_needs_command' -a version -d 'print the version'",
    "complete -c cha -n '__cha_needs_command' -a completions -d 'shell completions'",
@@ -699,6 +832,8 @@ def comp.repo() -> List<&2, String>:
    "complete -c cha -n '__cha_sub_command repo' -a labels -d \"the repo's labels\"",
    "complete -c cha -n '__cha_sub_command repo' -a label-create -d 'make a label'",
    "complete -c cha -n '__cha_sub_command repo' -a branches -d \"the repo's branches\"",
+   "complete -c cha -n '__cha_sub_command repo' -a branch-delete -d 'delete a branch'",
+   "complete -c cha -n '__cha_sub_command repo' -a protection -d 'branch protection'",
    "complete -c cha -n '__cha_sub_command repo' -a file -d \"a file's contents\"",
    "complete -c cha -n '__cha_sub_command repo' -a tree -d \"the repo's file tree\"",
    "complete -c cha -n '__cha_sub_command repo' -a create -d 'make a repo'",
@@ -708,6 +843,7 @@ def comp.repo() -> List<&2, String>:
    "complete -c cha -n '__cha_using_sub repo create' -l private -d 'create the repo private'",
    "complete -c cha -n '__cha_using_sub repo create' -l description -x -d \"the new repo's description\"",
    "complete -c cha -n '__cha_using_sub repo delete' -l yes -d 'confirm a delete; cha never prompts'",
+   "complete -c cha -n '__cha_using_sub repo branch-delete' -l yes -d 'confirm a delete; cha never prompts'",
    "complete -c cha -n '__cha_using_sub repo file' -l ref -x -d 'a branch or tag'",
    "complete -c cha -n '__cha_using_sub repo tree' -l ref -x -d 'a branch or tag'",
    ""]
@@ -730,11 +866,84 @@ def comp.moved() -> List<&2, String>:
    ""]
 
 def comp.runners() -> List<&2, String>:
-  ["complete -c cha -n '__cha_in_group runners' -l org -x -d \"the org whose runners to list\"",
+  ["complete -c cha -n '__cha_sub_command runners' -a list -d 'the runners of a scope'",
+   "complete -c cha -n '__cha_sub_command runners' -a delete -d 'deregister a runner'",
+   "complete -c cha -n '__cha_using_sub runners list' -l org -x -d \"an org's runners, instead of the repo's\"",
+   "complete -c cha -n '__cha_using_sub runners list' -l user -d \"the token owner's runners\"",
+   "complete -c cha -n '__cha_using_sub runners list' -l admin -d 'every runner on the site'",
+   "complete -c cha -n '__cha_using_sub runners list' -l json -d 'machine-readable rows, optionally only FIELDS'",
+   "complete -c cha -n '__cha_using_sub runners delete' -l org -x -d \"an org's runner\"",
+   "complete -c cha -n '__cha_using_sub runners delete' -l user -d \"the token owner's runner\"",
+   "complete -c cha -n '__cha_using_sub runners delete' -l admin -d 'a site-wide runner'",
+   "complete -c cha -n '__cha_using_sub runners delete' -l yes -d 'really delete it'",
+   ""]
+
+def comp.search() -> List<&2, String>:
+  ["complete -c cha -n '__cha_sub_command search' -a issues -d 'search issues'",
+   "complete -c cha -n '__cha_sub_command search' -a prs -d 'search pull requests'",
+   "complete -c cha -n '__cha_sub_command search' -a repos -d 'search repos'",
+   "complete -c cha -n '__cha_sub_command search' -a code -d 'search code (GitHub, needs a token)'",
+   "complete -c cha -n '__cha_using_sub search issues' -l state -x -a 'open closed all' -d 'which state'",
+   "complete -c cha -n '__cha_using_sub search issues' -l owner -x -d 'search one owner'",
+   "complete -c cha -n '__cha_using_sub search issues' -l limit -x -d 'results to return'",
+   "complete -c cha -n '__cha_using_sub search prs' -l state -x -a 'open closed all' -d 'which state'",
+   "complete -c cha -n '__cha_using_sub search prs' -l owner -x -d 'search one owner'",
+   "complete -c cha -n '__cha_using_sub search prs' -l limit -x -d 'results to return'",
+   "complete -c cha -n '__cha_using_sub search repos' -l owner -x -d 'search one owner'",
+   "complete -c cha -n '__cha_using_sub search repos' -l limit -x -d 'results to return'",
+   "complete -c cha -n '__cha_using_sub search code' -l owner -x -d 'search one owner'",
+   "complete -c cha -n '__cha_using_sub search code' -l limit -x -d 'results to return'",
+   ""]
+
+def comp.packages() -> List<&2, String>:
+  ["complete -c cha -n '__cha_sub_command packages' -a list -d \"the owner's packages\"",
+   "complete -c cha -n '__cha_sub_command packages' -a versions -d \"one package's versions\"",
+   "complete -c cha -n '__cha_sub_command packages' -a delete -d 'remove one version'",
+   "complete -c cha -n '__cha_in_group packages' -l type -x -a 'arch debian container generic' -d 'the package type'",
+   "complete -c cha -n '__cha_in_group packages' -l owner -x -d \"whose packages to list\"",
+   "complete -c cha -n '__cha_using_sub packages delete' -l yes -d 'go ahead without asking'",
+   ""]
+
+def comp.mirror() -> List<&2, String>:
+  ["complete -c cha -n '__cha_using_sub mirror status' -l json -d 'machine-readable rows, optionally only FIELDS'",
+   ""]
+
+def comp.hooks() -> List<&2, String>:
+  ["complete -c cha -n '__cha_sub_command hooks' -a list -d 'list webhooks'",
+   "complete -c cha -n '__cha_sub_command hooks' -a create -d 'add a webhook'",
+   "complete -c cha -n '__cha_sub_command hooks' -a delete -d 'remove a webhook'",
+   "complete -c cha -n '__cha_sub_command hooks' -a test -d 'send a test delivery'",
+   "complete -c cha -n '__cha_in_group hooks' -l org -x -d \"the org whose hooks to read or change\"",
+   "complete -c cha -n '__cha_using_sub hooks create' -l events -x -d 'the events to deliver, comma-separated'",
+   "complete -c cha -n '__cha_using_sub hooks create' -l secret-file -r -F -d 'the secret from a file; - is stdin'",
+   "complete -c cha -n '__cha_using_sub hooks create' -l content-type -x -a 'json form' -d 'the payload format'",
+   "complete -c cha -n '__cha_using_sub hooks delete' -l yes -d 'confirm the delete'",
+   ""]
+
+def comp.secrets() -> List<&2, String>:
+  ["complete -c cha -n '__cha_sub_command secrets' -a list -d \"the secrets' names and when they last changed\"",
+   "complete -c cha -n '__cha_sub_command secrets' -a set -d 'set a secret'",
+   "complete -c cha -n '__cha_sub_command secrets' -a delete -d 'delete a secret'",
+   "complete -c cha -n '__cha_in_group secrets' -l org -x -d \"the org whose secrets to read or write\"",
+   "complete -c cha -n '__cha_in_group secrets' -l value -x -d 'the value'",
+   "complete -c cha -n '__cha_in_group secrets' -l value-file -r -F -d 'the value from a file; - is stdin'",
+   "complete -c cha -n '__cha_in_group secrets' -l yes -d 'go ahead with a delete'",
+   "complete -c cha -n '__cha_in_group secrets' -l json -d 'machine-readable rows, optionally only FIELDS'",
+   ""]
+
+def comp.variables() -> List<&2, String>:
+  ["complete -c cha -n '__cha_sub_command variables' -a list -d \"the variables' names and values\"",
+   "complete -c cha -n '__cha_sub_command variables' -a set -d 'create a variable, or update it'",
+   "complete -c cha -n '__cha_sub_command variables' -a delete -d 'delete a variable'",
+   "complete -c cha -n '__cha_in_group variables' -l org -x -d \"the org whose variables to read or write\"",
+   "complete -c cha -n '__cha_in_group variables' -l value -x -d 'the value'",
+   "complete -c cha -n '__cha_in_group variables' -l value-file -r -F -d 'the value from a file; - is stdin'",
+   "complete -c cha -n '__cha_in_group variables' -l yes -d 'go ahead with a delete'",
+   "complete -c cha -n '__cha_in_group variables' -l json -d 'machine-readable rows, optionally only FIELDS'",
    ""]
 
 def comp.all() -> List<&2, String>:
-  List.concat(&2, String, [comp.head(), comp.global(), comp.groups(), comp.issue(), comp.pr(), comp.runs(), comp.repo(), comp.release(), comp.moved(), comp.runners()])
+  List.concat(&2, String, [comp.head(), comp.global(), comp.groups(), comp.issue(), comp.pr(), comp.runs(), comp.repo(), comp.release(), comp.moved(), comp.runners(), comp.search(), comp.packages(), comp.mirror(), comp.hooks(), comp.secrets(), comp.variables()])
 
 def comp.body() -> String:
   String.join(comp.all(), "\n") ++ "\n"

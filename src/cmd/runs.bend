@@ -841,7 +841,7 @@ def logs(+env: Cli.Env) -> IO(Unit):
         Cli.check(env, "runs logs", args, ["--job", "--step", "--failed"])
         +id : String <- require.at(env, 1n, "run id")
         +job : String = Cli.flag(args, "--job", "")
-        +step : String <- require.if(env, Cli.flag(args, "--step", ""), "step name", (Cli.has(args, "--step") || Cli.has(args, "--step=")) && (String.is_empty(Cli.flag(args, "--step", "")) || String.starts_with(Cli.flag(args, "--step", ""), "--")))
+        +step : String <- require.if(env, Cli.flag(args, "--step", ""), "step name", Cli.has(args, "--step") && (String.is_empty(Cli.flag(args, "--step", "")) || String.starts_with(Cli.flag(args, "--step", ""), "--")))
         +all : List<&2, Map<&2, String>> <- jobs.fetch(env, id)
         +ks : List<&2, Map<&2, String>> = keep.rows(all, job, Cli.has(args, "--failed"))
         +named : List<&2, Map<&2, String>> = keep.rows(all, job, False{})
@@ -1075,6 +1075,19 @@ def dispatch.page(+forge: Ctx.Forge, +wf: String) -> String:
     case Ctx.GitHub{}:
       "actions/workflows/" ++ Url.encode(wf)
 
+# the dispatch endpoint: the workflow file is one segment of the path, encoded like every
+# other, so only the file name the API takes (ci.yml, not .github/workflows/ci.yml) fits
+def dispatch.path(+wf: String) -> String:
+  "actions/workflows/" ++ Url.encode(wf) ++ "/dispatches"
+
+# the error an unsafe workflow file gives, "" when it may go in the path
+def dispatch.wf.bad(ok: Bool) -> String:
+  match ok:
+    case True{}:
+      ""
+    case False{}:
+      "runs dispatch: a workflow file can't have a slash, or be . or .."
+
 # the dispatch was accepted but no run of it is listed yet: say so, and point at
 # the workflow's runs instead of naming a run that may belong to someone else
 def dispatch.none(+env: Cli.Env, +wf: String) -> IO(Unit):
@@ -1170,11 +1183,13 @@ def dispatch(+env: Cli.Env) -> IO(Unit):
       do IO<Unit>:
         Cli.check(env, "runs dispatch", args, ["--ref", "--input"])
         +wf : String <- require.at(env, 1n, "workflow file")
+        +bad : String = dispatch.wf.bad(Url.encode.seg.ok(wf))
+        Cli.check.if(env, bad, String.is_empty(bad))
         +ref : String = Cli.flag(args, "--ref", "main")
         ks : List<&2, String> = inputs.of(args)
         +forge : Ctx.Forge = forge.of(repo)
         t0 : U32 <- Sys.now()
-        r : Api.Reply <- Api.send(repo, tok, "POST", Api.path(repo, "actions/workflows/" ++ wf ++ "/dispatches"), Some{dispatch.body(ref, ks, forge.github(forge))})
+        r : Api.Reply <- Api.send(repo, tok, "POST", Api.path(repo, dispatch.path(wf)), Some{dispatch.body(ref, ks, forge.github(forge))})
         named : Search <- dispatch.reply(env, r)
         dispatch.print(env, wf, ref, t0, named)
 
@@ -1241,7 +1256,7 @@ def rerun(+env: Cli.Env) -> IO(Unit):
         Cli.check(env, "runs rerun", args, ["--job", "--failed"])
         +id : String <- require.at(env, 1n, "run id")
         +job : String = Cli.flag(args, "--job", "")
-        rerun.args(env, repo, id, job, Cli.has(args, "--failed"), (Cli.has(args, "--job") || Cli.has(args, "--job=")) && (String.is_empty(job) || String.starts_with(job, "--")))
+        rerun.args(env, repo, id, job, Cli.has(args, "--failed"), Cli.has(args, "--job") && (String.is_empty(job) || String.starts_with(job, "--")))
 
 def cancel.bad(+env: Cli.Env, +status: U32, body: List<&2, U32>, missing: Bool) -> IO(Unit):
   match missing:
