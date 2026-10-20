@@ -168,6 +168,8 @@ def main() -> IO(Unit):
     expect("target, owner and name only", repo.show(Repo.target.of(checkout(), "OWNER/NAME/EXTRA")), "none")
     expect("target, an empty owner", repo.show(Repo.target.of(checkout(), "/NAME")), "none")
     expect("target, an empty name", repo.show(Repo.target.of(checkout(), "OWNER/")), "none")
+    expect("target, . is not an owner", repo.show(Repo.target.of(checkout(), "./repo")), "none")
+    expect("target, .. is not a name", repo.show(Repo.target.of(checkout(), "checkout/..")), "none")
     expect("target, a space can't reach the url", repo.show(Repo.target.of(checkout(), "OWNER/na me")), "none")
     expect("target, a query can't reach the url", repo.show(Repo.target.of(checkout(), "OWNER/n?x=1")), "none")
     expect("api.path of the named repo", Api.path(named(), ""), "repos/OWNER/cha-sandbox")
@@ -192,6 +194,11 @@ def main() -> IO(Unit):
     same(Repo.delete.ask("memu/foo", True{}), "")
     same(Repo.delete.default("main", True{}), "repo branch-delete: main is the default branch")
     same(Repo.delete.default("feature", False{}), "")
+    # the path-walking names branch-delete refuses before it sends a request
+    same(Repo.delete.segments(Url.encode.path.ok("../../x")), "repo branch-delete: a branch name can't have . or .. segments")
+    same(Repo.delete.segments(Url.encode.path.ok("a/./b")), "repo branch-delete: a branch name can't have . or .. segments")
+    same(Repo.delete.segments(Url.encode.path.ok("a//b")), "repo branch-delete: a branch name can't have . or .. segments")
+    same(Repo.delete.segments(Url.encode.path.ok("release/1.0")), "")
     # protection: the same fields, from each forge's shape
     same(card(gh.row.of(gh.body())), "main|2|ci, lint|true|true")
     same(card(gh.row.of(gh.bare.body())), "main|0||false|true")

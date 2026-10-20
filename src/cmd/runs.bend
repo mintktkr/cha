@@ -1077,6 +1077,19 @@ def dispatch.page(+forge: Ctx.Forge, +wf: String) -> String:
     case Ctx.GitHub{}:
       "actions/workflows/" ++ Url.encode(wf)
 
+# the dispatch endpoint: the workflow file is one segment of the path, encoded like every
+# other, so only the file name the API takes (ci.yml, not .github/workflows/ci.yml) fits
+def dispatch.path(+wf: String) -> String:
+  "actions/workflows/" ++ Url.encode(wf) ++ "/dispatches"
+
+# the error an unsafe workflow file gives, "" when it may go in the path
+def dispatch.wf.bad(ok: Bool) -> String:
+  match ok:
+    case True{}:
+      ""
+    case False{}:
+      "runs dispatch: a workflow file can't have a slash, or be . or .."
+
 # the dispatch was accepted but no run of it is listed yet: say so, and point at
 # the workflow's runs instead of naming a run that may belong to someone else
 def dispatch.none(+env: Cli.Env, +wf: String) -> IO(Unit):
@@ -1172,11 +1185,13 @@ def dispatch(+env: Cli.Env) -> IO(Unit):
       do IO<Unit>:
         Cli.check(env, "runs dispatch", args, ["--ref", "--input"])
         +wf : String <- require.at(env, 1n, "workflow file")
+        +bad : String = dispatch.wf.bad(Url.encode.seg.ok(wf))
+        Cli.check.if(env, bad, String.is_empty(bad))
         +ref : String = Cli.flag(args, "--ref", "main")
         ks : List<&2, String> = inputs.of(args)
         +forge : Ctx.Forge = forge.of(repo)
         t0 : Time.Instant <- Time.now()
-        r : Api.Reply <- Api.send(repo, tok, "POST", Api.path(repo, "actions/workflows/" ++ wf ++ "/dispatches"), Some{dispatch.body(ref, ks, forge.github(forge))})
+        r : Api.Reply <- Api.send(repo, tok, "POST", Api.path(repo, dispatch.path(wf)), Some{dispatch.body(ref, ks, forge.github(forge))})
         named : Search <- dispatch.reply(env, r)
         dispatch.print(env, wf, ref, t0, named)
 

@@ -4,6 +4,7 @@ import 0x49814d83de8f70993a43e1002be29ecd/bytes.bend as Bytes
 import ../src/ctx.bend as Ctx
 import ../src/cli.bend as Cli
 import ../src/api.bend as Api
+import ../src/url.bend as Url
 import ../src/cmd/packages.bend as Packages
 
 def expect.if(+got: String, +want: String, same: Bool) -> IO(Unit):
@@ -79,6 +80,7 @@ def url.check() -> IO(Unit):
     expect(Packages.url.of(Packages.Query{Ctx.GitHub{}, "users/", "memu", "npm", Packages.Versions{"a/b"}}, 1), "users/memu/packages/npm/a%2Fb/versions?per_page=100&page=1")
     expect(Packages.delete.url(Ctx.Gitea{}, "", "sample", "arch", "cha", "0.1.0-1"), "packages/sample/arch/cha/0.1.0-1")
     expect(Packages.delete.url(Ctx.GitHub{}, "orgs/", "sample", "container", "cha", "402"), "orgs/sample/packages/container/cha/versions/402")
+    expect(Packages.delete.url(Ctx.GitHub{}, "orgs/", "sample", "container", "cha", "../402"), "orgs/sample/packages/container/cha/versions/..%2F402")
 
 def row.check() -> IO(Unit):
   do IO<Unit>:
@@ -121,6 +123,13 @@ def delete.check() -> IO(Unit):
     expect(Packages.id.of(vs, "9.9.9"), "")
     expect(Packages.refusal("cha", "0.1.0", False{}), "packages delete: would remove cha 0.1.0 for good; rerun with --yes")
     expect(Packages.refusal("cha", "0.1.0", True{}), "")
+    # a name or a version that would walk out of the delete path is refused
+    expect(Packages.refusal("../../x", "0.1.0", True{}), "packages delete: a package name can't have . or .. segments")
+    expect(Packages.refusal("cha", "..", True{}), "packages delete: a package version can't have . or .. segments")
+    expect(Packages.segments.msg("package name", Url.encode.path.ok("../../x")), "packages delete: a package name can't have . or .. segments")
+    expect(Packages.segments.msg("package version", Url.encode.path.ok("..")), "packages delete: a package version can't have . or .. segments")
+    expect(Packages.segments.msg("package name", Url.encode.path.ok("cha")), "")
+    expect(Packages.segments.msg("package version", Url.encode.path.ok("0.1.0-1")), "")
 
 def scope.check() -> IO(Unit):
   do IO<Unit>:

@@ -199,13 +199,14 @@ def url.of(+q: Query, +page: U32) -> String:
     case Query{f, scope, owner, kind, Versions{name}}:
       url.versions(f, scope, owner, kind, name, page)
 
-# Gitea deletes the version it names; GitHub deletes by the id its version list gave
+# Gitea deletes the version it names; GitHub deletes by the id its version list gave. A
+# version or an id is one encoded path segment, so neither can add a segment of its own.
 def delete.url(+f: Ctx.Forge, +scope: String, +owner: String, +kind: String, +name: String, +v: String) -> String:
   match f:
     case Ctx.Gitea{}:
       "packages/" ++ Url.encode(owner) ++ "/" ++ Url.encode(kind) ++ "/" ++ Url.encode(name) ++ "/" ++ Url.encode(v)
     case Ctx.GitHub{}:
-      scope ++ Url.encode(owner) ++ "/packages/" ++ Url.encode(kind) ++ "/" ++ Url.encode(name) ++ "/versions/" ++ v
+      scope ++ Url.encode(owner) ++ "/packages/" ++ Url.encode(kind) ++ "/" ++ Url.encode(name) ++ "/versions/" ++ Url.encode(v)
 
 # Pagination
 # ----------
@@ -338,12 +339,23 @@ def need(+env: Cli.Env, +msg: String, +v: String, missing: Bool) -> IO(String):
     case False{}:
       IO.pure(String, v)
 
-# the error a delete without --yes gives, "" when it may go ahead. It names the version it
-# would remove, so a pipeline that forgot --yes learns what it almost deleted.
+# a package name or a version reaches the delete path, so a . or .. segment in it would
+# walk to another endpoint: the delete refuses it before it sends anything
+def segments.msg(+what: String, ok: Bool) -> String:
+  match ok:
+    case True{}:
+      ""
+    case False{}:
+      "packages delete: a " ++ what ++ " can't have . or .. segments"
+
+# the error a delete gives before it sends anything, "" when it may go ahead. It needs
+# --yes, and it names the version it would remove, so a pipeline that forgot --yes learns
+# what it almost deleted. A name or version with a . or .. segment would walk out of the
+# delete path, so that is refused too.
 def refusal(+name: String, +version: String, +yes: Bool) -> String:
   match yes:
     case True{}:
-      ""
+      Ctx.or(segments.msg("package name", Url.encode.path.ok(name)), segments.msg("package version", Url.encode.path.ok(version)))
     case False{}:
       "packages delete: would remove " ++ name ++ " " ++ version ++ " for good; rerun with --yes"
 
