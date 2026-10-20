@@ -160,18 +160,36 @@ law link_no_next:
 law link_next_url:
   {Api.link.next("</issues?page=2>; rel=\"next\", </issues?page=5>; rel=\"last\"") == "/issues?page=2" : String}
 
+# Failed secrets set
+# ------------------
 # A secret's value goes out in one request and never comes back. A failed reply's body can
-# echo it, so the message cha builds for a failed `secrets set` is checked here: no value,
-# then the forge's own message when that leaves the value out.
+# echo it whole, in part, re-cased or escaped, and a control byte in it would only be
+# dropped after a check, so the message a failed `secrets set` prints is built from the
+# status alone: no word of the forge's body, and so no value.
 
-# LAW: the message for a failed secrets set does not hold the value, even when the forge's
-# message repeats it.
+# LAW: a 422's message is the fixed text, whatever the forge's body echoed.
+law secrets_set_422_text:
+  {Secrets.set.why(422) == "the forge refused the name or the value (HTTP 422)" : String}
+
+# LAW: a 404's message is the fixed text too.
+law secrets_set_404_text:
+  {Secrets.set.why(404) == "no such repo or org (HTTP 404)" : String}
+
+# LAW: a 401 names the token, with its own status.
+law secrets_set_401_text:
+  {Secrets.set.why(401) == "the token can't write secrets here (HTTP 401)" : String}
+
+# LAW: a 403 names the token, with its own status.
+law secrets_set_403_text:
+  {Secrets.set.why(403) == "the token can't write secrets here (HTTP 403)" : String}
+
+# LAW: any other status is the status alone, with nothing quoted from the body.
+law secrets_set_other_text:
+  {Secrets.set.why(500) == "HTTP 500" : String}
+
+# LAW: the message holds no value, for a status whose body repeated one.
 law secrets_set_hides_value:
-  {String.contains(Secrets.set.message("HTTP 422", "hunter2 is too short", "hunter2"), "hunter2") == False{} : Bool}
-
-# LAW: a forge message that leaves the value out is kept, so the error still says why.
-law secrets_set_keeps_message:
-  {Secrets.set.message("HTTP 422", "is too short", "hunter2") == "HTTP 422: is too short" : String}
+  {String.contains(Secrets.set.why(422), "hunter2") == False{} : Bool}
 
 # Terminal escape
 # ---------------

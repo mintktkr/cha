@@ -174,12 +174,27 @@ def Laws.link_no_next():
 def Laws.link_next_url():
   {==}
 
-# Both sides are closed text, so the walk through String.contains and the message builder
-# normalizes to the same string.
-def Laws.secrets_set_hides_value():
+# Failed secrets set
+# ------------------
+# Each law is closed text on both sides, so reflexivity is the whole proof: the message
+# builder matches on the status and reads no reply body.
+
+def Laws.secrets_set_422_text():
   {==}
 
-def Laws.secrets_set_keeps_message():
+def Laws.secrets_set_404_text():
+  {==}
+
+def Laws.secrets_set_401_text():
+  {==}
+
+def Laws.secrets_set_403_text():
+  {==}
+
+def Laws.secrets_set_other_text():
+  {==}
+
+def Laws.secrets_set_hides_value():
   {==}
 
 # Terminal escape
