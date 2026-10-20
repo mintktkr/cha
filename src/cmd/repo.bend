@@ -643,7 +643,7 @@ def org.bad(+org: String, empty: Bool) -> Bool:
     case True{}:
       False{}
     case False{}:
-      Bool.not(name.ok(String.to_list(org)))
+      Bool.not(Bool.and(name.ok(String.to_list(org)), Url.encode.seg.ok(org)))
 
 def create.org.check(+env: Cli.Env, +org: String, bad: Bool) -> IO(Unit):
   match bad:

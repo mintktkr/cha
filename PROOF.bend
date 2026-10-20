@@ -332,6 +332,9 @@ def Laws.hooks_url_query():
 def Laws.hooks_url_plain():
   {==}
 
+def Laws.hooks_url_pass_slash():
+  {==}
+
 def Laws.hooks_id_dots():
   {==}
 

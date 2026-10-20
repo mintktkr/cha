@@ -123,8 +123,10 @@ def path.pre(+s: String, has: Bool) -> String:
       s
 
 # a hook's target as anything may print it: scheme, host and port, then /… for a path
+# credentials go first, with Ctx.no_credentials: a raw password can hold a / that would
+# otherwise read as the end of the authority
 def url.redact(+u: String) -> String:
-  +xs = String.split(target(u), '/')
+  +xs = String.split(target(Ctx.no_credentials(u)), '/')
   +head = first(xs)
   +scheme = Bool.and(String.ends_with(head, ":"), String.is_empty(second(xs)))
   +parts = segments(xs, scheme)
