@@ -361,6 +361,10 @@ law hooks_row_fields_case:
 law hooks_url_path:
   {Hooks.url.redact("https://hooks.slack.com/services/T000/B000/XXXX") == "https://hooks.slack.com/…" : String}
 
+# LAW: a / in a raw password doesn't put any of it in the shown url.
+law hooks_url_pass_slash:
+  {Hooks.url.redact("https://u:p/ss@hooks.slack.com/services/T000/B000/XXXX") == "https://hooks.slack.com/…" : String}
+
 # LAW: user:pass@ in a webhook URL is dropped.
 law hooks_url_userinfo:
   {Hooks.url.redact("https://user:pass@hooks.example/hook") == "https://hooks.example/…" : String}

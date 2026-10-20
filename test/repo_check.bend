@@ -160,6 +160,8 @@ def main() -> IO(Unit):
     expect("create.url, an org", Repo.create.url("sample-org", False{}), "orgs/sample-org/repos")
     expect("--org takes a plain name", String.to_lower(Bool.show(Repo.org.bad("sample-org", False{}))), "false")
     expect("--org refuses a path", String.to_lower(Bool.show(Repo.org.bad("a/b", False{}))), "true")
+    expect("--org refuses ..", String.to_lower(Bool.show(Repo.org.bad("..", False{}))), "true")
+    expect("--org refuses .", String.to_lower(Bool.show(Repo.org.bad(".", False{}))), "true")
     expect("--org absent is fine", String.to_lower(Bool.show(Repo.org.bad("", True{}))), "false")
     expect("create.body, private with a description", json.text(Repo.create.body("sandbox", "test repo", True{})), "{\"name\":\"sandbox\",\"description\":\"test repo\",\"private\":true}")
     expect("create.body, public without one", json.text(Repo.create.body("sandbox", "", False{})), "{\"name\":\"sandbox\",\"description\":\"\",\"private\":false}")
