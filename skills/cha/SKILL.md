@@ -33,7 +33,7 @@ description: Use cha for Gitea, Forgejo and GitHub work from the terminal - issu
 - `view N --comments` prints each comment's `id` beside its author and date, and `--json` carries it: that id is what `comment-edit` and `comment-delete` take. A PR's conversation comments are issue comments, so an id works under both `issue` and `pr`.
 - `comment-delete` always needs `--yes`: without it cha names the comment it would delete, sends no request and exits 1. cha never prompts.
 - `hooks` needs a token that can administer the repo or org: GitHub and Gitea both refuse even the list without one, so anonymous `hooks` exits 1 with HTTP 401.
-- `hooks` never prints a hook's secret. Every row is redacted first: a field named `secret`, `password` or `token` (in any case, at any depth, so `config.secret` too) is dropped from the text line and from `--json`. The secret comes from `--secret-file F` (`-` is stdin), never from a flag value; trailing whitespace from the file is trimmed. `hooks create` prints `#ID  URL` on stdout.
+- `hooks` never prints a hook's secret. Every row is redacted first: a field named `secret`, `password` or `token` (in any case, at any depth, so `config.secret` too) is dropped from the text line and from `--json`. A hook's URL is shown redacted too, as `scheme://host[:port]/…` (`https://hooks.slack.com/…`): a webhook URL is often the secret itself, since a Slack or Discord URL carries its token in the path and any URL can carry `user:pass@` or `?token=`. The secret comes from `--secret-file F` (`-` is stdin), never from a flag value; trailing whitespace from the file is trimmed. `hooks create` prints `#ID  URL` on stdout, the URL redacted the same way.
 
 ## Commands
 

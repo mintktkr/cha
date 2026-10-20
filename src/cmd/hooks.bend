@@ -156,12 +156,13 @@ def secret.read(+env: Cli.Env, +path: String) -> IO(String):
 
 # one hook as the flat row every output reads. The hook is redacted first, so its secret
 # is gone before anything prints the row or hands it to --json. Its target is config.url:
-# the hook's own url field is the API path of the hook, not where deliveries go.
+# the hook's own url field is the API path of the hook, not where deliveries go, and the
+# target is redacted too, since a webhook URL can be the secret.
 def hook.row(x: Map<&2, String>) -> Map<&2, String>:
   +src = Hooks.row.redact(x)
   m = Map.new(&2, String)
   m = Map.set(&2, String, m, "id", Api.raw.f(src, "id"))
-  m = Map.set(&2, String, m, "url", Api.raw.f(src, "config.url"))
+  m = Map.set(&2, String, m, "url", Hooks.url.redact(Api.raw.f(src, "config.url")))
   m = Map.set(&2, String, m, "events", Api.raw.join(src, "events", "", ","))
   m = Map.set(&2, String, m, "active", Api.raw.f(src, "active"))
   Map.set(&2, String, m, "content_type", Api.raw.f(src, "config.content_type"))
@@ -295,8 +296,8 @@ def create.send(+env: Cli.Env, +repo: Ctx.Repo, +tok: String, +org: String, +tar
   do IO<Unit>:
     r : Api.Reply <- Api.send(repo, tok, "POST", url.of(repo, org), Some{create.body(forge.of(repo), target, events, ct, secret)})
     b : Bytes.Bytes <- body.reply(env, r)
-    +x : Map<&2, String> = Hooks.row.redact(Api.obj(b))
-    created(env, Api.f(x, "id"), Api.f(x, "config.url"))
+    +x : Map<&2, String> = hook.row(Api.obj(b))
+    created(env, Api.f(x, "id"), Api.f(x, "url"))
 
 def create(+env: Cli.Env) -> IO(Unit):
   match env:

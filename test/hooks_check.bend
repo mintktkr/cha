@@ -1,5 +1,5 @@
 # offline checks for hooks: endpoints, create bodies, the redaction that keeps a hook's
-# secret out of every row, the id check and the --yes wording. No network.
+# secret and its URL out of every row, the id check and the --yes wording. No network.
 # Run: bend test/hooks_check.bend
 import Base
 import 0x584fc27920487ceab242392391418d7f/json.bend as Json
@@ -57,12 +57,32 @@ def gitea.row() -> Map<&2, String>:
 def row.check(+row: Map<&2, String>) -> IO(Unit):
   do IO<Unit>:
     expect(Api.f(row, "id"), "12")
-    expect(Api.f(row, "url"), "https://hooks.example/hook")
+    expect(Api.f(row, "url"), "https://hooks.example/…")
     expect(Api.f(row, "events"), "push,pull_request")
     expect(Api.f(row, "active"), "true")
     expect(Api.f(row, "content_type"), "json")
-    expect(Cli.json.rows(Con{row, Nil{}}, Hook.fields()), "[{\"id\":\"12\",\"url\":\"https://hooks.example/hook\",\"events\":\"push,pull_request\",\"active\":\"true\",\"content_type\":\"json\"}]")
-    expect(Hook.line(False{}, row), "#12  https://hooks.example/hook  push,pull_request  active  json")
+    expect(Cli.json.rows(Con{row, Nil{}}, Hook.fields()), "[{\"id\":\"12\",\"url\":\"https://hooks.example/…\",\"events\":\"push,pull_request\",\"active\":\"true\",\"content_type\":\"json\"}]")
+    expect(Hook.line(False{}, row), "#12  https://hooks.example/…  push,pull_request  active  json")
+
+# a webhook URL can be the secret itself, so only its scheme, host and port survive
+# (the laws in LAWS.bend pin the same cases)
+def url.check() -> IO(Unit):
+  do IO<Unit>:
+    expect(Hooks.url.redact("https://hooks.slack.com/services/T000/B000/XXXX"), "https://hooks.slack.com/…")
+    expect(Hooks.url.redact("https://user:pass@hooks.example/hook"), "https://hooks.example/…")
+    expect(Hooks.url.redact("https://hooks.example/hook?token=s3cr3t"), "https://hooks.example/…")
+    expect(Hooks.url.redact("https://hooks.example/hook#frag"), "https://hooks.example/…")
+    expect(Hooks.url.redact("https://hooks.example:8443/hook"), "https://hooks.example:8443/…")
+    expect(Hooks.url.redact("https://hooks.example"), "https://hooks.example")
+    expect(Hooks.url.redact("https://hooks.example/"), "https://hooks.example")
+    expect(Hooks.url.redact("https://hooks.example?token=s3cr3t"), "https://hooks.example")
+    expect(Hooks.url.redact(""), "")
+
+# the recursive row mapping shows every hook redacted, not just the first
+def rows.check() -> IO(Unit):
+  do IO<Unit>:
+    +xs : List<&2, Map<&2, String>> = [Api.obj(Bytes.from_string(gh.hook())), Api.obj(Bytes.from_string(leaky.hook()))]
+    expect(Hook.lines(False{}, Hook.rows.of(xs)), "#12  https://hooks.example/…  push,pull_request  active  json\n#3  https://x.example/…  push  active  json\n")
 
 # the secret is gone from the flattened reply, and the fields next to it stay
 def redact.check() -> IO(Unit):
@@ -89,7 +109,9 @@ def main() -> IO(Unit):
     expect(body.text(Hook.create.body(Ctx.Gitea{}, "https://ci.example/hook", ["push"], "form", "")), "{\"type\":\"gitea\",\"active\":true,\"events\":[\"push\"],\"config\":{\"url\":\"https://ci.example/hook\",\"content_type\":\"form\"}}")
     +row : Map<&2, String> = gh.row()
     row.check(row)
-    expect(Hook.line(False{}, gitea.row()), "#5  https://ci.example/gitea  push  disabled  form")
+    url.check()
+    rows.check()
+    expect(Hook.line(False{}, gitea.row()), "#5  https://ci.example/…  push  disabled  form")
     expect(Hook.active.text(False{}, True{}), "  active")
     expect(Hook.active.text(True{}, True{}), "  \u{1b}[38;2;110;242;184mactive\u{1b}[39m")
     expect(Hook.active.text(False{}, False{}), "  disabled")

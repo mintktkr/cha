@@ -317,6 +317,21 @@ def Laws.hooks_row_fields_url():
 def Laws.hooks_row_fields_case():
   {==}
 
+# url.redact splits a literal URL into segments and compares the pieces, so it normalizes
+# before the comparison like the field list does.
+
+def Laws.hooks_url_path():
+  {==}
+
+def Laws.hooks_url_userinfo():
+  {==}
+
+def Laws.hooks_url_query():
+  {==}
+
+def Laws.hooks_url_plain():
+  {==}
+
 def Laws.hooks_id_dots():
   {==}
 
