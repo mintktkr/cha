@@ -125,15 +125,39 @@ def check_bodies() -> IO(Unit):
     expect(body.text(Secrets.var.body("REGION", "eu-west")), "{\"name\":\"REGION\",\"value\":\"eu-west\"}")
     expect(body.text(Secrets.var.value.body("eu-west")), "{\"value\":\"eu-west\"}")
 
-# the safety law at the level the command builds its message: a forge error body that
-# repeats the value must not reach the output through the message
-def check_echo() -> IO(Unit):
+# a failed secrets set answers from the status alone: a body that echoed the value whole,
+# in part or re-cased has no way into the message
+
+def check_set_why() -> IO(Unit):
   do IO<Unit>:
-    expect(Secrets.set.error(422, Bytes.from_string("{\"message\":\"hunter2 is too short\"}"), "hunter2"), "HTTP 422 (the forge's message is left out: it repeated the value)")
-    expect(Secrets.set.error(422, Bytes.from_string("{\"message\":\"bad secret\"}"), "hunter2"), "HTTP 422: bad secret")
-    expect(Secrets.set.error(422, Bytes.from_string("{\"message\":\"refused\",\"value\":\"hunter2\"}"), "hunter2"), "HTTP 422: refused")
-    expect(Secrets.set.error(500, Bytes.from_string("not json"), "hunter2"), "HTTP 500")
-    expect(Secrets.set.error(500, Bytes.from_string("{\"message\":\"boom\"}"), ""), "HTTP 500: boom")
+    expect(Secrets.set.why(401), "the token can't write secrets here (HTTP 401)")
+    expect(Secrets.set.why(403), "the token can't write secrets here (HTTP 403)")
+    expect(Secrets.set.why(404), "no such repo or org (HTTP 404)")
+    expect(Secrets.set.why(422), "the forge refused the name or the value (HTTP 422)")
+    expect(Secrets.set.why(500), "HTTP 500")
+    expect(Secrets.set.why(409), "HTTP 409")
+    expect(yes_no(String.contains(Secrets.set.why(422), "hunter2")), "no")
+    expect(yes_no(String.contains(Secrets.set.why(500), "hunter2")), "no")
+
+# --value=x and --value-file=F are read by value, not by Cli.has; an explicit --value "" is
+# not a value, because an unset shell variable must not silently set an empty secret
+
+def check_value() -> IO(Unit):
+  do IO<Unit>:
+    +inline : String = Cli.flag(["--value=hunter2"], "--value", "")
+    expect(yes_no(Secrets.value.given(inline, "")), "yes")
+    +spaced : String = Cli.flag(["--value", "hunter2"], "--value", "")
+    expect(yes_no(Secrets.value.given(spaced, "")), "yes")
+    +path : String = Cli.flag(["--value-file=secret.txt"], "--value-file", "")
+    expect(yes_no(Secrets.value.given("", path)), "yes")
+    +blank : String = Cli.flag(["--value", ""], "--value", "")
+    expect(yes_no(Secrets.value.given(blank, "")), "no")
+    expect(Secrets.value.msg("secrets set"), "secrets set: a value is required, from --value or --value-file")
+    expect(yes_no(Secrets.read.over("s3cret")), "no")
+    # a value file of exactly the cap fits; one byte more is refused, not sent cut short
+    expect(yes_no(Secrets.read.over(Bytes.to_string(Bytes.new(1048576)))), "no")
+    expect(yes_no(Secrets.read.over(Bytes.to_string(Bytes.new(1048577)))), "yes")
+
 
 def check_guard() -> IO(Unit):
   do IO<Unit>:
@@ -174,6 +198,7 @@ def main() -> IO(Unit):
     check_variables_gitea(page_gitea(gitea_repo(), "variables", Bytes.from_string(gitea_variables())))
     check_names()
     check_bodies()
-    check_echo()
+    check_set_why()
+    check_value()
     check_guard()
     check_chomp()

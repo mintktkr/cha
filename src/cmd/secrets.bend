@@ -2,7 +2,7 @@
 #
 # A secret's value leaves cha once, in the request body, and never comes back: neither
 # forge returns one. A failed reply's body can echo it, so the message for a failed
-# `secrets set` is built without the value (LAWS.bend, Secrets).
+# `secrets set` is built from the status alone (LAWS.bend, Failed secrets set).
 import Base
 import 0x584fc27920487ceab242392391418d7f/json.bend as Json
 import 0x49814d83de8f70993a43e1002be29ecd/bytes.bend as Bytes
@@ -281,12 +281,6 @@ def body.ok(+env: Cli.Env, +status: U32, body: Bytes.Bytes, good: Bool) -> IO(By
     case False{}:
       Cli.fail(Bytes.Bytes, env, Api.message(status, body))
 
-# the message a failed reply's body names, as the forge sent it, "" when it names none.
-# Raw: the value's own bytes are what the echo check below has to look for, and it is a
-# row field, so the text printer reads it back through Api.f like every other field.
-def message.of(body: Bytes.Bytes) -> String:
-  Api.raw.f(Api.obj(body), "message")
-
 # Pagination
 # ----------
 
@@ -333,14 +327,32 @@ def walk(fuel: Nat, +env: Cli.Env, +repo: Ctx.Repo, +tok: String, +org: String, 
 # Values
 # ------
 # A value comes from --value, or from --value-file: a path, "-" for stdin, so a secret
-# never has to pass through a shell's history. cha never prompts.
+# never has to pass through a shell's history. cha never prompts. --value stays in argv,
+# where ps and the shell's history see it, so --value-file is the one to reach for.
 
-def value.need(+env: Cli.Env, +cmd: String, any: Bool) -> IO(Unit):
-  match any:
+# a value was given: a --value-file path, or a string after --value. Read by value, not by
+# Cli.has, so --value=x and --value-file=F count. An explicit --value "" is not a value: an
+# empty secret is useless, and an unset shell variable must not set one.
+def value.given(+inline: String, +path: String) -> Bool:
+  Bool.or(Bool.not(String.is_empty(path)), Bool.not(String.is_empty(inline)))
+
+def value.msg(+cmd: String) -> String:
+  cmd ++ ": a value is required, from --value or --value-file"
+
+def value.need(+env: Cli.Env, +msg: String, given: Bool) -> IO(Unit):
+  match given:
     case True{}:
       IO.pure(Unit, Unit{})
     case False{}:
-      Cli.fail(Unit, env, cmd ++ ": a value is required, from --value or --value-file")
+      Cli.fail(Unit, env, msg)
+
+# a value file over the cap is refused rather than sent cut short, so one byte past the
+# cap is read: a file of exactly the cap still reads whole
+def value.cap() -> U32:
+  1048576
+
+def read.max() -> U32:
+  (value.cap() + 1 : U32)
 
 def stdin.path(+path: String, dash: Bool) -> String:
   match dash:
@@ -366,7 +378,7 @@ def read.open(+env: Cli.Env, +path: String, r: Result<&1, &1, U32 & String, File
   match r:
     case Done{f}:
       do IO<String>:
-        got : File & Result<&1, &1, U32 & String, String> <- File.read(f, 1048576)
+        got : File & Result<&1, &1, U32 & String, String> <- File.read(f, read.max())
         read.got(env, path, got)
     case Fail{e}:
       Cli.fail(String, env, "can't read " ++ path)
@@ -401,12 +413,26 @@ def chomp.lead(s: String) -> String:
 def chomp(s: String) -> String:
   String.reverse(chomp.lead(String.reverse(s)))
 
-def value.of(+env: Cli.Env, +inline: String, +path: String, from_file: Bool) -> IO(String):
+# whether the text a source read is over the cap: a read String carries one octet per Char,
+# so this counts the bytes the source sent
+def read.over(+s: String) -> Bool:
+  U32.is_gt(Bytes.count(s, 0), value.cap())
+
+# the text a value file held, a trailing newline dropped, or the command failing when the
+# file is over the cap
+def read.checked(+env: Cli.Env, +cmd: String, +s: String, over: Bool) -> IO(String):
+  match over:
+    case True{}:
+      Cli.fail(String, env, cmd ++ ": the value file is over 1 MiB")
+    case False{}:
+      IO.pure(String, chomp(s))
+
+def value.of(+env: Cli.Env, +cmd: String, +inline: String, +path: String, from_file: Bool) -> IO(String):
   match from_file:
     case True{}:
       do IO<String>:
         +s : String <- read.file(env, path, String.eq(path, "-"))
-        return chomp(s)
+        read.checked(env, cmd, s, read.over(s))
     case False{}:
       IO.pure(String, inline)
 
@@ -415,10 +441,9 @@ def value(+env: Cli.Env, +cmd: String, +args: List<&2, String>) -> IO(String):
   do IO<String>:
     +path : String = Cli.flag(args, "--value-file", "")
     +inline : String = Cli.flag(args, "--value", "")
-    # read by value, not by Cli.has, so --value=x and --value-file=F count too
     +from_file : Bool = Bool.not(String.is_empty(path))
-    value.need(env, cmd, Bool.or(from_file, Bool.not(String.is_empty(inline))))
-    value.of(env, inline, path, from_file)
+    value.need(env, value.msg(cmd), value.given(inline, path))
+    value.of(env, cmd, inline, path, from_file)
 
 # Secrets: set
 # ------------
@@ -434,49 +459,43 @@ def set.github(+env: Cli.Env) -> IO(Unit):
 def set.body(+value: String) -> Json.Val:
   Json.Obj{[(Json.utf8("data"), Api.utf8(value))]}
 
-# A forge error body can repeat the value back, so the message about a failed set is
-# built from the status and the forge's message only when that message leaves the value
-# out: a secret never reaches output, not even in an error (LAWS.bend, Secrets).
-def echoes(+msg: String, +value: String) -> Bool:
-  Bool.and(Bool.not(String.is_empty(value)), String.contains(msg, value))
-
-def set.tail.if(+msg: String, +value: String, echo: Bool) -> String:
-  match echo:
-    case True{}:
-      " (the forge's message is left out: it repeated the value)"
-    case False{}:
-      Api.message.text(msg)
-
-def set.tail(+msg: String, +value: String) -> String:
-  set.tail.if(msg, value, echoes(msg, value))
-
-def set.message(+shown: String, +msg: String, +value: String) -> String:
-  shown ++ set.tail(msg, value)
-
-def set.error(+status: U32, body: Bytes.Bytes, +value: String) -> String:
-  set.message("HTTP " ++ U32.show(status), message.of(body), value)
+# A failed set says why from the status alone. The forge's error body can repeat the
+# value whole, in part, re-cased or escaped, and a control byte in it would only be dropped
+# after a check, so no word of that body reaches output (LAWS.bend, Failed secrets set).
+def set.why(+status: U32) -> String:
+  match status:
+    case 401:
+      "the token can't write secrets here (HTTP 401)"
+    case 403:
+      "the token can't write secrets here (HTTP 403)"
+    case 404:
+      "no such repo or org (HTTP 404)"
+    case 422:
+      "the forge refused the name or the value (HTTP 422)"
+    case _:
+      "HTTP " ++ U32.show(status)
 
 def set.done(+on: Bool, +name: String) -> IO(Unit):
   Ui.done(on, "set secret " ++ name)
 
-def set.result(+env: Cli.Env, +on: Bool, +status: U32, body: Bytes.Bytes, +name: String, +value: String, good: Bool) -> IO(Unit):
+def set.result(+env: Cli.Env, +on: Bool, +status: U32, +name: String, good: Bool) -> IO(Unit):
   match good:
     case True{}:
       set.done(on, name)
     case False{}:
-      Cli.fail(Unit, env, set.error(status, body, value))
+      Cli.fail(Unit, env, set.why(status))
 
-def set.check(+env: Cli.Env, r: Api.Reply, +on: Bool, +name: String, +value: String) -> IO(Unit):
+def set.check(+env: Cli.Env, r: Api.Reply, +on: Bool, +name: String) -> IO(Unit):
   match r:
     case Api.Broke{why}:
       Cli.fail(Unit, env, why)
     case Api.Reply{+status, next, body}:
-      set.result(env, on, status, body, name, value, Api.ok(status))
+      set.result(env, on, status, name, Api.ok(status))
 
 def set.send(+env: Cli.Env, +repo: Ctx.Repo, +tok: String, +on: Bool, +org: String, +name: String, +value: String) -> IO(Unit):
   do IO<Unit>:
     r : Api.Reply <- Api.send(repo, tok, "PUT", item.url(url.of(repo, org, "secrets"), name), Some{set.body(value)})
-    set.check(env, r, on, name, value)
+    set.check(env, r, on, name)
 
 def set.secret.if(+env: Cli.Env, +repo: Ctx.Repo, +tok: String, +on: Bool, +name: String, +args: List<&2, String>, gh: Bool) -> IO(Unit):
   match gh:

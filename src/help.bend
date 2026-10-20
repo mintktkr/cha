@@ -502,7 +502,7 @@ def secrets.rows() -> List<&2, Row>:
 
 def actions.flags() -> List<&2, Row>:
   [Row{"--org O", "the org to read or write, instead of the repo", ""},
-   Row{"--value V", "the value (it stays in the shell's history)", ""},
+   Row{"--value V", "the value as an argument: ps and the shell's history see it, so prefer --value-file", ""},
    Row{"--value-file F", "the value from a file; - is stdin, a trailing newline dropped", ""},
    Row{"--yes", "a delete goes ahead; without it cha names what it would delete and exits 1", ""}]
 
