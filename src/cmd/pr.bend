@@ -1,7 +1,7 @@
 # cha pr: list, view, diff, create, merge, edit, comment, comment-edit, comment-delete, checks.
 import Base
-import bend-kit-hairpin@0.1.0.0/hairpin.bend as Hairpin
-import bend-kit-http@0.23.0.1/http.bend as Http
+import bend-kit-hairpin@0.3.0.0/hairpin.bend as Hairpin
+import bend-kit-http@0.32.0.0/http.bend as Http
 import 0x584fc27920487ceab242392391418d7f/json.bend as Json
 import 0x49814d83de8f70993a43e1002be29ecd/bytes.bend as Bytes
 import ../ctx.bend as Ctx
@@ -188,7 +188,7 @@ def body.text(+env: Cli.Env, +args: List<&2, String>) -> IO(String):
 def accept.get(repo: Ctx.Repo, +tok: String, url: String, +accept: String) -> IO(Api.Reply):
   do IO<Api.Reply>:
     c : Hairpin.Client = Hairpin.header(Api.client(repo, tok), "accept", accept)
-    r : Hairpin.Client & Result<&1, &1, Http.Err, Http.Res> <- Hairpin.request(c, "GET", url, Map.new(&2, List<&2, String>), Http.from_string(""))
+    r : Hairpin.Client & Result<&1, &1, Hairpin.Err, Http.Res> <- Hairpin.request(c, "GET", url, Map.new(&2, List<&2, String>), Http.from_string(""))
     Api.reply(r)
 
 # Reviews
