@@ -6,6 +6,7 @@ import ./src/ctx.bend as Ctx
 import ./src/cli.bend as Cli
 import ./src/api.bend as Api
 import ./src/cmd/packages.bend as Packages
+import ./src/cmd/pr.bend as Pr
 import ./src/hooks.bend as Hooks
 import ./src/cmd/secrets.bend as Secrets
 import ./LAWS.bend as Laws
@@ -197,6 +198,20 @@ def Laws.secrets_set_other_text():
 def Laws.secrets_set_hides_value():
   {==}
 
+# Value files
+# -----------
+# The cap is a byte count and the loop counts the octets a read returned, so each law is a
+# closed number compared with file.cap: reflexivity is the whole proof.
+
+def Laws.value_file_at_cap():
+  {==}
+
+def Laws.value_file_over_cap():
+  {==}
+
+def Laws.value_file_chunk_octets():
+  {==}
+
 # Terminal escape
 # ---------------
 # Each law is one path through the walk, so reflexivity is the whole proof: both sides
@@ -230,6 +245,21 @@ def Laws.runner_id_digits():
   {==}
 
 def Laws.runner_id_not_digits():
+  {==}
+
+# Run ids
+# --------
+
+def Laws.runs_id_digits():
+  {==}
+
+def Laws.runs_id_dots():
+  {==}
+
+def Laws.runs_id_path():
+  {==}
+
+def Laws.runs_id_empty():
   {==}
 
 # Path segments
@@ -280,6 +310,23 @@ def Laws.repo_delete_dot_name():
   {==}
 
 def Laws.repo_delete_empty_half():
+  {==}
+
+# A head ref's path is a closed name walked by Url.encode.path, so its two sides normalize
+# to the same text.
+
+def Laws.pr_ref_path_hash():
+  {==}
+
+def Laws.pr_ref_path_percent():
+  {==}
+
+def Laws.pr_ref_path_slash():
+  {==}
+
+# ...and a .. segment is a Bool both sides reduce to.
+
+def Laws.pr_ref_dotdot():
   {==}
 
 # Packages

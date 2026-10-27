@@ -463,20 +463,22 @@ def branch.delete(+env: Cli.Env) -> IO(Unit):
 # file
 # ----
 
-# ?ref=<ref>, when a ref was asked for
+# ?ref=<ref>, when a ref was asked for: a query value is encoded whole, so a # or a &
+# in the name cannot cut the query or add a parameter
 def ref.query(+ref: String, empty: Bool) -> String:
   match empty:
     case True{}:
       ""
     case False{}:
-      "?ref=" ++ ref
+      "?ref=" ++ Url.encode(ref)
 
+# a path keeps its slashes in the path, so its segments are encoded one by one
 def file.path(f: Ctx.Forge, +path: String, +ref: String, empty: Bool) -> String:
   match f:
     case Ctx.Gitea{}:
-      "raw/" ++ path ++ ref.query(ref, empty)
+      "raw/" ++ Url.encode.path(path) ++ ref.query(ref, empty)
     case Ctx.GitHub{}:
-      "contents/" ++ path ++ ref.query(ref, empty)
+      "contents/" ++ Url.encode.path(path) ++ ref.query(ref, empty)
 
 # a client whose accept header asks github for the file's bytes rather than base64
 def raw.client(+repo: Ctx.Repo, +tok: String) -> Hairpin.Client:
@@ -546,12 +548,14 @@ def file(+env: Cli.Env) -> IO(Unit):
 def tree.ref(+ref: String) -> String:
   Ctx.or(ref, "HEAD")
 
+# a ref keeps its slashes in the path (refs/heads/main), so its segments are encoded one
+# by one
 def tree.query(f: Ctx.Forge, +ref: String) -> String:
   match f:
     case Ctx.Gitea{}:
-      "git/trees/" ++ ref ++ "?recursive=true&per_page=1000"
+      "git/trees/" ++ Url.encode.path(ref) ++ "?recursive=true&per_page=1000"
     case Ctx.GitHub{}:
-      "git/trees/" ++ ref ++ "?recursive=1"
+      "git/trees/" ++ Url.encode.path(ref) ++ "?recursive=1"
 
 def tree.key(+i: U32, +k: String) -> String:
   "tree." ++ U32.show(i) ++ "." ++ k

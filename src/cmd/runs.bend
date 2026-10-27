@@ -579,6 +579,14 @@ def require.at(+env: Cli.Env, n: Nat, +what: String) -> IO(String):
     case Cli.Env{r, t, c, j, +args}:
       require.str(env, Cli.arg(args, n), what)
 
+# the nth argument as a run id: digits only. A run id is one path segment, and U32.read
+# alone takes some punctuation as a zero, so ".." would name another endpoint.
+def require.id(+env: Cli.Env, n: Nat) -> IO(String):
+  do IO<String>:
+    +id : String <- require.at(env, n, "run id")
+    Cli.check.if(env, "runs: a run id is digits only, got '" ++ id ++ "'", Cli.digits(id))
+    return id
+
 # View and log selection need every job, including jobs beyond the first page.
 type JobPages is Type:
   FetchJobs{url: String, acc: List<&2, Map<&2, String>>}
@@ -629,7 +637,7 @@ def view(+env: Cli.Env) -> IO(Unit):
     case Cli.Env{+repo, +tok, on, json, +args}:
       do IO<Unit>:
         Cli.check(env, "runs view", args, ["--json"])
-        +id : String <- require.at(env, 1n, "run id")
+        +id : String <- require.id(env, 1n)
         r : Api.Reply <- Api.get(repo, tok, Api.path(repo, "actions/runs/" ++ id))
         body : Bytes.Bytes <- fetch.body(env, r)
         now : Time.Instant <- Time.now()
@@ -841,7 +849,7 @@ def logs(+env: Cli.Env) -> IO(Unit):
     case Cli.Env{+repo, +tok, on, json, +args}:
       do IO<Unit>:
         Cli.check(env, "runs logs", args, ["--job", "--step", "--failed"])
-        +id : String <- require.at(env, 1n, "run id")
+        +id : String <- require.id(env, 1n)
         +job : String = Cli.flag(args, "--job", "")
         +step : String <- require.if(env, Cli.flag(args, "--step", ""), "step name", Cli.has(args, "--step") && (String.is_empty(Cli.flag(args, "--step", "")) || String.starts_with(Cli.flag(args, "--step", ""), "--")))
         +all : List<&2, Map<&2, String>> <- jobs.fetch(env, id)
@@ -949,7 +957,7 @@ def watch(+env: Cli.Env) -> IO(Unit):
     case Cli.Env{+repo, +tok, on, json, +args}:
       do IO<Unit>:
         Cli.check(env, "runs watch", args, [])
-        +id : String <- require.at(env, 1n, "run id")
+        +id : String <- require.id(env, 1n)
         r : Api.Reply <- Api.get(repo, tok, Api.path(repo, "actions/runs/" ++ id))
         body : Bytes.Bytes <- fetch.body(env, r)
         watch.go(100000n, env, on, id, "", 0, tick.of(Api.obj(body)))
@@ -1244,19 +1252,22 @@ def rerun.go(+env: Cli.Env, +forge: Ctx.Forge, +id: String, +job: String, +faile
     case Ctx.GitHub{}:
       rerun.valid(env, id, job, failed, failed && Bool.not(String.is_empty(job)))
 
+# a --job id becomes a path segment too, so it is digits only when it is given
 def rerun.args(+env: Cli.Env, +repo: Ctx.Repo, +id: String, +job: String, +failed: Bool, missing: Bool) -> IO(Unit):
   match missing:
     case True{}:
       Cli.fail(Unit, env, "runs rerun: --job needs a job id")
     case False{}:
-      rerun.go(env, forge.of(repo), id, job, failed)
+      do IO<Unit>:
+        Cli.check.if(env, "runs rerun: a job id is digits only, got '" ++ job ++ "'", Bool.or(String.is_empty(job), Cli.digits(job)))
+        rerun.go(env, forge.of(repo), id, job, failed)
 
 def rerun(+env: Cli.Env) -> IO(Unit):
   match env:
     case Cli.Env{+repo, +tok, on, json, +args}:
       do IO<Unit>:
         Cli.check(env, "runs rerun", args, ["--job", "--failed"])
-        +id : String <- require.at(env, 1n, "run id")
+        +id : String <- require.id(env, 1n)
         +job : String = Cli.flag(args, "--job", "")
         rerun.args(env, repo, id, job, Cli.has(args, "--failed"), Cli.has(args, "--job") && (String.is_empty(job) || String.starts_with(job, "--")))
 
@@ -1286,7 +1297,7 @@ def cancel(+env: Cli.Env) -> IO(Unit):
     case Cli.Env{+repo, +tok, on, json, +args}:
       do IO<Unit>:
         Cli.check(env, "runs cancel", args, [])
-        +id : String <- require.at(env, 1n, "run id")
+        +id : String <- require.id(env, 1n)
         r : Api.Reply <- Api.send(repo, tok, "POST", Api.path(repo, "actions/runs/" ++ id ++ "/cancel"), None{})
         cancel.check(env, r, id)
 

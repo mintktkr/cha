@@ -114,27 +114,16 @@ def create.body(+f: Ctx.Forge, +url: String, +events: List<&2, String>, +ct: Str
 # A hook's secret signs its deliveries. It is read from a file, never from a flag value,
 # and it only ever goes into the request body: it never reaches a row, a message or --json.
 
-def secret.text(+env: Cli.Env, +path: String, r: Result<&1, &1, U32 & String, String>) -> IO(String):
-  match r:
-    case Done{s}:
+# the secret a source held, its surrounding whitespace dropped, or the command failing
+# when it can't be read or is over 1 MiB
+def secret.at(+env: Cli.Env, +path: String, t: Cli.Text) -> IO(String):
+  match t:
+    case Cli.TextOf{+s}:
       IO.pure(String, String.trim(s))
-    case Fail{e}:
+    case Cli.TextNone{}:
       Cli.fail(String, env, "hooks create: can't read " ++ path)
-
-def secret.got(+env: Cli.Env, +path: String, r: File & Result<&1, &1, U32 & String, String>) -> IO(String):
-  (f, got) = r
-  do IO<String>:
-    File.close(f)
-    secret.text(env, path, got)
-
-def secret.open(+env: Cli.Env, +path: String, r: Result<&1, &1, U32 & String, File>) -> IO(String):
-  match r:
-    case Done{f}:
-      do IO<String>:
-        got : File & Result<&1, &1, U32 & String, String> <- File.read(f, 1048576)
-        secret.got(env, path, got)
-    case Fail{e}:
-      Cli.fail(String, env, "hooks create: can't read " ++ path)
+    case Cli.TextOver{}:
+      Cli.fail(String, env, "hooks create: the secret file is over 1 MiB")
 
 def secret.if(+env: Cli.Env, +path: String, empty: Bool) -> IO(String):
   match empty:
@@ -143,8 +132,8 @@ def secret.if(+env: Cli.Env, +path: String, empty: Bool) -> IO(String):
     case False{}:
       do IO<String>:
         +p : String = Ctx.or.if(path, "/dev/stdin", String.eq(path, "-"))
-        r : Result<&1, &1, U32 & String, File> <- File.open(p, "r")
-        secret.open(env, path, r)
+        t : Cli.Text <- Cli.file.text(p)
+        secret.at(env, p, t)
 
 # the secret from --secret-file PATH ("-" is stdin), or "" when the flag is absent.
 # A file's trailing whitespace comes from the editor or the echo, not from the secret.

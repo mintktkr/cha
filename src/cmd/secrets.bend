@@ -346,48 +346,12 @@ def value.need(+env: Cli.Env, +msg: String, given: Bool) -> IO(Unit):
     case False{}:
       Cli.fail(Unit, env, msg)
 
-# a value file over the cap is refused rather than sent cut short, so one byte past the
-# cap is read: a file of exactly the cap still reads whole
-def value.cap() -> U32:
-  1048576
-
-def read.max() -> U32:
-  (value.cap() + 1 : U32)
-
 def stdin.path(+path: String, dash: Bool) -> String:
   match dash:
     case True{}:
       "/dev/stdin"
     case False{}:
       path
-
-def read.text(+env: Cli.Env, +path: String, r: Result<&1, &1, U32 & String, String>) -> IO(String):
-  match r:
-    case Done{s}:
-      IO.pure(String, s)
-    case Fail{e}:
-      Cli.fail(String, env, "can't read " ++ path)
-
-def read.got(+env: Cli.Env, +path: String, r: File & Result<&1, &1, U32 & String, String>) -> IO(String):
-  (f, got) = r
-  do IO<String>:
-    File.close(f)
-    read.text(env, path, got)
-
-def read.open(+env: Cli.Env, +path: String, r: Result<&1, &1, U32 & String, File>) -> IO(String):
-  match r:
-    case Done{f}:
-      do IO<String>:
-        got : File & Result<&1, &1, U32 & String, String> <- File.read(f, read.max())
-        read.got(env, path, got)
-    case Fail{e}:
-      Cli.fail(String, env, "can't read " ++ path)
-
-def read.file(+env: Cli.Env, +path: String, dash: Bool) -> IO(String):
-  do IO<String>:
-    +p : String = stdin.path(path, dash)
-    r : Result<&1, &1, U32 & String, File> <- File.open(p, "r")
-    read.open(env, p, r)
 
 def newline(+c: Char) -> Bool:
   Bool.or(Char.is_eq(c, '\n'), Char.is_eq(c, '\r'))
@@ -413,26 +377,28 @@ def chomp.lead(s: String) -> String:
 def chomp(s: String) -> String:
   String.reverse(chomp.lead(String.reverse(s)))
 
-# whether the text a source read is over the cap: a read String carries one octet per Char,
-# so this counts the bytes the source sent
-def read.over(+s: String) -> Bool:
-  U32.is_gt(Bytes.count(s, 0), value.cap())
-
-# the text a value file held, a trailing newline dropped, or the command failing when the
-# file is over the cap
-def read.checked(+env: Cli.Env, +cmd: String, +s: String, over: Bool) -> IO(String):
-  match over:
-    case True{}:
-      Cli.fail(String, env, cmd ++ ": the value file is over 1 MiB")
-    case False{}:
+# the value a value file held, the trailing newline dropped, or the command failing when
+# it can't be read or is over 1 MiB (the read loop counts octets, so the cap is a byte
+# count and never a count of characters)
+def read.checked(+env: Cli.Env, +cmd: String, +path: String, t: Cli.Text) -> IO(String):
+  match t:
+    case Cli.TextOf{+s}:
       IO.pure(String, chomp(s))
+    case Cli.TextNone{}:
+      Cli.fail(String, env, "can't read " ++ path)
+    case Cli.TextOver{}:
+      Cli.fail(String, env, cmd ++ ": the value file is over 1 MiB")
+
+def read.file(+env: Cli.Env, +cmd: String, +path: String, dash: Bool) -> IO(String):
+  do IO<String>:
+    +p : String = stdin.path(path, dash)
+    t : Cli.Text <- Cli.file.text(p)
+    read.checked(env, cmd, p, t)
 
 def value.of(+env: Cli.Env, +cmd: String, +inline: String, +path: String, from_file: Bool) -> IO(String):
   match from_file:
     case True{}:
-      do IO<String>:
-        +s : String <- read.file(env, path, String.eq(path, "-"))
-        read.checked(env, cmd, s, read.over(s))
+      read.file(env, cmd, path, String.eq(path, "-"))
     case False{}:
       IO.pure(String, inline)
 

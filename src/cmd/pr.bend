@@ -9,6 +9,7 @@ import ../api.bend as Api
 import ../ui.bend as Ui
 import ../cli.bend as Cli
 import ../comment.bend as Comment
+import ../url.bend as Url
 
 # Small shared pieces
 # -------------------
@@ -95,12 +96,10 @@ def written(+env: Cli.Env, +fallback: String, r: Api.Reply) -> IO(Unit):
 # Arguments
 # ---------
 
-def number.ok(m: Maybe<&2, U32>) -> Bool:
-  match m:
-    case Some{n}:
-      True{}
-    case None{}:
-      False{}
+# a pull request number becomes a path segment, so only digits pass: U32.read alone takes
+# some punctuation as a zero, which would leave a ".." in the path
+def number.ok(+raw: String) -> Bool:
+  Cli.digits(raw)
 
 def need.number(+env: Cli.Env, +n: String, ok: Bool) -> IO(String):
   match ok:
@@ -126,52 +125,27 @@ def stdin.path(+p: String, dash: Bool) -> String:
     case False{}:
       p
 
-def file.text(r: Result<&1, &1, U32 & String, String>) -> Maybe<&2, String>:
-  match r:
-    case Done{s}:
-      Some{s}
-    case Fail{e}:
-      None{}
-
-def file.done(r: File & Result<&1, &1, U32 & String, String>) -> IO(Maybe<&2, String>):
-  (f, g) = r
-  do IO<Maybe<&2, String>>:
-    File.close(f)
-    return file.text(g)
-
-def file.open(r: Result<&1, &1, U32 & String, File>) -> IO(Maybe<&2, String>):
-  match r:
-    case Done{f}:
-      do IO<Maybe<&2, String>>:
-        got : File & Result<&1, &1, U32 & String, String> <- File.read(f, 1048576)
-        file.done(got)
-    case Fail{e}:
-      IO.pure(Maybe<&2, String>, None{})
-
-# a file's text, None when it can't be read; "-" means stdin
-def file.maybe(+path: String) -> IO(Maybe<&2, String>):
-  do IO<Maybe<&2, String>>:
-    r : Result<&1, &1, U32 & String, File> <- File.open(stdin.path(path, String.eq(path, "-")), "r")
-    file.open(r)
-
-def body.got(+env: Cli.Env, m: Maybe<&2, String>) -> IO(String):
-  match m:
-    case Some{s}:
+# a source's text, or the command failing: a body file over 1 MiB is refused rather than
+# sent cut short
+def file.text(+env: Cli.Env, t: Cli.Text) -> IO(String):
+  match t:
+    case Cli.TextOf{+s}:
       IO.pure(String, s)
-    case None{}:
+    case Cli.TextNone{}:
       Cli.fail(String, env, "pr: can't read the body file")
+    case Cli.TextOver{}:
+      Cli.fail(String, env, "pr: the body file is over 1 MiB")
 
-def body.read(+path: String, needed: Bool) -> IO(Maybe<&2, String>):
+# a file's text, the command failing when it can't be read; "-" means stdin
+def body.file(+env: Cli.Env, +path: String) -> IO(String):
+  do IO<String>:
+    t : Cli.Text <- Cli.file.text(stdin.path(path, String.eq(path, "-")))
+    file.text(env, t)
+
+def body.pick.if(+env: Cli.Env, +inline: String, +path: String, needed: Bool) -> IO(String):
   match needed:
     case True{}:
-      file.maybe(path)
-    case False{}:
-      IO.pure(Maybe<&2, String>, None{})
-
-def body.pick(+env: Cli.Env, +inline: String, m: Maybe<&2, String>, needed: Bool) -> IO(String):
-  match needed:
-    case True{}:
-      body.got(env, m)
+      body.file(env, path)
     case False{}:
       IO.pure(String, inline)
 
@@ -180,9 +154,7 @@ def body.text(+env: Cli.Env, +args: List<&2, String>) -> IO(String):
   do IO<String>:
     +inline : String = Cli.flag(args, "--body", "")
     +path : String = Cli.flag(args, "--body-file", "")
-    +from_file : Bool = Bool.not(String.is_empty(path))
-    m : Maybe<&2, String> <- body.read(path, from_file)
-    body.pick(env, inline, m, from_file)
+    body.pick.if(env, inline, path, Bool.not(String.is_empty(path)))
 
 # A GET with its own accept header: GitHub answers a diff only for its diff media type.
 def accept.get(repo: Ctx.Repo, +tok: String, url: String, +accept: String) -> IO(Api.Reply):
@@ -353,7 +325,7 @@ def view(+env: Cli.Env) -> IO(Unit):
       do IO<Unit>:
         Cli.check(env, "pr view", args, ["--comments", "--json"])
         +num : String = Cli.arg(args, 1n)
-        +n : String <- need.number(env, num, number.ok(U32.read(num)))
+        +n : String <- need.number(env, num, number.ok(num))
         r : Api.Reply <- Api.get(repo, tok, Api.path(repo, "pulls/" ++ n))
         view.reply(env, n, json, r)
 
@@ -650,7 +622,7 @@ def checks(+env: Cli.Env) -> IO(Unit):
       do IO<Unit>:
         Cli.check(env, "pr checks", args, ["--json"])
         +num : String = Cli.arg(args, 1n)
-        +n : String <- need.number(env, num, number.ok(U32.read(num)))
+        +n : String <- need.number(env, num, number.ok(num))
         checks.pr(env, repo, tok, n)
 
 # diff
@@ -707,7 +679,7 @@ def diff(+env: Cli.Env) -> IO(Unit):
       do IO<Unit>:
         Cli.check(env, "pr diff", args, [])
         +num : String = Cli.arg(args, 1n)
-        +n : String <- need.number(env, num, number.ok(U32.read(num)))
+        +n : String <- need.number(env, num, number.ok(num))
         r : Api.Reply <- accept.get(repo, tok, Api.path(repo, diff.url(forge.of(repo), n)), diff.accept(forge.of(repo)))
         diff.print(env, r)
 
@@ -856,12 +828,33 @@ def gh.ref.got(+env: Cli.Env, r: Api.Reply) -> IO(Unit):
     case Api.Reply{+status, next, body}:
       gh.ref.ok(env, body, status, Api.ok(status))
 
+# github deletes the branch at git/refs/heads/<head ref>, and the ref keeps its slashes
+# in the path: a head branch named main#x would cut the URL at the # and delete
+# refs/heads/main instead, so the name is encoded and a name that walks out of the path
+# leaves the branch alone
+def gh.ref.path(+ref: String) -> String:
+  "git/refs/heads/" ++ Url.encode.path(ref)
+
+# a head ref may go into the delete path when every segment of it is a plain one
+def gh.ref.path.ok(+ref: String) -> Bool:
+  Url.encode.path.ok(ref)
+
+def gh.ref.left(+ref: String) -> String:
+  "--delete-branch left " ++ ref ++ " alone: its name can't go into a path safely"
+
+def gh.ref.del(+env: Cli.Env, +repo: Ctx.Repo, +tok: String, +ref: String, ok: Bool) -> IO(Unit):
+  match ok:
+    case True{}:
+      do IO<Unit>:
+        r : Api.Reply <- Api.send(repo, tok, "DELETE", Api.path(repo, gh.ref.path(ref)), None{})
+        gh.ref.got(env, r)
+    case False{}:
+      note(env, gh.ref.left(ref))
+
 def gh.ref.if(+env: Cli.Env, +repo: Ctx.Repo, +tok: String, +ref: String, mine: Bool) -> IO(Unit):
   match mine:
     case True{}:
-      do IO<Unit>:
-        r : Api.Reply <- Api.send(repo, tok, "DELETE", Api.path(repo, "git/refs/heads/" ++ ref), None{})
-        gh.ref.got(env, r)
+      gh.ref.del(env, repo, tok, ref, gh.ref.path.ok(ref))
     case False{}:
       note(env, "the head branch is in a fork; --delete-branch left it alone")
 
@@ -915,7 +908,7 @@ def merge(+env: Cli.Env) -> IO(Unit):
       do IO<Unit>:
         Cli.check(env, "pr merge", args, ["--squash", "--merge", "--rebase", "--delete-branch"])
         +num : String = Cli.arg(args, 1n)
-        +n : String <- need.number(env, num, number.ok(U32.read(num)))
+        +n : String <- need.number(env, num, number.ok(num))
         +method : String = merge.pick(Cli.has(args, "--squash"), Cli.has(args, "--merge"), Cli.has(args, "--rebase"))
         +del : Bool = Cli.has(args, "--delete-branch")
         u : Unit <- merge.guard.get(env, repo, tok, n)
@@ -947,7 +940,7 @@ def edit(+env: Cli.Env) -> IO(Unit):
       do IO<Unit>:
         Cli.check(env, "pr edit", args, ["--title", "--body", "--body-file"])
         +num : String = Cli.arg(args, 1n)
-        +n : String <- need.number(env, num, number.ok(U32.read(num)))
+        +n : String <- need.number(env, num, number.ok(num))
         +title : String = Cli.flag(args, "--title", "")
         +body : String <- body.text(env, args)
         +has_title : Bool = Cli.has(args, "--title") || Bool.not(String.is_empty(title))
@@ -1001,7 +994,7 @@ def comment(+env: Cli.Env) -> IO(Unit):
       do IO<Unit>:
         Cli.check(env, "pr comment", args, ["--body", "--body-file"])
         +num : String = Cli.arg(args, 1n)
-        +n : String <- need.number(env, num, number.ok(U32.read(num)))
+        +n : String <- need.number(env, num, number.ok(num))
         +b : String <- body.text(env, args)
         txt : String <- need.flag(env, "body", b, String.is_empty(b))
         u : Unit <- pull.guard.get(env, repo, tok, n)

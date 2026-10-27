@@ -13,6 +13,7 @@ import ./src/url.bend as Url
 import ./src/cmd/repo.bend as Repo
 import ./src/cmd/runners.bend as Runners
 import ./src/cmd/packages.bend as Packages
+import ./src/cmd/pr.bend as Pr
 import ./src/hooks.bend as Hooks
 import ./src/cmd/secrets.bend as Secrets
 
@@ -191,6 +192,24 @@ law secrets_set_other_text:
 law secrets_set_hides_value:
   {String.contains(Secrets.set.why(422), "hunter2") == False{} : Bool}
 
+# Value files
+# -----------
+# A value, a body, notes or a secret come from a file or stdin, and the shared reader reads
+# octets until the source ends. The cap is a byte count: a count of characters would let a
+# multi-byte file through, and a read split inside a character would lose it.
+
+# LAW: a source of exactly the cap fits whole.
+law value_file_at_cap:
+  {Cli.text.over(1048576, Cli.file.cap()) == False{} : Bool}
+
+# LAW: one octet more is over it.
+law value_file_over_cap:
+  {Cli.text.over(1048577, Cli.file.cap()) == True{} : Bool}
+
+# LAW: the octets of a read are counted as they came, not as characters.
+law value_file_chunk_octets:
+  {Cli.chunk.size([228, 138, 182]) == 3 : U32}
+
 # Terminal escape
 # ---------------
 # Forge text reaches a terminal through Clean.text, which drops escape sequences and
@@ -243,6 +262,27 @@ law runner_id_digits:
 # LAW: a path, a letter or a space in a runner id is refused.
 law runner_id_not_digits:
   {Runners.digits("1/registration-token") == False{} : Bool}
+
+# Run ids
+# --------
+# A run id reaches a URL path, and rerun and cancel act on it, so it is digits only: U32
+# read takes some punctuation as a zero, and ".." would name another endpoint.
+
+# LAW: a number is a run id.
+law runs_id_digits:
+  {Cli.digits("1337") == True{} : Bool}
+
+# LAW: ".." reads as a number under U32.read but is not one, so it is refused.
+law runs_id_dots:
+  {Cli.digits("..") == False{} : Bool}
+
+# LAW: ...and neither is a path in a run id.
+law runs_id_path:
+  {Cli.digits("1/cancel") == False{} : Bool}
+
+# LAW: ...and neither is an empty id.
+law runs_id_empty:
+  {Cli.digits("") == False{} : Bool}
 
 # Path segments
 # -------------
@@ -305,6 +345,26 @@ law repo_delete_dot_name:
 # LAW: ...and neither does an empty half.
 law repo_delete_empty_half:
   {Repo.target(Ctx.Gitea{}, "codeberg.org", "x/") == None{} : Maybe<&2, Ctx.Repo>}
+
+# A merged GitHub pull request's head branch is deleted at git/refs/heads/<ref>, and the
+# ref keeps its slashes in that path. The name is encoded, and one that would walk out of
+# the path is left alone.
+
+# LAW: main#x goes into the delete path encoded, so the # cannot cut it.
+law pr_ref_path_hash:
+  {Pr.gh.ref.path("main#x") == "git/refs/heads/main%23x" : String}
+
+# LAW: ...and a percent in the name cannot smuggle another octet in.
+law pr_ref_path_percent:
+  {Pr.gh.ref.path("a%b") == "git/refs/heads/a%25b" : String}
+
+# LAW: a branch under a slash keeps it, so memu/x stays memu/x.
+law pr_ref_path_slash:
+  {Pr.gh.ref.path("memu/x") == "git/refs/heads/memu/x" : String}
+
+# LAW: a head ref with a .. segment is refused before the delete.
+law pr_ref_dotdot:
+  {Pr.gh.ref.path.ok("feature/../main") == False{} : Bool}
 
 # Packages
 # --------

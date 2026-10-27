@@ -184,12 +184,24 @@ def view.out(+on: Bool, json: Cli.Json, +x: Map<&2, String>) -> IO(Unit):
 def latest.of(+tag: String) -> Bool:
   Bool.or(String.is_empty(tag), String.eq(tag, "latest"))
 
+# a tag keeps its slashes in the rest of releases/tags/, so its name is encoded as a path
+def tag.path(+tag: String) -> String:
+  "releases/tags/" ++ Url.encode.path(tag)
+
+# a tag with a . or .. segment would name another endpoint, so it is refused
+def tag.msg(+cmd: String, ok: Bool) -> String:
+  match ok:
+    case True{}:
+      ""
+    case False{}:
+      cmd ++ ": a tag can't have . or .. segments"
+
 def view.url(+tag: String, latest: Bool) -> String:
   match latest:
     case True{}:
       "releases/latest"
     case False{}:
-      "releases/tags/" ++ tag
+      tag.path(tag)
 
 def view(+env: Cli.Env) -> IO(Unit):
   match env:
@@ -197,6 +209,8 @@ def view(+env: Cli.Env) -> IO(Unit):
       do IO<Unit>:
         Cli.check(env, "release view", args, ["--json"])
         +tag : String = Cli.arg(args, 1n)
+        +ok : Bool = Bool.or(latest.of(tag), Url.encode.path.ok(tag))
+        Cli.check.if(env, tag.msg("release view", ok), ok)
         r : Api.Reply <- Api.get(repo, tok, Api.path(repo, view.url(tag, latest.of(tag))))
         b : Bytes.Bytes <- body.reply(env, r)
         view.out(on, json, release.row(Api.obj(b)))
@@ -260,35 +274,22 @@ def create.tag(+env: Cli.Env, +tag: String, empty: Bool) -> IO(String):
     case False{}:
       IO.pure(String, tag)
 
-# a read result as its text, or the command fails
-def read.text(+env: Cli.Env, +path: String, r: Result<&1, &1, U32 & String, String>) -> IO(String):
-  match r:
-    case Done{s}:
+# a source read as text, or the command failing when it can't be read or is over 1 MiB
+def read.text(+env: Cli.Env, +path: String, t: Cli.Text) -> IO(String):
+  match t:
+    case Cli.TextOf{+s}:
       IO.pure(String, s)
-    case Fail{e}:
+    case Cli.TextNone{}:
       Cli.fail(String, env, "can't read " ++ path)
+    case Cli.TextOver{}:
+      Cli.fail(String, env, path ++ " is over 1 MiB")
 
-def read.got(+env: Cli.Env, +path: String, r: File & Result<&1, &1, U32 & String, String>) -> IO(String):
-  (f, got) = r
-  do IO<String>:
-    File.close(f)
-    read.text(env, path, got)
-
-def read.open(+env: Cli.Env, +path: String, r: Result<&1, &1, U32 & String, File>) -> IO(String):
-  match r:
-    case Done{f}:
-      do IO<String>:
-        got : File & Result<&1, &1, U32 & String, String> <- File.read(f, 1048576)
-        read.got(env, path, got)
-    case Fail{e}:
-      Cli.fail(String, env, "can't read " ++ path)
-
-# a file's text, failing the command when it cannot be read; "-" means stdin
+# a file's text; "-" means stdin
 def read.file(+env: Cli.Env, +path: String, dash: Bool) -> IO(String):
   do IO<String>:
     +p : String = Ctx.or.if(path, "/dev/stdin", dash)
-    r : Result<&1, &1, U32 & String, File> <- File.open(p, "r")
-    read.open(env, p, r)
+    t : Cli.Text <- Cli.file.text(p)
+    read.text(env, p, t)
 
 def notes.file(+env: Cli.Env, +path: String, empty: Bool) -> IO(String):
   match empty:
@@ -515,7 +516,7 @@ def upload.paths(+env: Cli.Env, paths: List<&2, String>) -> IO(List<&2, String>)
 
 def upload.release(+env: Cli.Env, +repo: Ctx.Repo, +tok: String, +tag: String) -> IO(Map<&2, String>):
   do IO<Map<&2, String>>:
-    r : Api.Reply <- Api.get(repo, tok, Api.path(repo, "releases/tags/" ++ tag))
+    r : Api.Reply <- Api.get(repo, tok, Api.path(repo, tag.path(tag)))
     b : Bytes.Bytes <- body.reply(env, r)
     return Api.obj(b)
 
@@ -552,7 +553,8 @@ def upload(+env: Cli.Env) -> IO(Unit):
       do IO<Unit>:
         Cli.check(env, "release upload", args, [])
         +tag : String = Cli.arg(args, 1n)
-        t : String <- upload.tag(env, tag, String.is_empty(tag))
+        +t : String <- upload.tag(env, tag, String.is_empty(tag))
+        Cli.check.if(env, tag.msg("release upload", Url.encode.path.ok(t)), Url.encode.path.ok(t))
         paths : List<&2, String> <- upload.paths(env, List.drop(&2, String, Cli.positional(args), 2n))
         release : Map<&2, String> <- upload.release(env, repo, tok, t)
         upload.files(paths, env, repo, tok, release)
