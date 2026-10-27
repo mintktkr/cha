@@ -36,7 +36,7 @@ $ cha moved --since 1d
 $ cd packaging/arch && makepkg -si
 ```
 
-**From source**: install [Bend](https://bend-lang.com) 2.0.34 and clang, then:
+**From source**: install [Bend](https://bend-lang.com) 2.0.39 and clang, then:
 
 ```console
 $ bend main.bend -o cha && install -m755 cha ~/.local/bin/

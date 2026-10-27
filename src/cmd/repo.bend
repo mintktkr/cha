@@ -3,8 +3,8 @@
 # gitea answers a raw file path with bytes; github answers a contents path with base64
 # unless the accept header asks for raw, so a file read carries its own client.
 import Base
-import bend-kit-hairpin@0.1.0.0/hairpin.bend as Hairpin
-import bend-kit-http@0.23.0.1/http.bend as Http
+import bend-kit-hairpin@0.3.0.0/hairpin.bend as Hairpin
+import bend-kit-http@0.32.0.0/http.bend as Http
 import 0x584fc27920487ceab242392391418d7f/json.bend as Json
 import 0x49814d83de8f70993a43e1002be29ecd/bytes.bend as Bytes
 import ../ctx.bend as Ctx
@@ -487,7 +487,7 @@ def raw.client(+repo: Ctx.Repo, +tok: String) -> Hairpin.Client:
 
 def raw.get(+repo: Ctx.Repo, +tok: String, url: String) -> IO(Api.Reply):
   do IO<Api.Reply>:
-    r : Hairpin.Client & Result<&1, &1, Http.Err, Http.Res> <- Hairpin.request(raw.client(repo, tok), "GET", url, Map.new(&2, List<&2, String>), Http.from_string(""))
+    r : Hairpin.Client & Result<&1, &1, Hairpin.Err, Http.Res> <- Hairpin.request(raw.client(repo, tok), "GET", url, Map.new(&2, List<&2, String>), Http.from_string(""))
     Api.reply(r)
 
 def file.reply(f: Ctx.Forge, +repo: Ctx.Repo, +tok: String, url: String) -> IO(Api.Reply):

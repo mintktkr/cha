@@ -1,7 +1,7 @@
 # api: requests to a forge's REST API, decoded replies, and pagination.
 import Base
-import bend-kit-hairpin@0.1.0.0/hairpin.bend as Hairpin
-import bend-kit-http@0.23.0.1/http.bend as Http
+import bend-kit-hairpin@0.3.0.0/hairpin.bend as Hairpin
+import bend-kit-http@0.32.0.0/http.bend as Http
 import 0x584fc27920487ceab242392391418d7f/json.bend as Json
 import 0x49814d83de8f70993a43e1002be29ecd/bytes.bend as Bytes
 import 0xcfc8be7b076f41f95c8e118383892d55/encoding.bend as Enc
@@ -92,14 +92,21 @@ def why(e: Http.Err) -> String:
     case Http.ErrBad{}:
       "malformed response"
 
-def reply.of(got: Result<&1, &1, Http.Err, Http.Res>) -> Reply:
+def hairpin.why(e: Hairpin.Err) -> String:
+  match e:
+    case Hairpin.ErrHttp{h}:
+      why(h)
+    case Hairpin.ErrDenied{d}:
+      "request refused by the retry policy"
+
+def reply.of(got: Result<&1, &1, Hairpin.Err, Http.Res>) -> Reply:
   match got:
     case Done{Http.Res{+status, +headers, body}}:
       Reply{status, link.next(Http.header(headers, "link")), body}
     case Fail{e}:
-      Broke{why(e)}
+      Broke{hairpin.why(e)}
 
-def reply(r: Hairpin.Client & Result<&1, &1, Http.Err, Http.Res>) -> IO(Reply):
+def reply(r: Hairpin.Client & Result<&1, &1, Hairpin.Err, Http.Res>) -> IO(Reply):
   (c, got) = r
   do IO<Reply>:
     Hairpin.close(c)
@@ -121,11 +128,11 @@ def send(repo: Ctx.Repo, +tok: String, +method: String, url: String, body: Maybe
   match body:
     case None{}:
       do IO<Reply>:
-        r : Hairpin.Client & Result<&1, &1, Http.Err, Http.Res> <- Hairpin.request(client(repo, tok), method, url, Map.new(&2, List<&2, String>), Http.from_string(""))
+        r : Hairpin.Client & Result<&1, &1, Hairpin.Err, Http.Res> <- Hairpin.request(client(repo, tok), method, url, Map.new(&2, List<&2, String>), Http.from_string(""))
         reply(r)
     case Some{v}:
       do IO<Reply>:
-        r : Hairpin.Client & Result<&1, &1, Http.Err, Http.Res> <- Hairpin.request(client(repo, tok), method, url, json.headers(), Json.encode.bytes(v))
+        r : Hairpin.Client & Result<&1, &1, Hairpin.Err, Http.Res> <- Hairpin.request(client(repo, tok), method, url, json.headers(), Json.encode.bytes(v))
         reply(r)
 
 # one request whose body is bytes the caller framed, and whose headers are its own
@@ -133,7 +140,7 @@ def send(repo: Ctx.Repo, +tok: String, +method: String, url: String, body: Maybe
 
 def send.raw(repo: Ctx.Repo, +tok: String, +method: String, url: String, headers: Map<&2, List<&2, String>>, body: Bytes.Bytes) -> IO(Reply):
   do IO<Reply>:
-    r : Hairpin.Client & Result<&1, &1, Http.Err, Http.Res> <- Hairpin.request(client(repo, tok), method, url, headers, body)
+    r : Hairpin.Client & Result<&1, &1, Hairpin.Err, Http.Res> <- Hairpin.request(client(repo, tok), method, url, headers, body)
     reply(r)
 
 def get(repo: Ctx.Repo, +tok: String, url: String) -> IO(Reply):

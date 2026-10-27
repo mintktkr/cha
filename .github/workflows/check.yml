@@ -13,9 +13,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      BEND_VERSION: 2.0.34
-      # sha256 of bend-2.0.34-linux-x64.tar.gz, from bend-lang.com/install.sh
-      BEND_SHA256: 78106a97af242429dcc057258eb8d10f69cddebcd5e263022185a52d003e09bf
+      BEND_VERSION: 2.0.39
+      # sha256 of bend-2.0.39-linux-x64.tar.gz, from bend-lang.com/install.sh
+      BEND_SHA256: 6cf462fd8f70b094a4950ebb709a9c4ffd8f1d1189d9cedf1fd63cd5d041c7ab
       BEND_NO_TELEMETRY: "1"
     steps:
       - uses: actions/checkout@v4
@@ -42,8 +42,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      BEND_VERSION: 2.0.34
-      BEND_SHA256: 78106a97af242429dcc057258eb8d10f69cddebcd5e263022185a52d003e09bf
+      BEND_VERSION: 2.0.39
+      BEND_SHA256: 6cf462fd8f70b094a4950ebb709a9c4ffd8f1d1189d9cedf1fd63cd5d041c7ab
       BEND_NO_TELEMETRY: "1"
     steps:
       - uses: actions/checkout@v4
