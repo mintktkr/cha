@@ -964,6 +964,16 @@ def Laws.asn1_read_zero_len(t):
 def Laws.asn1_time_pivot():
   {==}
 
+# dNSNames
+# --------
+# Both claims are over closed elements, so the parse of the entries reduces to the name list.
+
+def Laws.x509_san_lower():
+  {==}
+
+def Laws.x509_san_skips_ip():
+  {==}
+
 # Hosts
 # -----
 # The wildcard and exact-name laws are closed names, or one closed name against a symbolic

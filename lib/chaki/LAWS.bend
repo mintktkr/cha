@@ -987,6 +987,20 @@ law asn1_read_zero_len:
 law asn1_time_pivot:
   {Asn1.time(23, Bytes.of_ascii("491231235959Z")) == Some{2524607999} : Maybe<&2, U32>}
 
+# dNSNames
+# --------
+# Only a dNSName entry becomes a name to match, and it is lowercased as it is parsed, so a
+# certificate can't rely on case to hide the host it carries, and an iPAddress entry can't be
+# read as one.
+
+# LAW: a dNSName entry is lowercased as it is parsed.
+law x509_san_lower:
+  {X509.x509.san.names([Asn1.Tlv{130, Bytes.of_ascii("A.Example"), Nil{}}]) == Some{["a.example"]} : Maybe<&2, List<&2, String>>}
+
+# LAW: an iPAddress entry, or any other kind of general name, is not a name to match.
+law x509_san_skips_ip:
+  {X509.x509.san.names([Asn1.Tlv{135, [127, 0, 0, 1], Nil{}}, Asn1.Tlv{130, Bytes.of_ascii("a.example"), Nil{}}]) == Some{["a.example"]} : Maybe<&2, List<&2, String>>}
+
 # Hosts
 # -----
 # The name in a certificate decides which host is served, so a wildcard may stand for one
