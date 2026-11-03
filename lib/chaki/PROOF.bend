@@ -614,6 +614,28 @@ def Laws.tls_transcript_grows(st, m, p):
     case Tls.Hs{phase, tx, keys, priv, proof, buf, msgs, out, evs}:
       {==}
 
+# tls_update_refused, tls_ccs_bad_refused, tls_cert_empty_refused, tls_update_fresh_seq
+# The four gates read the message or the byte, and the state only to die in it.
+def Laws.tls_update_refused(st, m):
+  match st:
+    case Tls.Hs{phase, tx, keys, priv, proof, buf, msgs, out, evs}:
+      {==}
+
+def Laws.tls_ccs_bad_refused(st):
+  match st:
+    case Tls.Hs{phase, tx, keys, priv, proof, buf, msgs, out, evs}:
+      {==}
+
+def Laws.tls_cert_empty_refused(st, m, certs):
+  match st:
+    case Tls.Hs{phase, tx, keys, priv, proof, buf, msgs, out, evs}:
+      {==}
+
+def Laws.tls_update_fresh_seq(t, a):
+  match t:
+    case Tls.Traffic{+secret, +k, +iv, +n}:
+      {==}
+
 # tls_dead_absorbs
 # The walk is a loop over the buffer with the buffer's length as fuel, and a failed connection
 # refuses every record it reads: the state it hands on is the same state with the record's

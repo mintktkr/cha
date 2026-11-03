@@ -909,6 +909,33 @@ law tls_transcript_grows:
   for +p: Tls.Phase
   {tls_tx(Tls.hs.next(st, m, p)) == Bytes.cat(tls_tx(st), Tls.msg.raw(m)) : List<&2, U32>}
 
+# LAW: a KeyUpdate that isn't exactly one byte of 0 or 1 ends the connection (RFC 8446 4.6.3).
+law tls_update_refused:
+  for +st: Tls.Hs
+  for +m: Tlsmsg.Msg
+  {Tls.phase.of(Tls.hs.update.ok(False{}, st, m)) == Tls.Phase.dead{"a KeyUpdate that isn't one byte of 0 or 1"} : Tls.Phase}
+
+# LAW: a legacy ChangeCipherSpec that isn't exactly one byte of 0x01 ends the connection,
+# even in the one window where a ChangeCipherSpec may be ignored (RFC 8446 D.4).
+law tls_ccs_bad_refused:
+  for +st: Tls.Hs
+  {Tls.phase.of(Tls.hs.ccs.at(True{}, False{}, st)) == Tls.Phase.dead{"a legacy ChangeCipherSpec that isn't one byte of 0x01"} : Tls.Phase}
+
+# LAW: a Certificate message with no certificate in it ends the connection, so the shell is
+# never asked to verify an empty chain (RFC 8446 4.4.2).
+law tls_cert_empty_refused:
+  for +st: Tls.Hs
+  for +m: Tlsmsg.Msg
+  for certs: List<&2, List<&2, U32>>
+  {Tls.phase.of(Tls.hs.cert.by(True{}, certs, st, m)) == Tls.Phase.dead{"the server sent no certificate"} : Tls.Phase}
+
+# LAW: a KeyUpdate starts its new traffic keys at sequence number zero, so the counter only
+# ever restarts beside a key it has never sealed with (RFC 8446 4.6.3, 7.2).
+law tls_update_fresh_seq:
+  for +t: Tls.Traffic
+  for a: Tls.Aead
+  {tls_traffic_n(Tls.traffic.up(t, a)) == 0 : U32}
+
 # LAW: failure is final: once a connection has failed, every further byte from the server
 # leaves it failed, so one bad message cannot be walked back.
 law tls_dead_absorbs:
