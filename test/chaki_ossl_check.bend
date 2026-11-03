@@ -101,7 +101,7 @@ def dial.at(r: Result<&1, &1, U32 & String, Socket>) -> IO(Unit):
       handshake(s)
 
 # the listener's side: one connection, a text line as the answer, then close
-def answer.sent(c: Socket & Result<&1, &1, U32 & String, Unit>, l: Listener) -> IO(Unit):
+def answer.sent(c: Socket & Result<&1, &1, (U32 & String) & List<&2, U32>, Unit>, l: Listener) -> IO(Unit):
   (s, r) = c
   do IO<Unit>:
     Socket.close(s)
@@ -109,7 +109,7 @@ def answer.sent(c: Socket & Result<&1, &1, U32 & String, Unit>, l: Listener) -> 
 
 def answer.done(s: Socket, l: Listener) -> IO(Unit):
   do IO<Unit>:
-    w : Socket & Result<&1, &1, U32 & String, Unit> <- TCP.send(s, "not a TLS handshake\n")
+    w : Socket & Result<&1, &1, (U32 & String) & List<&2, U32>, Unit> <- TCP.send(s, "not a TLS handshake\n")
     answer.sent(w, l)
 
 def answer(l: Listener, r: Result<&1, &1, U32 & String, Socket>) -> IO(Unit):
