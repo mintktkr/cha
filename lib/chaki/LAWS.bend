@@ -450,6 +450,73 @@ law url_pct_empty:
 
 # http1 [http1]
 # -------------
+# http1 writes the request and reads the response, so it is where cha's own bytes meet a
+# peer's bytes. A refusal here is a security property, not a nicety: a header nobody named,
+# or a body whose end two headers disagree on, is how a request is split and a response
+# smuggled. Known-answer laws name their source. The response laws give the parser a room
+# big enough for their response rather than the default 64 MiB: nothing about them turns on
+# the default, and the kernel recheck cannot count to 64 MiB.
+
+# LAW: (known answer) a GET with one header is exactly these bytes on the wire.
+law http1_request_bytes:
+  {Http1.request("GET", "example.com", "/x", [("X-Test", "1")], Nil{}) == Some{Bytes.of_ascii("GET /x HTTP/1.1\r\nHost: example.com\r\nX-Test: 1\r\nConnection: close\r\n\r\n")} : Maybe<&2, List<&2, U32>>}
+
+# LAW: a method that isn't a token is refused, so no method can end the request line early.
+law http1_method_not_token:
+  {Http1.request("GE T", "example.com", "/x", Nil{}, Nil{}) == None{} : Maybe<&2, List<&2, U32>>} & {Http1.request("GET\r", "example.com", "/x", Nil{}, Nil{}) == None{} : Maybe<&2, List<&2, U32>>}
+
+# LAW: a request target holding a CR or a LF is refused, so it can never start a header line.
+law http1_target_ctl:
+  for +p: String
+  for +q: String
+  {Http1.request("GET", "example.com", String.append(p, String.append("\r", q)), Nil{}, Nil{}) == None{} : Maybe<&2, List<&2, U32>>} & {Http1.request("GET", "example.com", String.append(p, String.append("\n", q)), Nil{}, Nil{}) == None{} : Maybe<&2, List<&2, U32>>}
+
+# LAW: a header value holding a CR or a LF is refused, so it can never end its header line.
+law http1_value_ctl:
+  for +p: String
+  for +q: String
+  {Http1.request("GET", "example.com", "/x", [("x", String.append(p, String.append("\r", q)))], Nil{}) == None{} : Maybe<&2, List<&2, U32>>} & {Http1.request("GET", "example.com", "/x", [("x", String.append(p, String.append("\n", q)))], Nil{}) == None{} : Maybe<&2, List<&2, U32>>}
+
+# LAW: a header name with a byte outside the RFC 9110 token set is refused, so no name can
+# mean one header to the writer and another to the peer.
+law http1_name_not_token:
+  for +p: String
+  for +q: String
+  {Http1.request("GET", "example.com", "/x", [(String.append(p, String.append(" ", q)), "v")], Nil{}) == None{} : Maybe<&2, List<&2, U32>>} & {Http1.request("GET", "example.com", "/x", [(String.append(p, String.append("\r", q)), "v")], Nil{}) == None{} : Maybe<&2, List<&2, U32>>}
+
+# LAW: a status line that isn't HTTP/1.x followed by three digits is refused.
+law http1_status_not_http:
+  {Http1.step(Http1.feed(Http1.parser.room(False{}, 200n), Bytes.of_ascii("HTTP/2 200 OK\r\n\r\n"))) == Http1.Bad{"bad status line"} : Http1.Step} & {Http1.step(Http1.feed(Http1.parser.room(False{}, 200n), Bytes.of_ascii("200 OK\r\n\r\n"))) == Http1.Bad{"bad status line"} : Http1.Step} & {Http1.step(Http1.feed(Http1.parser.room(False{}, 200n), Bytes.of_ascii("HTTP/1.1 20 OK\r\n\r\n"))) == Http1.Bad{"bad status line"} : Http1.Step}
+
+# LAW: a response with both a transfer-encoding and a content-length is refused, as RFC 9112
+# section 6.3 says: the two are two readings of where the body ends.
+law http1_te_and_cl:
+  {Http1.step(Http1.feed(Http1.parser.room(False{}, 200n), Bytes.of_ascii("HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nContent-Length: 6\r\n\r\n0\r\n\r\n"))) == Http1.Bad{"both transfer-encoding and content-length"} : Http1.Step}
+
+# LAW: two content-length headers that disagree are refused, so no body has two ends.
+law http1_cl_differs:
+  {Http1.step(Http1.feed(Http1.parser.room(False{}, 200n), Bytes.of_ascii("HTTP/1.1 200 OK\r\nContent-Length: 5\r\nContent-Length: 6\r\n\r\nhello"))) == Http1.Bad{"content-length headers differ"} : Http1.Step}
+
+# LAW: a content-length that isn't all digits is refused.
+law http1_cl_not_digits:
+  {Http1.step(Http1.feed(Http1.parser.room(False{}, 200n), Bytes.of_ascii("HTTP/1.1 200 OK\r\nContent-Length: 5x\r\n\r\nhello"))) == Http1.Bad{"bad content-length"} : Http1.Step} & {Http1.step(Http1.feed(Http1.parser.room(False{}, 200n), Bytes.of_ascii("HTTP/1.1 200 OK\r\nContent-Length: -1\r\n\r\n"))) == Http1.Bad{"bad content-length"} : Http1.Step}
+
+# LAW: (known answer: RFC 7230 section 7.1) a chunked body decodes to the bytes it carries.
+law http1_chunked_body:
+  {Http1.step(Http1.feed(Http1.parser.room(False{}, 200n), Bytes.of_ascii("HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n4\r\nWiki\r\n5\r\npedia\r\n0\r\n\r\n"))) == Http1.Got{Http1.Resp{Http1.Head{200, [("transfer-encoding", "chunked")]}, Bytes.of_ascii("Wikipedia")}} : Http1.Step}
+
+# LAW: a chunk size that isn't hex is refused.
+law http1_chunk_not_hex:
+  {Http1.step(Http1.feed(Http1.parser.room(False{}, 200n), Bytes.of_ascii("HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\nz\r\nhello\r\n0\r\n\r\n"))) == Http1.Bad{"bad chunk size"} : Http1.Step}
+
+# LAW: a header is stored and looked up without regard to its case.
+law http1_header_case:
+  {Http1.step(Http1.feed(Http1.parser.room(False{}, 200n), Bytes.of_ascii("HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: 0\r\n\r\n"))) == Http1.Got{Http1.Resp{Http1.Head{200, [("content-type", "text/html"), ("content-length", "0")]}, Nil{}}} : Http1.Step} & {Http1.header(Http1.Head{200, [("content-type", "text/html")]}, "CONTENT-TYPE") == "text/html" : String}
+
+# LAW: (known answer) a response cut in two parses to what it parses to whole, wherever the
+# cut falls: in the status line, in the head, or in the body.
+law http1_feed_split:
+  {Http1.step(Http1.feed(Http1.feed(Http1.parser.room(False{}, 200n), Bytes.take(Bytes.of_ascii("HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nhi"), 10n)), Bytes.drop(Bytes.of_ascii("HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nhi"), 10n))) == Http1.step(Http1.feed(Http1.parser.room(False{}, 200n), Bytes.of_ascii("HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nhi"))) : Http1.Step} & {Http1.step(Http1.feed(Http1.feed(Http1.parser.room(False{}, 200n), Bytes.take(Bytes.of_ascii("HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nhi"), 25n)), Bytes.drop(Bytes.of_ascii("HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nhi"), 25n))) == Http1.step(Http1.feed(Http1.parser.room(False{}, 200n), Bytes.of_ascii("HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nhi"))) : Http1.Step} & {Http1.step(Http1.feed(Http1.feed(Http1.parser.room(False{}, 200n), Bytes.take(Bytes.of_ascii("HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nhi"), 39n)), Bytes.drop(Bytes.of_ascii("HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nhi"), 39n))) == Http1.step(Http1.feed(Http1.parser.room(False{}, 200n), Bytes.of_ascii("HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nhi"))) : Http1.Step}
 
 # end http1
 

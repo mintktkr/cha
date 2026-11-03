@@ -360,6 +360,183 @@ def Laws.url_pct_empty():
 # http1 [http1]
 # -------------
 
+# The request writer: a target, a host or a header value holding CR, LF or NUL
+# ----------------------------------------------------------------------------
+
+# the bytes half of a (bytes, bad) pair: a header value's line is built from that pair, so
+# the proof has to be able to name the pair's bytes
+def http1.fst(r: List<&2, U32> & Bool) -> List<&2, U32>:
+  (a, b) = r
+  a
+
+# a bad flag that is already True never clears: req.bytes answers None, whatever follows
+def http1.msticky(s: String, acc: List<&2, U32>) -> {Http1.req.bytes.m(Http1.req.bytes.go(s, acc, True{})) == None{} : Maybe<&2, List<&2, U32>>}:
+  match s:
+    case SNil{}:
+      {==}
+    case SCon{Chr{+h}, t}:
+      http1.msticky(t, U32.and(h, 255) <> acc)
+
+# one control byte at the head of the string, whatever came before it and whatever follows:
+# the flag it leaves is True, so the rest is never read
+def http1.refuse.head(b: Bool, c: U32, q: String, acc: List<&2, U32>, e: {True{} == Http1.ctl.ch(c) : Bool}) -> {Http1.req.bytes.m(Http1.req.bytes.go(SCon{Chr{c}, q}, acc, b)) == None{} : Maybe<&2, List<&2, U32>>}:
+  match b:
+    case True{}:
+      http1.msticky(q, U32.and(c, 255) <> acc)
+    case False{}:
+      %e : {Http1.req.bytes.m(Http1.req.bytes.go(q, U32.and(c, 255) <> acc, _)) == None{} : Maybe<&2, List<&2, U32>>}
+      http1.msticky(q, U32.and(c, 255) <> acc)
+
+# a control byte after p: the induction is on p, and the flag it leaves is True
+def http1.refuse.at(p: String, c: U32, q: String, acc: List<&2, U32>, b: Bool, e: {True{} == Http1.ctl.ch(c) : Bool}) -> {Http1.req.bytes.m(Http1.req.bytes.go(String.append(p, SCon{Chr{c}, q}), acc, b)) == None{} : Maybe<&2, List<&2, U32>>}:
+  match p:
+    case SNil{}:
+      http1.refuse.head(b, c, q, acc, e)
+    case SCon{Chr{+h}, t}:
+      http1.refuse.at(t, c, q, U32.and(h, 255) <> acc, Bool.or(b, Http1.ctl.ch(h)), e)
+
+# a string holding a control byte is not a target, a host or a header value
+def http1.refuse(p: String, c: U32, q: String, e: {True{} == Http1.ctl.ch(c) : Bool}) -> {Http1.req.bytes(String.append(p, SCon{Chr{c}, q})) == None{} : Maybe<&2, List<&2, U32>>}:
+  http1.refuse.at(p, c, q, Nil{}, False{}, e)
+
+# the target is the bind of the request's do block, so the goal is that bind with the target
+# bytes as its hole
+def http1.target(p: String, c: U32, q: String, e: {True{} == Http1.ctl.ch(c) : Bool}) -> {Http1.request("GET", "example.com", String.append(p, SCon{Chr{c}, q}), Nil{}, Nil{}) == None{} : Maybe<&2, List<&2, U32>>}:
+  %Equal.sym(Maybe<&2, List<&2, U32>>, Http1.req.bytes.m(Http1.req.bytes.go(String.append(p, SCon{Chr{c}, q}), Nil{}, False{})), None{}, http1.refuse(p, c, q, e)) : {Maybe.bind(&2, List<&2, U32>, List<&2, U32>, _, t => Some{Http1.req.pack(Bytes.of_ascii("GET"), Bytes.of_ascii("example.com"), t, Nil{}, (Nil{}, 0n))}) == None{} : Maybe<&2, List<&2, U32>>}
+  {==}
+
+# a bad flag that is already True never clears, as the flag of the (bytes, bad) pair
+def http1.pair.sticky(s: String, acc: List<&2, U32>) -> {Http1.req.bytes.go(s, acc, True{}) == (http1.fst(Http1.req.bytes.go(s, acc, True{})), True{}) : List<&2, U32> & Bool}:
+  match s:
+    case SNil{}:
+      {==}
+    case SCon{Chr{+h}, t}:
+      http1.pair.sticky(t, U32.and(h, 255) <> acc)
+
+# the pair, for a CR at the head of a value: whatever came before it, the flag is True after
+def http1.pair.cr(b: Bool, q: String, acc: List<&2, U32>) -> {Http1.req.bytes.go(SCon{Chr{13}, q}, acc, b) == (http1.fst(Http1.req.bytes.go(SCon{Chr{13}, q}, acc, b)), True{}) : List<&2, U32> & Bool}:
+  match b:
+    case True{}:
+      http1.pair.sticky(q, 13 <> acc)
+    case False{}:
+      http1.pair.sticky(q, 13 <> acc)
+
+# the same, for a LF
+def http1.pair.lf(b: Bool, q: String, acc: List<&2, U32>) -> {Http1.req.bytes.go(SCon{Chr{10}, q}, acc, b) == (http1.fst(Http1.req.bytes.go(SCon{Chr{10}, q}, acc, b)), True{}) : List<&2, U32> & Bool}:
+  match b:
+    case True{}:
+      http1.pair.sticky(q, 10 <> acc)
+    case False{}:
+      http1.pair.sticky(q, 10 <> acc)
+
+# a CR after p, as the pair
+def http1.pair.cr.at(p: String, q: String, acc: List<&2, U32>, b: Bool) -> {Http1.req.bytes.go(String.append(p, SCon{Chr{13}, q}), acc, b) == (http1.fst(Http1.req.bytes.go(String.append(p, SCon{Chr{13}, q}), acc, b)), True{}) : List<&2, U32> & Bool}:
+  match p:
+    case SNil{}:
+      http1.pair.cr(b, q, acc)
+    case SCon{Chr{+h}, t}:
+      http1.pair.cr.at(t, q, U32.and(h, 255) <> acc, Bool.or(b, Http1.ctl.ch(h)))
+
+# the same, for a LF
+def http1.pair.lf.at(p: String, q: String, acc: List<&2, U32>, b: Bool) -> {Http1.req.bytes.go(String.append(p, SCon{Chr{10}, q}), acc, b) == (http1.fst(Http1.req.bytes.go(String.append(p, SCon{Chr{10}, q}), acc, b)), True{}) : List<&2, U32> & Bool}:
+  match p:
+    case SNil{}:
+      http1.pair.lf(b, q, acc)
+    case SCon{Chr{+h}, t}:
+      http1.pair.lf.at(t, q, U32.and(h, 255) <> acc, Bool.or(b, Http1.ctl.ch(h)))
+
+# a value holding a CR: req.field reads the pair, and the flag there is what refuses the line
+def http1.value.cr(p: String, q: String) -> {Http1.request("GET", "example.com", "/x", [("x", String.append(p, SCon{Chr{13}, q}))], Nil{}) == None{} : Maybe<&2, List<&2, U32>>}:
+  %Equal.sym(List<&2, U32> & Bool, Http1.req.bytes.go(String.append(p, SCon{Chr{13}, q}), Nil{}, False{}), (http1.fst(Http1.req.bytes.go(String.append(p, SCon{Chr{13}, q}), Nil{}, False{})), True{}), http1.pair.cr.at(p, q, Nil{}, False{})) : {Maybe.bind(&2, List<&2, List<&2, U32>>, List<&2, U32>, Http1.req.hdrs.end([Http1.req.sent.bytes(Http1.req.field.go(Http1.req.bytes.go(String.append(p, SCon{Chr{13}, q}), Nil{}, False{}), [120], False{}))], Http1.req.sent.bad(Http1.req.field.go(_, [120], False{}))), hs => Some{Http1.req.pack(Bytes.of_ascii("GET"), Bytes.of_ascii("example.com"), Bytes.of_ascii("/x"), hs, (Nil{}, 0n))}) == None{} : Maybe<&2, List<&2, U32>>}
+  {==}
+
+# the same, for a LF
+def http1.value.lf(p: String, q: String) -> {Http1.request("GET", "example.com", "/x", [("x", String.append(p, SCon{Chr{10}, q}))], Nil{}) == None{} : Maybe<&2, List<&2, U32>>}:
+  %Equal.sym(List<&2, U32> & Bool, Http1.req.bytes.go(String.append(p, SCon{Chr{10}, q}), Nil{}, False{}), (http1.fst(Http1.req.bytes.go(String.append(p, SCon{Chr{10}, q}), Nil{}, False{})), True{}), http1.pair.lf.at(p, q, Nil{}, False{})) : {Maybe.bind(&2, List<&2, List<&2, U32>>, List<&2, U32>, Http1.req.hdrs.end([Http1.req.sent.bytes(Http1.req.field.go(Http1.req.bytes.go(String.append(p, SCon{Chr{10}, q}), Nil{}, False{}), [120], False{}))], Http1.req.sent.bad(Http1.req.field.go(_, [120], False{}))), hs => Some{Http1.req.pack(Bytes.of_ascii("GET"), Bytes.of_ascii("example.com"), Bytes.of_ascii("/x"), hs, (Nil{}, 0n))}) == None{} : Maybe<&2, List<&2, U32>>}
+  {==}
+
+# A header name: an RFC 9110 token, nothing else
+# ----------------------------------------------
+
+# a flag that is already bad stays bad, from a seen name with no good byte in it
+def http1.name.sticky(s: String, acc: List<&2, U32>) -> {Http1.req.name.go(s, True{}, False{}, acc) == (http1.fst(Http1.req.name.go(s, True{}, False{}, acc)), True{}) : List<&2, U32> & Bool}:
+  match s:
+    case SNil{}:
+      {==}
+    case SCon{Chr{+h}, t}:
+      http1.name.sticky(t, U32.and(h, 255) <> acc)
+
+# a byte that is not a token character ends the name and makes it bad, whatever preceded it
+# and whatever follows
+def http1.name.head(seen: Bool, ok: Bool, c: U32, q: String, acc: List<&2, U32>, e: {False{} == Http1.is.tchar(c) : Bool}) -> {Http1.req.name.go(SCon{Chr{c}, q}, seen, ok, acc) == (http1.fst(Http1.req.name.go(SCon{Chr{c}, q}, seen, ok, acc)), True{}) : List<&2, U32> & Bool}:
+  match seen ok:
+    case True{} True{}:
+      %e : {Http1.req.name.go(q, True{}, _, U32.and(c, 255) <> acc) == (http1.fst(Http1.req.name.go(q, True{}, _, U32.and(c, 255) <> acc)), True{}) : List<&2, U32> & Bool}
+      http1.name.sticky(q, U32.and(c, 255) <> acc)
+    case True{} False{}:
+      http1.name.sticky(q, U32.and(c, 255) <> acc)
+    case False{} True{}:
+      %e : {Http1.req.name.go(q, True{}, _, U32.and(c, 255) <> acc) == (http1.fst(Http1.req.name.go(q, True{}, _, U32.and(c, 255) <> acc)), True{}) : List<&2, U32> & Bool}
+      http1.name.sticky(q, U32.and(c, 255) <> acc)
+    case False{} False{}:
+      http1.name.sticky(q, U32.and(c, 255) <> acc)
+
+# the bad byte after p: the induction is on p
+def http1.name.at(p: String, c: U32, q: String, acc: List<&2, U32>, seen: Bool, ok: Bool, e: {False{} == Http1.is.tchar(c) : Bool}) -> {Http1.req.name.go(String.append(p, SCon{Chr{c}, q}), seen, ok, acc) == (http1.fst(Http1.req.name.go(String.append(p, SCon{Chr{c}, q}), seen, ok, acc)), True{}) : List<&2, U32> & Bool}:
+  match p:
+    case SNil{}:
+      http1.name.head(seen, ok, c, q, acc, e)
+    case SCon{Chr{+h}, t}:
+      http1.name.at(t, c, q, U32.and(h, 255) <> acc, True{}, Bool.and(ok, Http1.is.tchar(h)), e)
+
+# a name holding a byte outside the token set: req.field reads the pair, and the flag there
+# is what refuses the line
+def http1.name(p: String, c: U32, q: String, e: {False{} == Http1.is.tchar(c) : Bool}) -> {Http1.request("GET", "example.com", "/x", [(String.append(p, SCon{Chr{c}, q}), "v")], Nil{}) == None{} : Maybe<&2, List<&2, U32>>}:
+  %Equal.sym(List<&2, U32> & Bool, Http1.req.name.go(String.append(p, SCon{Chr{c}, q}), False{}, True{}, Nil{}), (http1.fst(Http1.req.name.go(String.append(p, SCon{Chr{c}, q}), False{}, True{}, Nil{})), True{}), http1.name.at(p, c, q, Nil{}, False{}, True{}, e)) : {Maybe.bind(&2, List<&2, List<&2, U32>>, List<&2, U32>, Http1.req.hdrs.end([Http1.req.sent.bytes(Http1.req.field.m(Http1.req.name.go(String.append(p, SCon{Chr{c}, q}), False{}, True{}, Nil{}), "v"))], Http1.req.sent.bad(Http1.req.field.m(_, "v"))), hs => Some{Http1.req.pack(Bytes.of_ascii("GET"), Bytes.of_ascii("example.com"), Bytes.of_ascii("/x"), hs, (Nil{}, 0n))}) == None{} : Maybe<&2, List<&2, U32>>}
+  {==}
+
+# The laws
+# --------
+
+def Laws.http1_feed_split():
+  ({==}, {==}, {==})
+
+def Laws.http1_request_bytes():
+  {==}
+
+def Laws.http1_method_not_token():
+  ({==}, {==})
+
+def Laws.http1_target_ctl(p, q):
+  (http1.target(p, 13, q, {==}), http1.target(p, 10, q, {==}))
+
+def Laws.http1_value_ctl(p, q):
+  (http1.value.cr(p, q), http1.value.lf(p, q))
+
+def Laws.http1_name_not_token(p, q):
+  (http1.name(p, 32, q, {==}), http1.name(p, 13, q, {==}))
+
+def Laws.http1_status_not_http():
+  ({==}, {==}, {==})
+
+def Laws.http1_te_and_cl():
+  {==}
+
+def Laws.http1_cl_differs():
+  {==}
+
+def Laws.http1_cl_not_digits():
+  ({==}, {==})
+
+def Laws.http1_chunked_body():
+  {==}
+
+def Laws.http1_chunk_not_hex():
+  {==}
+
+def Laws.http1_header_case():
+  ({==}, {==})
+
 # end http1
 
 # time, width [time]
