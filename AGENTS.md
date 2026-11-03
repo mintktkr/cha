@@ -11,6 +11,7 @@ Humans and agents, under the same rules. A coding agent named **memu** is a regu
 - Run `bend guide` before writing Bend. The guide is the whole language.
 - Toolchain: bend **2.0.39**. Don't bump it as a side effect. A bump is its own commit, and it updates `BEND_VERSION` and `BEND_SHA256` in `.github/workflows/check.yml` (the sha256 is in bend-lang.com/install.sh).
 - Rules that must never break go in `LAWS.bend`. Run `bend PROOF.bend` before every commit. A red proof means the change doesn't land.
+- chaki states its promises first as laws too, in `lib/chaki/LAWS.bend` (one section per area). Those sit on pure modules only, so `bend lib/chaki/PROOF.bend` must exit 0 with `ALL PROOFS CHECK`, and `--verdict` rechecks them with the BendTT kernel (`CHAKI_VERDICT=1 scripts/check.sh`). A known answer the kernel can't afford (a heavy crypto vector) stays an offline check, not a law.
 - Parallelize where it's natural, for example the independent requests in a sweep.
 - No hub imports. Everything below the commands is chaki, cha's own library, in-tree at `lib/chaki/` (`lib/chaki/README.md` maps it). Import it by relative path.
 
@@ -30,11 +31,13 @@ Humans and agents, under the same rules. A coding agent named **memu** is a regu
 | `test/*_check.bend` | offline checks: `scripts/check.sh` runs them and they must exit 0 |
 | `test/*_live.bend` | checks against real forges, run by hand |
 | `LAWS.bend`, `PROOF.bend` | the laws and their proofs |
+| `lib/chaki/LAWS.bend`, `lib/chaki/PROOF.bend` | chaki's laws, on its pure modules, and their proofs |
+| `verify/` | TLA+ models of the TLS 1.3 handshake and the redirect chain; `verify/README.md` has their charts. `.pi/skills/verify-chaki/` says when and how to rerun them |
 | `skills/cha/SKILL.md` | the agent skill. Keep it in step with the commands and flags |
 | `docs/how.md` | how a command flows, with a diagram |
 | `packaging/arch/` | PKGBUILD. Bump `pkgver` with `version()` in `main.bend` and tag `v<version>` |
 
-`scripts/check.sh` checks definition order, type-checks every file, proves the laws and runs the offline checks. Run it before every commit. `bend PROOF.bend` on its own always ends with "SOME PROOFS FAIL" plus a list of defs relying on foreign code (chaki's `sys` and `ossl` effects and its JSON writer, pulled in by `ui` and `api`). That's cha's green state. `check.sh` fails closed: a file passes only when bend exits 0 or prints nothing but that foreign-code list, and the proofs pass only if no law or proof is on it. Any other output (a TODO, an error, a crash) is red. CI (`.github/workflows/check.yml`) runs `check.sh` on every push and pull request, with the same pinned bend.
+`scripts/check.sh` checks definition order, type-checks every file, proves the laws and runs the offline checks. Run it before every commit. `bend PROOF.bend` on its own always ends with "SOME PROOFS FAIL" plus a list of defs relying on foreign code (chaki's `sys` and `ossl` effects, pulled in by `ui` and `api`). That's cha's green state. `check.sh` fails closed: a file passes only when bend exits 0 or prints nothing but that foreign-code list, and the proofs pass only if no law or proof is on it. Any other output (a TODO, an error, a crash) is red. CI (`.github/workflows/check.yml`) runs `check.sh` on every push and pull request, with the same pinned bend.
 
 ## Bend patterns used here
 

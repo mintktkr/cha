@@ -67,9 +67,12 @@ hidden state, and has a surface you can read in one sitting.
   always explicit (`Utf8.encode`, `Bytes.of_ascii`).
 - Anything that walks a body is a tail call. Bodies are megabytes, and non-tail recursion
   that deep overflows the JS lane.
-- Every module has `test/chaki_<module>_check.bend`, which runs offline and prints `ok` or
-  `FAIL` lines through `check.bend`. Modules that talk to the network also have
-  `test/chaki_<module>_live.bend`, run by hand.
+- Every pure module has `test/chaki_<module>_check.bend`, which runs offline and prints `ok`
+  or `FAIL` lines through `check.bend`. Modules that talk to the network also have
+  `test/chaki_<module>_live.bend`, run by hand (`tlsio` has only that one).
+- What a module promises is stated first as a law in `LAWS.bend` beside this file, one
+  section per area, and proven in `PROOF.bend`. Both import pure modules only, so the gate
+  is exit 0 and ALL PROOFS CHECK, and `--verdict` rechecks it with the BendTT kernel.
 - Crypto is checked against the published vectors of its RFC or FIPS document, verbatim.
 - Secrets (keys, tokens, traffic secrets) never reach output, errors included.
 - Import modules by relative path (`import ../lib/chaki/bytes.bend as Bytes`), never from
