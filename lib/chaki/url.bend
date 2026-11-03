@@ -427,6 +427,22 @@ def parse(+s: String) -> Maybe<&2, Url>:
 def resolve.at(scheme: String, host: String, port: U32, target: String) -> Maybe<&2, Url>:
   Some{Url{scheme, host, port, target}}
 
+def resolve.dots_at(scheme: String, host: String, port: U32, q: Query) -> Url:
+  match q:
+    case Query{path, query}:
+      Url{scheme, host, port, url.dots(path) ++ query}
+
+# RFC 3986 §5.2.2 and §5.3: a reference that carries its own authority has its dot segments
+# removed just as a relative one does
+def resolve.dots_url(m: Maybe<&2, Url>) -> Maybe<&2, Url>:
+  match m:
+    case None{}:
+      None{}
+    case Some{u}:
+      match u:
+        case Url{scheme, host, port, target}:
+          Some{resolve.dots_at(scheme, host, port, url.split_query(target))}
+
 def resolve.query_url(base: Url, ref: String) -> Maybe<&2, Url>:
   match base:
     case Url{scheme, host, port, target}:
@@ -474,7 +490,7 @@ def resolve.path(base: Url, +ref: String, empty: Bool) -> Maybe<&2, Url>:
 def resolve.net_url(base: Url, ref: String) -> Maybe<&2, Url>:
   match base:
     case Url{scheme, host, port, target}:
-      parse(scheme ++ ":" ++ ref)
+      resolve.dots_url(parse(scheme ++ ":" ++ ref))
 
 def resolve.net(+base: Url, +ref: String, net: Bool) -> Maybe<&2, Url>:
   match net:
@@ -493,7 +509,7 @@ def resolve.scheme(base: Url, +ref: String, sc: Bool) -> Maybe<&2, Url>:
 def resolve.abs(base: Url, +ref: String, abs: Bool) -> Maybe<&2, Url>:
   match abs:
     case True{}:
-      parse(ref)
+      resolve.dots_url(parse(ref))
     case False{}:
       resolve.scheme(base, ref, url.has_scheme(ref))
 

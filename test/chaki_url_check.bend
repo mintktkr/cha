@@ -133,6 +133,9 @@ def main() -> IO(Unit):
     # http URI with no authority, so neither applies
     IO.print(rfc.none("RFC 3986 5.4.2", "http:g"))
     IO.print(T.eq("resolve: a scheme-relative ref with a port", resolved("http://a/b/c/d;p?q", "//g:8080/x"), "http://g:8080/x"))
+    # dot segments come out of a reference that carries its own authority too
+    IO.print(T.eq("resolve: an absolute URL loses its dot segments", resolved("http://a/b/c/d;p?q", "http://a/b/../c"), "http://a/c"))
+    IO.print(T.eq("resolve: a scheme-relative URL loses its dot segments", resolved("http://a/b/c/d;p?q", "//g/a/./b"), "http://g/a/b"))
     IO.print(T.eq("resolve: a query-only ref over a base with no query", resolved("https://a/b", "?q"), "https://a/b?q"))
     # cha's own case: a path under an API base
     IO.print(T.eq("cha: a relative api path", resolved("https://gitea.example/api/v1/", "repos/o/n/issues?limit=50"), "https://gitea.example/api/v1/repos/o/n/issues?limit=50"))
