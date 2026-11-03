@@ -1,4 +1,5 @@
-# cha pr: list, view, diff, create, merge, edit, comment, comment-edit, comment-delete, checks.
+# cha pr: list, view, diff, create, merge, edit, close, reopen, comment, comment-edit,
+# comment-delete, checks.
 import Base
 import ../../lib/chaki/json.bend as Json
 import ../ctx.bend as Ctx
@@ -55,10 +56,17 @@ def note(+env: Cli.Env, msg: String) -> IO(Unit):
 def flag.of(+s: String) -> Bool:
   String.eq(String.to_lower(s), "true")
 
-# merged is a bool on a Gitea pull request and on a viewed GitHub one; a listed
-# GitHub pull request only carries merged_at
+# merged is true exactly when merged_at names an instant: both forges set it at the merge,
+# and a listed GitHub pull request carries that field and no merged flag at all
+def merged.text(+at: String) -> String:
+  match at:
+    case SNil{}:
+      "false"
+    case SCon{c, t}:
+      "true"
+
 def merged.of(+row: Map<&2, String>) -> Bool:
-  flag.of(Api.f(row, "merged")) || Bool.not(String.is_empty(Api.f(row, "merged_at")))
+  String.eq(merged.text(Api.raw.f(row, "merged_at")), "true")
 
 def state.merged(+s: String, merged: Bool) -> String:
   match merged:
@@ -233,12 +241,16 @@ def body.block(+b: String, empty: Bool) -> String:
 # Comments
 # --------
 
+# a pull request's conversation comments are the issue's comments on both forges
+def comment.path(+n: String) -> String:
+  "issues/" ++ n ++ "/comments"
+
 def comment.url(f: Ctx.Forge, +n: String) -> String:
   match f:
     case Ctx.Gitea{}:
-      "issues/" ++ n ++ "/comments?limit=50"
+      comment.path(n) ++ "?limit=50"
     case Ctx.GitHub{}:
-      "issues/" ++ n ++ "/comments?per_page=100"
+      comment.path(n) ++ "?per_page=100"
 
 def comment.lines(+on: Bool, xs: List<&2, Map<&2, String>>) -> String:
   match xs:
@@ -291,12 +303,22 @@ def view.row(+env: Cli.Env, +n: String, +row: Map<&2, String>) -> IO(Unit):
         IO.write(view.text(on, row, t))
         view.comments(env, repo, tok, n, on, Cli.has(args, "--comments"))
 
+# --comments is read as text, so with --json it would vanish: the pair is refused instead
+def view.json.if(+on: Bool, j: Cli.Json, +row: Map<&2, String>, comments: Bool) -> IO(Unit):
+  match comments:
+    case True{}:
+      do IO<Unit>:
+        Ui.error(on, "pr view --json takes no --comments; read them with pr view N --comments")
+        IO.die(Unit, 1, "")
+    case False{}:
+      Cli.json.emit.one(on, j, row, ["number", "title", "state", "head.ref", "base.ref", "user.login", "mergeable", "html_url", "body"])
+
 def view.pick(+env: Cli.Env, +n: String, json: Cli.Json, +row: Map<&2, String>) -> IO(Unit):
   match env json:
     case Cli.Env{r, t, c, k, a} Cli.Off{}:
       view.row(env, n, row)
     case Cli.Env{r, t, +on, k, a} j:
-      Cli.json.emit(on, j, Con{row, Nil{}}, ["number", "title", "state", "head.ref", "base.ref", "user.login", "mergeable", "html_url", "body"])
+      view.json.if(on, j, row, Cli.has(a, "--comments"))
 
 def view.good(+env: Cli.Env, +n: String, json: Cli.Json, body: List<&2, U32>, +status: U32, good: Bool) -> IO(Unit):
   match good:
@@ -353,12 +375,28 @@ def list.lines(+on: Bool, xs: List<&2, Map<&2, String>>) -> String:
     case Con{+x, rest}:
       list.line(on, x) ++ "\n" ++ list.lines(on, rest)
 
+# the fields a listed pull request's --json prints: the refs say which branch, and merged
+# and merged_at say whether it landed, so one list maps every branch to its pull request
+def list.fields() -> List<&2, String>:
+  ["number", "title", "state", "merged", "merged_at", "head.ref", "base.ref", "user.login", "html_url"]
+
+# each row with the merged field filled in, which the row itself may not carry
+def list.row(+x: Map<&2, String>) -> Map<&2, String>:
+  Map.set(&2, String, x, "merged", merged.text(Api.raw.f(x, "merged_at")))
+
+def list.rows(xs: List<&2, Map<&2, String>>) -> List<&2, Map<&2, String>>:
+  match xs:
+    case Nil{}:
+      Nil{}
+    case Con{+x, rest}:
+      Con{list.row(x), list.rows(rest)}
+
 def list.print(+on: Bool, json: Cli.Json, +xs: List<&2, Map<&2, String>>) -> IO(Unit):
   match json:
     case Cli.Off{}:
       IO.write(list.lines(on, xs))
     case j:
-      Cli.json.emit(on, j, xs, ["number", "title", "state", "user.login", "html_url"])
+      Cli.json.emit(on, j, list.rows(xs), list.fields())
 
 # --limit cuts the list to its first N; without it the list is what the pages held
 def list.cut(xs: List<&2, Map<&2, String>>, +limit: Nat, given: Bool) -> List<&2, Map<&2, String>>:
@@ -949,8 +987,8 @@ def edit(+env: Cli.Env) -> IO(Unit):
 # between issues and pull requests, so an issue number would comment on the issue.
 # `pulls/N` answers 404 for a number that is an issue on both forges: one request, and
 # the comment never lands where it wasn't asked to.
-def pull.guard.msg(+n: String) -> String:
-  "pr comment: #" ++ n ++ " is not a pull request (an issue, or no such number)"
+def pull.guard.msg(+cmd: String, +n: String) -> String:
+  cmd ++ ": #" ++ n ++ " is not a pull request (an issue, or no such number)"
 
 def pull.guard.ok(+env: Cli.Env, body: List<&2, U32>, +status: U32, good: Bool) -> IO(Unit):
   match good:
@@ -959,24 +997,26 @@ def pull.guard.ok(+env: Cli.Env, body: List<&2, U32>, +status: U32, good: Bool) 
     case False{}:
       Cli.fail(Unit, env, Api.message(status, body))
 
-def pull.guard.at(+env: Cli.Env, +n: String, body: List<&2, U32>, +status: U32, missing: Bool, good: Bool) -> IO(Unit):
+def pull.guard.at(+env: Cli.Env, +cmd: String, +n: String, body: List<&2, U32>, +status: U32, missing: Bool, good: Bool) -> IO(Unit):
   match missing:
     case True{}:
-      Cli.fail(Unit, env, pull.guard.msg(n))
+      Cli.fail(Unit, env, pull.guard.msg(cmd, n))
     case False{}:
       pull.guard.ok(env, body, status, good)
 
-def pull.guard.reply(+env: Cli.Env, +n: String, r: Api.Reply) -> IO(Unit):
+def pull.guard.reply(+env: Cli.Env, +cmd: String, +n: String, r: Api.Reply) -> IO(Unit):
   match r:
     case Api.Broke{w}:
       Cli.fail(Unit, env, w)
     case Api.Reply{+status, next, body}:
-      pull.guard.at(env, n, body, status, U32.is_eq(status, 404), Api.ok(status))
+      pull.guard.at(env, cmd, n, body, status, U32.is_eq(status, 404), Api.ok(status))
 
-def pull.guard.get(+env: Cli.Env, +repo: Ctx.Repo, +tok: String, +n: String) -> IO(Unit):
+# one GET of pulls/<n>: a number that is an issue, or no pull request at all, fails before
+# anything is written to it
+def pull.guard.get(+env: Cli.Env, +repo: Ctx.Repo, +tok: String, +cmd: String, +n: String) -> IO(Unit):
   do IO<Unit>:
     r : Api.Reply <- Api.get(repo, tok, Api.path(repo, "pulls/" ++ n))
-    pull.guard.reply(env, n, r)
+    pull.guard.reply(env, cmd, n, r)
 
 def comment.body(+body: String) -> Json.Val:
   Json.Obj{[Json.field("body", Api.utf8(body))]}
@@ -990,7 +1030,7 @@ def comment(+env: Cli.Env) -> IO(Unit):
         +n : String <- need.number(env, num, number.ok(num))
         +b : String <- body.text(env, args)
         txt : String <- need.flag(env, "body", b, String.is_empty(b))
-        u : Unit <- pull.guard.get(env, repo, tok, n)
+        u : Unit <- pull.guard.get(env, repo, tok, "pr comment", n)
         r : Api.Reply <- Api.send(repo, tok, "POST", Api.path(repo, comment.url(forge.of(repo), n)), Some{comment.body(txt)})
         written(env, web.url(repo, n), r)
 
@@ -1024,11 +1064,90 @@ def comment.delete(+env: Cli.Env) -> IO(Unit):
         Comment.yes.need(env, Cli.has(args, "--yes"), "pr comment-delete", id)
         Comment.delete(env, repo, tok, id)
 
+# close, reopen
+# -------------
+# Both forges set a pull request's state on the same PATCH, and the one field either reads
+# is the state: closed, or open again.
+
+# the state close sets, and the one reopen sets, spelled as the API spells it
+def state.word(closed: Bool) -> String:
+  match closed:
+    case True{}:
+      "closed"
+    case False{}:
+      "open"
+
+# the path a pull request's state lives at, the one view reads
+def state.path(+n: String) -> String:
+  "pulls/" ++ n
+
+def state.body(+s: String) -> Json.Val:
+  Json.Obj{[Json.field("state", Api.utf8(s))]}
+
+# a write whose answer is not the point: nothing printed, the forge's error otherwise
+def sent.if(+env: Cli.Env, body: List<&2, U32>, +status: U32, good: Bool) -> IO(Unit):
+  match good:
+    case True{}:
+      IO.pure(Unit, Unit{})
+    case False{}:
+      Cli.fail(Unit, env, Api.message(status, body))
+
+def sent(+env: Cli.Env, r: Api.Reply) -> IO(Unit):
+  match r:
+    case Api.Broke{w}:
+      Cli.fail(Unit, env, w)
+    case Api.Reply{+status, next, body}:
+      sent.if(env, body, status, Api.ok(status))
+
+# --comment rides along with the close: the comment first, through the issue comments both
+# forges keep a pull request's conversation in, then the state. The number is checked as a
+# pull request first, because issues/<n>/comments answers for an issue too and the comment
+# would land there before the PATCH on pulls/<n> answered 404.
+def note.send.if(+env: Cli.Env, +repo: Ctx.Repo, +tok: String, +n: String, +note: String, none: Bool) -> IO(Unit):
+  match none:
+    case True{}:
+      IO.pure(Unit, Unit{})
+    case False{}:
+      do IO<Unit>:
+        u : Unit <- pull.guard.get(env, repo, tok, "pr close", n)
+        r : Api.Reply <- Api.send(repo, tok, "POST", Api.path(repo, comment.path(n)), Some{comment.body(note)})
+        sent(env, r)
+
+def state.set(+env: Cli.Env, +state: String, +n: String, +note: String) -> IO(Unit):
+  match env:
+    case Cli.Env{+repo, +tok, on, json, +args}:
+      do IO<Unit>:
+        u : Unit <- note.send.if(env, repo, tok, n, note, String.is_empty(note))
+        r : Api.Reply <- Api.send(repo, tok, "PATCH", Api.path(repo, state.path(n)), Some{state.body(state)})
+        written(env, web.url(repo, n), r)
+
+def close.flags() -> List<&2, String>:
+  ["--comment"]
+
+# closing prints the pull request's url; there is no --yes, the same as issue close
+def close(+env: Cli.Env) -> IO(Unit):
+  match env:
+    case Cli.Env{+repo, +tok, on, json, +args}:
+      do IO<Unit>:
+        Cli.check(env, "pr close", args, close.flags())
+        +num : String = Cli.arg(args, 1n)
+        +n : String <- need.number(env, num, number.ok(num))
+        state.set(env, state.word(True{}), n, Cli.flag(args, "--comment", ""))
+
+def reopen(+env: Cli.Env) -> IO(Unit):
+  match env:
+    case Cli.Env{+repo, +tok, on, json, +args}:
+      do IO<Unit>:
+        Cli.check(env, "pr reopen", args, [])
+        +num : String = Cli.arg(args, 1n)
+        +n : String <- need.number(env, num, number.ok(num))
+        state.set(env, state.word(False{}), n, "")
+
 # dispatch
 # --------
 
 def subs() -> List<&2, String>:
-  ["list", "view", "diff", "create", "merge", "edit", "comment", "comment-edit", "comment-delete", "checks"]
+  ["list", "view", "diff", "create", "merge", "edit", "close", "reopen", "comment", "comment-edit", "comment-delete", "checks"]
 
 def index.at(eq: Bool, +i: Nat, +later: Nat) -> Nat:
   match eq:
@@ -1066,14 +1185,18 @@ def run.at(+env: Cli.Env, +sub: String, kind: Nat) -> IO(Unit):
     case 5n:
       edit(env)
     case 6n:
-      comment(env)
+      close(env)
     case 7n:
-      comment.edit(env)
+      reopen(env)
     case 8n:
-      comment.delete(env)
+      comment(env)
     case 9n:
+      comment.edit(env)
+    case 10n:
+      comment.delete(env)
+    case 11n:
       checks(env)
-    case 10n+k:
+    case 12n+k:
       Cli.fail(Unit, env, "pr " ++ sub ++ ": unknown subcommand, try cha help")
 
 def run.sub(+env: Cli.Env, +sub: String) -> IO(Unit):

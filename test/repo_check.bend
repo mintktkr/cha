@@ -201,6 +201,9 @@ def main() -> IO(Unit):
     same(Repo.delete.segments(Url.encode.path.ok("a/./b")), "repo branch-delete: a branch name can't have . or .. segments")
     same(Repo.delete.segments(Url.encode.path.ok("a//b")), "repo branch-delete: a branch name can't have . or .. segments")
     same(Repo.delete.segments(Url.encode.path.ok("release/1.0")), "")
+    # repo view addresses one repo, so its --json prints that object, not an array around it
+    expect("repo view --json fields", String.join(Repo.view.fields(), ","), "full_name,forge,description,default_branch,visibility,stars,forks,open_issues,html_url,mirror,original_url")
+    expect("repo view --json is one object", Cli.json.row(Repo.view.row(Ctx.Gitea{}, gitea.public()), Repo.view.fields()), "{\"full_name\":\"example/sandbox\",\"forge\":\"gitea\",\"description\":\"\",\"default_branch\":\"\",\"visibility\":\"public\",\"stars\":\"3\",\"forks\":\"1\",\"open_issues\":\"2\",\"html_url\":\"\",\"mirror\":\"\",\"original_url\":\"\"}")
     # protection: the same fields, from each forge's shape
     same(card(gh.row.of(gh.body())), "main|2|ci, lint|true|true")
     same(card(gh.row.of(gh.bare.body())), "main|0||false|true")

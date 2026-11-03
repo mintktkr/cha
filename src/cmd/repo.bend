@@ -200,6 +200,10 @@ def visibility(f: Ctx.Forge, +x: Map<&2, String>) -> String:
       Ctx.or(Api.raw.f(x, "visibility"), "public")
 
 # the row of repo view, with the fields the two forges spell differently made one
+# the row of repo view, with the fields the two forges spell differently made one
+def view.fields() -> List<&2, String>:
+  ["full_name", "forge", "description", "default_branch", "visibility", "stars", "forks", "open_issues", "html_url", "mirror", "original_url"]
+
 def view.row(+f: Ctx.Forge, +x: Map<&2, String>) -> Map<&2, String>:
   +a = Map.set(&2, String, x, "forge", forge.name(f))
   +b = Map.set(&2, String, a, "visibility", visibility(f, a))
@@ -228,7 +232,7 @@ def view.out(+on: Bool, json: Cli.Json, +x: Map<&2, String>) -> IO(Unit):
     case Cli.Off{}:
       IO.write(view.text(on, x))
     case j:
-      Cli.json.emit(on, j, [x], ["full_name", "forge", "description", "default_branch", "visibility", "stars", "forks", "open_issues", "html_url", "mirror", "original_url"])
+      Cli.json.emit.one(on, j, x, view.fields())
 
 def view.url(+repo: Ctx.Repo) -> String:
   match repo:

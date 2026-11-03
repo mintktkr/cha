@@ -341,6 +341,43 @@ def Laws.pr_ref_path_slash():
 def Laws.pr_ref_dotdot():
   {==}
 
+# Pull requests
+# -------------
+# A number goes through the same digit walk a run id takes, and the states, the path and the
+# merged field are closed text or one match on a closed string, so reflexivity is the whole
+# proof of each. The field list is a literal one and the two --json laws are one wrap of a
+# closed body.
+
+def Laws.pr_number_digits():
+  {==}
+
+def Laws.pr_number_dots():
+  {==}
+
+def Laws.pr_close_state():
+  {==}
+
+def Laws.pr_reopen_state():
+  {==}
+
+def Laws.pr_state_path():
+  {==}
+
+def Laws.pr_merged_at():
+  {==}
+
+def Laws.pr_merged_unset():
+  {==}
+
+def Laws.pr_list_fields():
+  {==}
+
+def Laws.pr_json_view():
+  {==}
+
+def Laws.pr_json_list():
+  {==}
+
 # Packages
 # --------
 

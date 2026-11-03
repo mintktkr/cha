@@ -170,7 +170,7 @@ def fits.of(+lines: List<&2, String>, +cols: U32, +rows: U32) -> Bool:
 
 def groups() -> List<&2, Row>:
   [Row{"issue", "issues: list, view, create, comment, comment-edit, comment-delete, edit, close, reopen, labels", "cha issue list --state open"},
-   Row{"pr", "pull requests: list, view, diff, create, merge, edit, comment, comment-edit, comment-delete, checks", "cha pr list"},
+   Row{"pr", "pull requests: list, view, diff, create, merge, edit, close, reopen, comment, comment-edit, comment-delete, checks", "cha pr list"},
    Row{"runs", "actions: list, view, logs, watch, dispatch, rerun, cancel", "cha runs watch 4142"},
    Row{"repo", "repo: view, labels, label-create, branches, branch-delete, protection, file, tree, create, delete", "cha repo labels"},
    Row{"release", "releases: list, view, latest, create, upload", "cha release latest"},
@@ -190,7 +190,7 @@ def groups() -> List<&2, Row>:
 def global.rows() -> List<&2, Row>:
   [Row{"-R owner/repo", "the repo, on the checkout's host", ""},
    Row{"-R host/owner/repo", "the repo, on any host", ""},
-   Row{"--json [FIELDS]", "machine-readable rows, optionally only FIELDS", ""},
+   Row{"--json [FIELDS]", "machine-readable: an array for a list, one object for a view", ""},
    Row{"--body-file -", "read a body from stdin", ""},
    Row{"NO_COLOR / TERM=dumb", "plain text, no colour", ""},
    Row{"CHA_TOKEN", "a token for any host", ""},
@@ -253,7 +253,7 @@ def issue.flags() -> List<&2, Row>:
    Row{"--with-prs", "list: keep pull requests in the list", ""},
    Row{"--all", "every page, not just the first", ""},
    Row{"--limit N", "list: at most N issues (1-1000)", ""},
-   Row{"--json [FIELDS]", "machine-readable rows, optionally only FIELDS", ""},
+   Row{"--json [FIELDS]", "machine-readable: an array for a list, one object for a view", ""},
    Row{"--comments", "include comments (view)", ""},
    Row{"--title T", "the title", ""},
    Row{"--body B", "the body text", ""},
@@ -284,6 +284,8 @@ def pr.rows() -> List<&2, Row>:
    Row{"create --head H [--base main] --title T [--body B|--body-file F]", "open a pull request", "cha pr create --head kettle --title \"steam\""},
    Row{"merge N [--squash|--merge|--rebase] [--delete-branch]", "merge a pull request", "cha pr merge 7 --squash"},
    Row{"edit N", "edit a pull request", "cha pr edit 7"},
+   Row{"close N [--comment C]", "close a pull request without merging it", "cha pr close 7 --comment \"superseded\""},
+   Row{"reopen N", "reopen a pull request", "cha pr reopen 7"},
    Row{"comment N --body B", "comment on a pull request", "cha pr comment 7 --body \"nice\""},
    Row{"comment-edit ID --body B|--body-file F", "edit a comment in place", "cha pr comment-edit 1337 --body \"nice, and merged\""},
    Row{"comment-delete ID --yes", "delete a comment", "cha pr comment-delete 1337 --yes"},
@@ -293,7 +295,7 @@ def pr.flags() -> List<&2, Row>:
   [Row{"--state open|closed|all", "which pull requests (default open)", ""},
    Row{"--all", "every page, not just the first", ""},
    Row{"--limit N", "list: at most N pull requests (1-1000)", ""},
-   Row{"--json [FIELDS]", "machine-readable rows, optionally only FIELDS", ""},
+   Row{"--json [FIELDS]", "machine-readable: an array for a list, one object for a view", ""},
    Row{"--comments", "include comments (view)", ""},
    Row{"--head H", "the branch with the changes", ""},
    Row{"--base main", "the branch to merge into", ""},
@@ -302,12 +304,14 @@ def pr.flags() -> List<&2, Row>:
    Row{"--body-file F", "the body from a file; - is stdin", ""},
    Row{"--squash / --merge / --rebase", "how to merge", ""},
    Row{"--delete-branch", "delete the head branch after a merge", ""},
+   Row{"--comment C", "close: a comment posted with the close", ""},
    Row{"--yes", "comment-delete: always required; cha never prompts", ""}]
 
 def pr.examples() -> List<&2, String>:
   ["cha pr list --json",
    "cha pr view 7 --comments",
    "cha pr merge 7 --squash --delete-branch",
+   "cha pr close 7 --comment \"superseded\"",
    "cha pr comment-delete 1337"]
 
 def pr.page() -> Page:
@@ -457,7 +461,7 @@ def search.flags() -> List<&2, Row>:
   [Row{"--state open|closed|all", "issues and prs: which state (default all)", ""},
    Row{"--owner O", "search one owner instead of the current repo", ""},
    Row{"--limit N", "results to return (1-1000, default 20)", ""},
-   Row{"--json [FIELDS]", "machine-readable rows, optionally only FIELDS", ""}]
+   Row{"--json [FIELDS]", "machine-readable: an array for a list, one object for a view", ""}]
 
 def search.examples() -> List<&2, String>:
   ["cha search issues kettle",
@@ -718,7 +722,7 @@ def comp.global() -> List<&2, String>:
 
 def comp.groups() -> List<&2, String>:
   ["complete -c cha -n '__cha_needs_command' -a issue -d 'issues: list, view, create, comment, comment-edit, comment-delete, edit, close, reopen, labels'",
-   "complete -c cha -n '__cha_needs_command' -a pr -d 'pull requests: list, view, diff, create, merge, edit, comment, comment-edit, comment-delete, checks'",
+   "complete -c cha -n '__cha_needs_command' -a pr -d 'pull requests: list, view, diff, create, merge, edit, close, reopen, comment, comment-edit, comment-delete, checks'",
    "complete -c cha -n '__cha_needs_command' -a runs -d 'actions: list, view, logs, watch, dispatch, rerun, cancel'",
    "complete -c cha -n '__cha_needs_command' -a repo -d 'repo: view, labels, label-create, branches, branch-delete, protection, file, tree, create, delete'",
    "complete -c cha -n '__cha_needs_command' -a release -d 'releases: list, view, latest, create, upload'",
@@ -782,6 +786,8 @@ def comp.pr() -> List<&2, String>:
    "complete -c cha -n '__cha_sub_command pr' -a create -d 'open a pull request'",
    "complete -c cha -n '__cha_sub_command pr' -a merge -d 'merge a pull request'",
    "complete -c cha -n '__cha_sub_command pr' -a edit -d 'edit a pull request'",
+   "complete -c cha -n '__cha_sub_command pr' -a close -d 'close a pull request without merging it'",
+   "complete -c cha -n '__cha_sub_command pr' -a reopen -d 'reopen a pull request'",
    "complete -c cha -n '__cha_sub_command pr' -a comment -d 'comment on a pull request'",
    "complete -c cha -n '__cha_sub_command pr' -a comment-edit -d 'edit a comment in place'",
    "complete -c cha -n '__cha_sub_command pr' -a comment-delete -d 'delete a comment'",
@@ -804,6 +810,7 @@ def comp.pr() -> List<&2, String>:
    "complete -c cha -n '__cha_using_sub pr comment-edit' -l body -x -d 'the body text'",
    "complete -c cha -n '__cha_using_sub pr comment-edit' -l body-file -r -F -d 'the body from a file; - is stdin'",
    "complete -c cha -n '__cha_using_sub pr comment-delete' -l yes -d 'required to delete'",
+   "complete -c cha -n '__cha_using_sub pr close' -l comment -x -d 'a comment posted with the close'",
    ""]
 
 def comp.runs() -> List<&2, String>:

@@ -385,6 +385,56 @@ law pr_ref_path_slash:
 law pr_ref_dotdot:
   {Pr.gh.ref.path.ok("feature/../main") == False{} : Bool}
 
+# Pull requests
+# -------------
+# A pull request's number reaches a URL path, so it is digits only, the way a run id is.
+# close and reopen differ in one word, the state both forges read on the same PATCH, and a
+# listed pull request carries the merge as merged_at, which a forge sends as null when it
+# did not merge.
+
+# LAW: a number is a pull request number.
+law pr_number_digits:
+  {Pr.number.ok("41") == True{} : Bool}
+
+# LAW: ".." reads as a number under U32.read but is not one, so it is refused before it
+# can reach pulls/<n>.
+law pr_number_dots:
+  {Pr.number.ok("..") == False{} : Bool}
+
+# LAW: close sets the state closed, the one field a pull request's PATCH needs.
+law pr_close_state:
+  {Pr.state.word(True{}) == "closed" : String}
+
+# LAW: reopen sets the state open.
+law pr_reopen_state:
+  {Pr.state.word(False{}) == "open" : String}
+
+# LAW: that state goes to pulls/<number>, the path view reads.
+law pr_state_path:
+  {Pr.state.path("41") == "pulls/41" : String}
+
+# LAW: merged is "true" exactly when merged_at names a merge.
+law pr_merged_at:
+  {Pr.merged.text("2026-11-03T12:00:00Z") == "true" : String}
+
+# LAW: ...and "false" when merged_at is empty, the way a forge that sends null sends it.
+law pr_merged_unset:
+  {Pr.merged.text("") == "false" : String}
+
+# LAW: a listed pull request's --json carries both refs and the merge, so one list maps
+# every branch to its pull request without a view each.
+law pr_list_fields:
+  {Pr.list.fields() == ["number", "title", "state", "merged", "merged_at", "head.ref", "base.ref", "user.login", "html_url"] : List<&2, String>}
+
+# LAW: a command that addresses one object prints the object itself, so its --json opens
+# with { and closes with }, not the one-element array it printed before.
+law pr_json_view:
+  {Cli.json.doc("7", True{}) == "{7}" : String}
+
+# LAW: a list prints an array, so its --json opens with [ and closes with ].
+law pr_json_list:
+  {Cli.json.doc("7", False{}) == "[7]" : String}
+
 # Packages
 # --------
 # A package delete is destructive and cha never prompts, so a pipeline can only delete when

@@ -37,6 +37,13 @@ def tally.text(+t: Pr.Tally) -> String:
     case Pr.Tally{a, c, n}:
       Nat.show(a) ++ "/" ++ Nat.show(c) ++ "/" ++ Nat.show(n)
 
+def first.row(xs: List<&2, Map<&2, String>>) -> Map<&2, String>:
+  match xs:
+    case Nil{}:
+      Map.new(&2, String)
+    case Con{+x, rest}:
+      x
+
 def expect.if(+label: String, +got: String, +want: String, same: Bool) -> IO(Unit):
   match same:
     case True{}:
@@ -61,12 +68,22 @@ def main() -> IO(Unit):
     expect("web.url github", Pr.web.url(github(), "3"), "https://github.com/memu/sandbox/pull/3")
     expect("state.merged closed", Pr.state.merged("closed", True{}), "merged")
     expect("state.merged open", Pr.state.merged("open", False{}), "open")
+    expect("state.word closed", Pr.state.word(True{}), "closed")
+    expect("state.word open", Pr.state.word(False{}), "open")
+    expect("state.path", Pr.state.path("7"), "pulls/7")
+    expect("number.ok digits", y(Pr.number.ok("41")), "true")
+    expect("number.ok dots", y(Pr.number.ok("..")), "false")
     expect("flag.of True", y(Pr.flag.of("True")), "true")
     expect("flag.of False", y(Pr.flag.of("False")), "false")
     expect("flag.of empty", y(Pr.flag.of("")), "false")
-    expect("merged.of flag", y(Pr.merged.of(row.kv("merged", "True"))), "true")
     expect("merged.of at", y(Pr.merged.of(row.kv("merged_at", "2026-01-01"))), "true")
     expect("merged.of none", y(Pr.merged.of(row.kv("title", "x"))), "false")
+    expect("merged.of ignores a bare merged flag, as a github list row has none", y(Pr.merged.of(row.kv("merged", "True"))), "false")
+    expect("merged.text at", Pr.merged.text("2026-11-03T12:00:00Z"), "true")
+    expect("merged.text empty", Pr.merged.text(""), "false")
+    expect("list.fields", String.join(Pr.list.fields(), ","), "number,title,state,merged,merged_at,head.ref,base.ref,user.login,html_url")
+    expect("list.rows fills merged from merged_at", Api.raw.f(first.row(Pr.list.rows([row.kv("merged_at", "2026-11-03T12:00:00Z")])), "merged"), "true")
+    expect("list.rows: an unmerged row is false", Api.raw.f(first.row(Pr.list.rows([row.kv("number", "7")])), "merged"), "false")
     expect("review approved", Nat.show(Pr.review.kind("APPROVED")), "1")
     expect("review changes", Nat.show(Pr.review.kind("CHANGES_REQUESTED")), "2")
     expect("review request changes", Nat.show(Pr.review.kind("REQUEST_CHANGES")), "2")
@@ -83,7 +100,7 @@ def main() -> IO(Unit):
     expect("merge.stop merged with no commit", Pr.merge.stop.text("3", "", Pr.merge.kind(True{}, True{})), "pr merge: #3 is already merged")
     expect("merge.stop closed", Pr.merge.stop.text("3", "abcdef1", Pr.merge.kind(True{}, False{})), "pr merge: #3 is closed")
     expect("merge.stop open", Pr.merge.stop.text("3", "", Pr.merge.kind(False{}, False{})), "")
-    expect("pull.guard.msg", Pr.pull.guard.msg("1"), "pr comment: #1 is not a pull request (an issue, or no such number)")
+    expect("pull.guard.msg", Pr.pull.guard.msg("pr comment", "1"), "pr comment: #1 is not a pull request (an issue, or no such number)")
     expect("mergeable yes", Pr.mergeable.line(False{}, "True"), "mergeable")
     expect("mergeable no", Pr.mergeable.line(False{}, "False"), "conflicts")
     expect("mergeable unknown", Pr.mergeable.line(False{}, ""), "mergeable: ?")
@@ -93,6 +110,7 @@ def main() -> IO(Unit):
     expect("diff.url github", Pr.diff.url(Pr.forge.of(github()), "3"), "pulls/3")
     expect("diff.accept gitea", Pr.diff.accept(Pr.forge.of(gitea())), "text/plain")
     expect("diff.accept github", Pr.diff.accept(Pr.forge.of(github())), "application/vnd.github.diff")
+    expect("comment.path", Pr.comment.path("3"), "issues/3/comments")
     expect("comment.url gitea", Pr.comment.url(Pr.forge.of(gitea()), "3"), "issues/3/comments?limit=50")
     expect("comment.url github", Pr.comment.url(Pr.forge.of(github()), "3"), "issues/3/comments?per_page=100")
     expect("check.bad failure", y(Pr.check.bad("failure")), "true")
@@ -110,8 +128,12 @@ def main() -> IO(Unit):
     expect("check.walk", lines.of(Pr.check.walk(2n, statuses(), "statuses", "tea.example.org", Pr.Gitea{}, 0, Nil{})), "ci / hello|success|https://tea.example.org/runs/1\nci / sad|failure|https://tea.example.org/runs/2\n")
     expect("checks.bads", Nat.show(Pr.checks.bads(Pr.check.walk(2n, statuses(), "statuses", "tea.example.org", Pr.Gitea{}, 0, Nil{}))), "1")
     expect("comment.lines names each comment's id", Pr.comment.lines(False{}, [comment.row()]), "@memu  2026-10-01T12:00:00Z  id 1337\nhello\n\n")
-    expect("kind.of comment-edit", Nat.show(Pr.kind.of(False{}, "comment-edit")), "7")
-    expect("kind.of comment-delete", Nat.show(Pr.kind.of(False{}, "comment-delete")), "8")
-    expect("kind.of checks still follows the comment commands", Nat.show(Pr.kind.of(False{}, "checks")), "9")
+    expect("kind.of close", Nat.show(Pr.kind.of(False{}, "close")), "6")
+    expect("kind.of reopen", Nat.show(Pr.kind.of(False{}, "reopen")), "7")
+    expect("kind.of comment-edit", Nat.show(Pr.kind.of(False{}, "comment-edit")), "9")
+    expect("kind.of comment-delete", Nat.show(Pr.kind.of(False{}, "comment-delete")), "10")
+    expect("kind.of checks still follows the comment commands", Nat.show(Pr.kind.of(False{}, "checks")), "11")
     expect("comment-delete takes --yes", String.join(Cli.unknown(Pr.comment.delete.flags(), ["--yes", "1337"]), ","), "")
+    expect("close takes --comment", String.join(Cli.unknown(Pr.close.flags(), ["7", "--comment", "superseded"]), ","), "")
+    expect("close takes nothing else", String.join(Cli.unknown(Pr.close.flags(), ["7", "--yes"]), ","), "--yes")
     expect("comment-edit takes --body", String.join(Cli.unknown(Pr.comment.edit.flags(), ["--body", "x"]), ","), "")
