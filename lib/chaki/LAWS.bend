@@ -45,6 +45,12 @@ law bytes_len_rev:
   for +b: List<&2, U32>
   {Bytes.len(Bytes.rev(b)) == Bytes.len(b) : U32}
 
+# LAW: reversing a concatenation is the concatenation of the reversals, in the other order.
+law bytes_rev_cat:
+  for +a: List<&2, U32>
+  for +b: List<&2, U32>
+  {Bytes.rev(Bytes.cat(a, b)) == Bytes.cat(Bytes.rev(b), Bytes.rev(a)) : List<&2, U32>}
+
 # LAW: hex text that parsed to bytes survives being written back out and parsed again.
 law bytes_hex_round_trip:
   {Bytes.of_hex(Bytes.to_hex(Bytes.of_hex("00 01 7f 80 ff fe 0d 0a"))) == Bytes.of_hex("00017f80fffe0d0a") : List<&2, U32>}

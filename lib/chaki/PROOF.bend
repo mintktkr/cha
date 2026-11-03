@@ -90,6 +90,20 @@ def enc.rev_rev_go(xs: List<&2, U32>, +acc: List<&2, U32>) -> {Bytes.rev(Bytes.r
 def Laws.bytes_rev_rev(b):
   enc.rev_rev_go(b, Nil{})
 
+# cat is rev.onto with a reversed head, so rev_rev_go already says what reversing it gives
+
+def enc.rev_cat(a: List<&2, U32>, +b: List<&2, U32>) -> {Bytes.rev(Bytes.cat(a, b)) == enc.app(Bytes.rev(b), Bytes.rev(a)) : List<&2, U32>}:
+  enc.rev_rev_go(Bytes.rev(a), b)
+
+# cat of a reversed string is that string appended: the head's own reversal is undone first
+
+def enc.app_cat_rev(+x: List<&2, U32>, +y: List<&2, U32>) -> {enc.app(Bytes.rev(x), y) == Bytes.cat(Bytes.rev(x), y) : List<&2, U32>}:
+  %Equal.sym(List<&2, U32>, Bytes.rev(Bytes.rev(x)), x, Laws.bytes_rev_rev(x)) : {enc.app(Bytes.rev(x), y) == Bytes.rev.onto(_, y) : List<&2, U32>}
+  Equal.sym(List<&2, U32>, Bytes.rev.onto(x, y), enc.app(Bytes.rev(x), y), enc.rev_onto_app(x, y))
+
+def Laws.bytes_rev_cat(a, b):
+  Equal.trans(List<&2, U32>, Bytes.rev(Bytes.cat(a, b)), enc.app(Bytes.rev(b), Bytes.rev(a)), Bytes.cat(Bytes.rev(b), Bytes.rev(a)), enc.rev_cat(a, b), enc.app_cat_rev(b, Bytes.rev(a)))
+
 # counting one late is counting one early: the length of a list, added on after the count,
 # is the length counted from one more
 
