@@ -707,7 +707,7 @@ def http1.refuse.head(b: Bool, c: U32, q: String, acc: List<&2, U32>, e: {True{}
     case True{}:
       http1.msticky(q, U32.and(c, 255) <> acc)
     case False{}:
-      %e : {Http1.req.bytes.m(Http1.req.bytes.go(q, U32.and(c, 255) <> acc, _)) == None{} : Maybe<&2, List<&2, U32>>}
+      %e : {Http1.req.bytes.m(Http1.req.bytes.go(q, U32.and(c, 255) <> acc, Bool.or(_, U32.is_gt(c, 255)))) == None{} : Maybe<&2, List<&2, U32>>}
       http1.msticky(q, U32.and(c, 255) <> acc)
 
 # a control byte after p: the induction is on p, and the flag it leaves is True
@@ -716,7 +716,7 @@ def http1.refuse.at(p: String, c: U32, q: String, acc: List<&2, U32>, b: Bool, e
     case SNil{}:
       http1.refuse.head(b, c, q, acc, e)
     case SCon{Chr{+h}, t}:
-      http1.refuse.at(t, c, q, U32.and(h, 255) <> acc, Bool.or(b, Http1.ctl.ch(h)), e)
+      http1.refuse.at(t, c, q, U32.and(h, 255) <> acc, Bool.or(b, Bool.or(Http1.ctl.ch(h), U32.is_gt(h, 255))), e)
 
 # a string holding a control byte is not a target, a host or a header value
 def http1.refuse(p: String, c: U32, q: String, e: {True{} == Http1.ctl.ch(c) : Bool}) -> {Http1.req.bytes(String.append(p, SCon{Chr{c}, q})) == None{} : Maybe<&2, List<&2, U32>>}:
@@ -764,7 +764,7 @@ def http1.pair.cr.at(p: String, q: String, acc: List<&2, U32>, b: Bool) -> {Http
     case SNil{}:
       http1.pair.cr(b, q, acc)
     case SCon{Chr{+h}, t}:
-      http1.pair.cr.at(t, q, U32.and(h, 255) <> acc, Bool.or(b, Http1.ctl.ch(h)))
+      http1.pair.cr.at(t, q, U32.and(h, 255) <> acc, Bool.or(b, Bool.or(Http1.ctl.ch(h), U32.is_gt(h, 255))))
 
 # the same, for a LF
 def http1.pair.lf.at(p: String, q: String, acc: List<&2, U32>, b: Bool) -> {Http1.req.bytes.go(String.append(p, SCon{Chr{10}, q}), acc, b) == (http1.fst(Http1.req.bytes.go(String.append(p, SCon{Chr{10}, q}), acc, b)), True{}) : List<&2, U32> & Bool}:
@@ -772,7 +772,7 @@ def http1.pair.lf.at(p: String, q: String, acc: List<&2, U32>, b: Bool) -> {Http
     case SNil{}:
       http1.pair.lf(b, q, acc)
     case SCon{Chr{+h}, t}:
-      http1.pair.lf.at(t, q, U32.and(h, 255) <> acc, Bool.or(b, Http1.ctl.ch(h)))
+      http1.pair.lf.at(t, q, U32.and(h, 255) <> acc, Bool.or(b, Bool.or(Http1.ctl.ch(h), U32.is_gt(h, 255))))
 
 # a value holding a CR: req.field reads the pair, and the flag there is what refuses the line
 def http1.value.cr(p: String, q: String) -> {Http1.request("GET", "example.com", "/x", [("x", String.append(p, SCon{Chr{13}, q}))], Nil{}) == None{} : Maybe<&2, List<&2, U32>>}:

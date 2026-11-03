@@ -281,13 +281,14 @@ def req.token(s: String) -> Maybe<&2, List<&2, U32>>:
   req.token.go(Bytes.of_ascii(s), 2, Nil{})
 
 # the bytes of a target, a host, or a header name or value, and whether it holds CR, LF or
-# NUL: those bytes would cut the request line or start a header of someone else's choosing
+# NUL: those bytes would cut the request line or start a header of someone else's choosing.
+# A character past one byte is refused too, since only its low byte would be written.
 def req.bytes.go(s: String, acc: List<&2, U32>, bad: Bool) -> List<&2, U32> & Bool:
   match s:
     case SNil{}:
       (Bytes.rev(acc), bad)
     case SCon{Chr{+c}, t}:
-      req.bytes.go(t, U32.and(c, 255) <> acc, Bool.or(bad, ctl.ch(c)))
+      req.bytes.go(t, U32.and(c, 255) <> acc, Bool.or(bad, Bool.or(ctl.ch(c), U32.is_gt(c, 255))))
 
 def req.bytes.ok(b: List<&2, U32>, bad: Bool) -> Maybe<&2, List<&2, U32>>:
   match bad:

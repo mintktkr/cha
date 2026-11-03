@@ -262,6 +262,7 @@ def main() -> IO(Unit):
     IO.print(T.eq("request PUT with an empty body", req.show(H.request("PUT", "example.com", "/x", Nil{}, Nil{})), "505554202f7820485454502f312e310d0a486f73743a206578616d706c652e636f6d0d0a436f6e74656e742d4c656e6774683a20300d0a436f6e6e656374696f6e3a20636c6f73650d0a0d0a"))
     IO.print(T.eq("request GET with a body", req.show(H.request("GET", "h", "/x", Nil{}, Bytes.of_ascii("hi"))), "474554202f7820485454502f312e310d0a486f73743a20680d0a436f6e74656e742d4c656e6774683a20320d0a436f6e6e656374696f6e3a20636c6f73650d0a0d0a6869"))
     IO.print(T.eq("request header value with CRLF", req.show(H.request("GET", "example.com", "/x", [("x", "a\r\nb")], Nil{})), "none"))
+    IO.print(T.eq("request header value with a character past one byte", req.show(H.request("GET", "example.com", "/x", [("x", "a\u{10d}b")], Nil{})), "none"))
     IO.print(T.eq("request header name with CRLF", req.show(H.request("GET", "example.com", "/x", [("a\r\nb", "v")], Nil{})), "none"))
     IO.print(T.eq("request method that isn't a token", req.show(H.request("GE T", "example.com", "/x", Nil{}, Nil{})), "none"))
     IO.print(T.eq("request target with LF", req.show(H.request("GET", "example.com", "/x\nHost: evil", Nil{}, Nil{})), "none"))
