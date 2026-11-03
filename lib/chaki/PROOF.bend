@@ -231,6 +231,21 @@ def Laws.b64_reject_non_ascii():
 def Laws.b64_reject_pad_bits():
   {==}
 
+# a newline ends whatever line was open, and finishing a splitter whose line just ended is
+# finishing it as it was, so the last line lands in the same place
+
+def enc.lines_newline_go(s: String, +st: B64.Split) -> {B64.lines.rev(B64.split.walk(String.append(s, "\n"), st)) == B64.lines.rev(B64.split.walk(s, st)) : List<&2, String>}:
+  match s:
+    case SNil{}:
+      match st:
+        case B64.Split{cur, spare, acc}:
+          {==}
+    case SCon{Chr{+c}, +t}:
+      enc.lines_newline_go(t, B64.split.step(st, B64.cls(c), c))
+
+def Laws.b64_lines_newline(s):
+  enc.lines_newline_go(s, B64.Split{SNil{}, SNil{}, Nil{}})
+
 def Laws.b64_pem_block():
   {==}
 

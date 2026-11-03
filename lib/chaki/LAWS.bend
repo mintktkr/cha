@@ -219,6 +219,12 @@ law b64_decode_leading_newline:
   for +s: String
   {B64.decode(String.append("\n", s)) == B64.decode(s) : Maybe<&2, List<&2, U32>>}
 
+# LAW: a trailing newline adds no line, so the text a PEM block is scanned from is the same
+# either way.
+law b64_lines_newline:
+  for +s: String
+  {B64.lines(String.append(s, "\n")) == B64.lines(s) : List<&2, String>}
+
 # LAW: a well-formed PEM block's body is found and decoded, whatever sits around it.
 law b64_pem_block:
   {B64.pem("junk\n-----BEGIN CERTIFICATE-----\nZm9v\nYmFy\n-----END CERTIFICATE-----\njunk\n", "CERTIFICATE") == [Bytes.of_ascii("foobar")] : List<&2, List<&2, U32>>}
