@@ -1001,6 +1001,137 @@ law x25519_clamp_bytes:
 
 # big, rsa, ecdsa [pk]
 # --------------------
+# big and the two signature schemes are checked on known answers, not over every input.
+# Bend's U32 is a bit-vector and Base carries no arithmetic lemmas for it, so a law over
+# every limb list stops at the first symbolic comparison or division. The numbers below are
+# the word boundaries a carry, a borrow or a squaring crosses, and one 2048-bit modulus.
+# rsa and ecdsa are checked where they decide on their own inputs, before any public-key
+# operation is worth starting: a length, a range, an exponent, a key's shape, and the whole
+# encoded message that PKCS#1 v1.5 rebuilds from the hash and compares byte for byte.
+# A law that needs a 2048-bit modexp or a P-256 double-and-add is out of reach: minutes at
+# check time, and the kernel recheck runs out of fuel on it.
+
+# LAW: reading the bytes a 2048-bit number was written to gives that number back.
+law big_of_bytes_to_bytes:
+  {Big.of_bytes(Big.to_bytes(Big.of_bytes(Bytes.of_hex("ABBF9B281BCE15A774CEEC1D1251D44BEE242F3D6A3F23F6F3996F5122C6B3086E0E274C56EA567A8A0AB07CD210CC8E73437930845E4FA6FA240D963A136F009C0C0717B23AD7AB23EC8401DAB34F90BA18AEC8BCF787D7E4D950ED2F8AFDEA558255F6EB60BC385839CC0E8D02577D88DC274BF2219332E492D0DBB0E02248E85A81EB4BD497066ADEF39568957CA78D661359879C17959B8D50863ABB517C891EBEF102DCE1313B2EA87CCFD6D9B8CB848830ED84F8161D4EDFE9251228DFF0EF6380022D1F3B565FBFE5766970EA13BAE84B484E7D887B97002A5A205E4ACA2628AD7893A8BC32CB5C090E8924FDFEB371E366E38E7163643C524FA89C43")), 256)) == Big.of_bytes(Bytes.of_hex("ABBF9B281BCE15A774CEEC1D1251D44BEE242F3D6A3F23F6F3996F5122C6B3086E0E274C56EA567A8A0AB07CD210CC8E73437930845E4FA6FA240D963A136F009C0C0717B23AD7AB23EC8401DAB34F90BA18AEC8BCF787D7E4D950ED2F8AFDEA558255F6EB60BC385839CC0E8D02577D88DC274BF2219332E492D0DBB0E02248E85A81EB4BD497066ADEF39568957CA78D661359879C17959B8D50863ABB517C891EBEF102DCE1313B2EA87CCFD6D9B8CB848830ED84F8161D4EDFE9251228DFF0EF6380022D1F3B565FBFE5766970EA13BAE84B484E7D887B97002A5A205E4ACA2628AD7893A8BC32CB5C090E8924FDFEB371E366E38E7163643C524FA89C43")) : List<&2, U32>}
+
+# LAW: 2^31 - 1 plus one carries out of the limb: it is 2^31.
+law big_add_word_31:
+  {Big.add(Big.of_bytes(Bytes.of_hex("7fffffff")), Big.of_bytes(Bytes.of_hex("01"))) == Big.of_u32(2147483648) : List<&2, U32>}
+
+# LAW: taking one from 2^62 borrows through three zero limbs: it is 2^62 - 1.
+law big_sub_word_62:
+  {Big.sub(Big.of_bytes(Bytes.of_hex("4000000000000000")), Big.of_bytes(Bytes.of_hex("01"))) == Big.of_bytes(Bytes.of_hex("3fffffffffffffff")) : List<&2, U32>}
+
+# LAW: 2^31 - 1 squared is 2^62 - 2^32 + 1.
+law big_mul_word_31:
+  {Big.mul(Big.of_bytes(Bytes.of_hex("7fffffff")), Big.of_bytes(Bytes.of_hex("7fffffff"))) == Big.of_bytes(Bytes.of_hex("3fffffff00000001")) : List<&2, U32>}
+
+# LAW: 2^62 leaves 1 modulo 2^31 - 1, since 2^31 is 1 modulo 2^31 - 1.
+law big_mod_word_31:
+  {Big.mod(Big.of_bytes(Bytes.of_hex("4000000000000000")), Big.of_bytes(Bytes.of_hex("7fffffff"))) == Big.of_u32(1) : List<&2, U32>}
+
+# LAW: 2^31 minus one is 2^31 - 1.
+law big_sub_word_31:
+  {Big.sub(Big.of_bytes(Bytes.of_hex("80000000")), Big.of_bytes(Bytes.of_hex("01"))) == Big.of_bytes(Bytes.of_hex("7fffffff")) : List<&2, U32>}
+
+# LAW: subtracting below zero gives zero, not a wrapped borrow.
+law big_sub_below_zero:
+  {Big.sub(Big.of_bytes(Bytes.of_hex("01")), Big.of_bytes(Bytes.of_hex("02"))) == Nil{} : List<&2, U32>}
+
+# LAW: a number modulo zero is itself, so a broken modulus leaves the number alone instead
+# of answering zero.
+law big_mod_by_zero:
+  {Big.mod(Big.of_bytes(Bytes.of_hex("0102")), Nil{}) == Big.of_u32(258) : List<&2, U32>}
+
+# LAW: comparison puts 2^31 - 1 below 2^31, so the carry really made the larger number.
+law big_cmp_word_31:
+  {Big.cmp(Big.of_bytes(Bytes.of_hex("7fffffff")), Big.of_bytes(Bytes.of_hex("80000000"))) == LT{} : Cmp}
+
+# LAW: a 2048-bit modulus measures 2048 bits, which is the floor key.ok holds a certificate
+# key to.
+law rsa_mod_bits_2048:
+  {Rsa.mod.bits(Bytes.of_hex("ABBF9B281BCE15A774CEEC1D1251D44BEE242F3D6A3F23F6F3996F5122C6B3086E0E274C56EA567A8A0AB07CD210CC8E73437930845E4FA6FA240D963A136F009C0C0717B23AD7AB23EC8401DAB34F90BA18AEC8BCF787D7E4D950ED2F8AFDEA558255F6EB60BC385839CC0E8D02577D88DC274BF2219332E492D0DBB0E02248E85A81EB4BD497066ADEF39568957CA78D661359879C17959B8D50863ABB517C891EBEF102DCE1313B2EA87CCFD6D9B8CB848830ED84F8161D4EDFE9251228DFF0EF6380022D1F3B565FBFE5766970EA13BAE84B484E7D887B97002A5A205E4ACA2628AD7893A8BC32CB5C090E8924FDFEB371E366E38E7163643C524FA89C43")) == 2048 : U32}
+
+# LAW: an even public exponent is refused: it shares a factor with the modulus.
+law rsa_refuses_even_exponent:
+  {Rsa.exp.rule(Bytes.of_hex("010002")) == False{} : Bool}
+
+# LAW: an exponent of 1 is refused: it would make every signature the message.
+law rsa_refuses_exponent_one:
+  {Rsa.exp.rule(Bytes.of_hex("01")) == False{} : Bool}
+
+# LAW: 65537, the exponent every real RSA key uses, is accepted.
+law rsa_accepts_exponent_65537:
+  {Rsa.exp.rule(Bytes.of_hex("010001")) == True{} : Bool}
+
+# LAW: a PKCS#1 v1.5 signature shorter than the modulus is refused.
+law rsa_pkcs1_refuses_short_signature:
+  {Rsa.pkcs1(Sha2.S256{}, Bytes.of_hex("ABBF9B281BCE15A774CEEC1D1251D44BEE242F3D6A3F23F6F3996F5122C6B3086E0E274C56EA567A8A0AB07CD210CC8E73437930845E4FA6FA240D963A136F009C0C0717B23AD7AB23EC8401DAB34F90BA18AEC8BCF787D7E4D950ED2F8AFDEA558255F6EB60BC385839CC0E8D02577D88DC274BF2219332E492D0DBB0E02248E85A81EB4BD497066ADEF39568957CA78D661359879C17959B8D50863ABB517C891EBEF102DCE1313B2EA87CCFD6D9B8CB848830ED84F8161D4EDFE9251228DFF0EF6380022D1F3B565FBFE5766970EA13BAE84B484E7D887B97002A5A205E4ACA2628AD7893A8BC32CB5C090E8924FDFEB371E366E38E7163643C524FA89C43"), Bytes.of_hex("010001"), Bytes.of_ascii("chaki rsa check\n"), Bytes.of_hex("00")) == False{} : Bool}
+
+# LAW: a PKCS#1 v1.5 signature that is not smaller than the modulus is refused.
+law rsa_pkcs1_refuses_signature_at_modulus:
+  {Rsa.pkcs1(Sha2.S256{}, Bytes.of_hex("ABBF9B281BCE15A774CEEC1D1251D44BEE242F3D6A3F23F6F3996F5122C6B3086E0E274C56EA567A8A0AB07CD210CC8E73437930845E4FA6FA240D963A136F009C0C0717B23AD7AB23EC8401DAB34F90BA18AEC8BCF787D7E4D950ED2F8AFDEA558255F6EB60BC385839CC0E8D02577D88DC274BF2219332E492D0DBB0E02248E85A81EB4BD497066ADEF39568957CA78D661359879C17959B8D50863ABB517C891EBEF102DCE1313B2EA87CCFD6D9B8CB848830ED84F8161D4EDFE9251228DFF0EF6380022D1F3B565FBFE5766970EA13BAE84B484E7D887B97002A5A205E4ACA2628AD7893A8BC32CB5C090E8924FDFEB371E366E38E7163643C524FA89C43"), Bytes.of_hex("010001"), Bytes.of_ascii("chaki rsa check\n"), Bytes.of_hex("ABBF9B281BCE15A774CEEC1D1251D44BEE242F3D6A3F23F6F3996F5122C6B3086E0E274C56EA567A8A0AB07CD210CC8E73437930845E4FA6FA240D963A136F009C0C0717B23AD7AB23EC8401DAB34F90BA18AEC8BCF787D7E4D950ED2F8AFDEA558255F6EB60BC385839CC0E8D02577D88DC274BF2219332E492D0DBB0E02248E85A81EB4BD497066ADEF39568957CA78D661359879C17959B8D50863ABB517C891EBEF102DCE1313B2EA87CCFD6D9B8CB848830ED84F8161D4EDFE9251228DFF0EF6380022D1F3B565FBFE5766970EA13BAE84B484E7D887B97002A5A205E4ACA2628AD7893A8BC32CB5C090E8924FDFEB371E366E38E7163643C524FA89C43")) == False{} : Bool}
+
+# Two laws stand in for a whole verification, which no check can afford at 2048 bits: 7^3 mod
+# 1013 is 343, so the representative is 0157, and verify.if is the comparison the scheme
+# ends on. The modulus is small here; the shape of the decision is the same one RSAVP1's
+# answer goes through at any length.
+
+# LAW: verification accepts a representative that is exactly the encoding it rebuilt.
+law rsa_verify_accepts_exact_encoding:
+  {Rsa.verify.if(True{}, Bytes.of_hex("03f5"), Bytes.of_hex("03"), Bytes.of_hex("07"), Bytes.of_hex("0157")) == True{} : Bool}
+
+# LAW: verification refuses that representative with one byte of the encoding changed, so a
+# signature is never accepted on a near miss.
+law rsa_verify_refuses_changed_encoding:
+  {Rsa.verify.if(True{}, Bytes.of_hex("03f5"), Bytes.of_hex("03"), Bytes.of_hex("07"), Bytes.of_hex("0156")) == False{} : Bool}
+
+# LAW: the encoded message PKCS#1 v1.5 verification rebuilds is exactly RFC 8017 9.2's for
+# the SHA-256 digest of that message: 00, 01, 202 octets of 0xff, 00, the SHA-256
+# DigestInfo and the digest. Anything else in the signature's representative — a different
+# DigestInfo, a shorter run of 0xff, one padding byte that is not 0xff — misses the compare
+# of the whole encoding, which is what keeps Bleichenbacher's forgeries out.
+law rsa_pkcs1_encoding_is_rfc8017:
+  {Rsa.pkcs1.em(Sha2.S256{}, Bytes.of_hex("ABBF9B281BCE15A774CEEC1D1251D44BEE242F3D6A3F23F6F3996F5122C6B3086E0E274C56EA567A8A0AB07CD210CC8E73437930845E4FA6FA240D963A136F009C0C0717B23AD7AB23EC8401DAB34F90BA18AEC8BCF787D7E4D950ED2F8AFDEA558255F6EB60BC385839CC0E8D02577D88DC274BF2219332E492D0DBB0E02248E85A81EB4BD497066ADEF39568957CA78D661359879C17959B8D50863ABB517C891EBEF102DCE1313B2EA87CCFD6D9B8CB848830ED84F8161D4EDFE9251228DFF0EF6380022D1F3B565FBFE5766970EA13BAE84B484E7D887B97002A5A205E4ACA2628AD7893A8BC32CB5C090E8924FDFEB371E366E38E7163643C524FA89C43"), Bytes.of_ascii("chaki rsa check\n")) == Bytes.of_hex("0001ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff003031300d060960864801650304020105000420aac9b79268cc6d4070d329ba4d5ea8c8bc40446d33be262f088cad2dcebd906f") : List<&2, U32>}
+
+# LAW: MGF1 with SHA-256 is the SHA-256 of the seed and a big-endian counter from zero
+# (RFC 8017 B.2.1), which is the mask PSS unmasks DB with.
+law rsa_mgf1_sha256:
+  {Rsa.mgf1(Sha2.S256{}, Bytes.of_ascii("chaki"), 32) == Bytes.of_hex("a027ba00ffecb8c10a1d6419aa87ac76337e1a54a131cf87e065ecc598c09a5d") : List<&2, U32>}
+
+# LAW: a PSS signature shorter than the modulus is refused.
+law rsa_pss_refuses_short_signature:
+  {Rsa.pss(Sha2.S256{}, Bytes.of_hex("ABBF9B281BCE15A774CEEC1D1251D44BEE242F3D6A3F23F6F3996F5122C6B3086E0E274C56EA567A8A0AB07CD210CC8E73437930845E4FA6FA240D963A136F009C0C0717B23AD7AB23EC8401DAB34F90BA18AEC8BCF787D7E4D950ED2F8AFDEA558255F6EB60BC385839CC0E8D02577D88DC274BF2219332E492D0DBB0E02248E85A81EB4BD497066ADEF39568957CA78D661359879C17959B8D50863ABB517C891EBEF102DCE1313B2EA87CCFD6D9B8CB848830ED84F8161D4EDFE9251228DFF0EF6380022D1F3B565FBFE5766970EA13BAE84B484E7D887B97002A5A205E4ACA2628AD7893A8BC32CB5C090E8924FDFEB371E366E38E7163643C524FA89C43"), Bytes.of_hex("010001"), Bytes.of_ascii("chaki rsa check\n"), Bytes.of_hex("00")) == False{} : Bool}
+
+# LAW: PSS encodes into modBits - 1 bits, so a 2047-bit modulus still fills 256 octets.
+law rsa_pss_emlen_2047:
+  {Rsa.pss.emlen(2047) == 256 : U32}
+
+# LAW: a signature value of zero is refused, so neither r nor s may be 0.
+law ecdsa_refuses_zero_r:
+  {Ecdsa.range.ok(Big.of_bytes(Bytes.of_hex("FFFFFFFF00000000FFFFFFFFFFFFFFFFBCE6FAADA7179E84F3B9CAC2FC632551")), Nil{}) == False{} : Bool}
+
+# LAW: a signature value equal to the group order is refused, so both r and s stay below n.
+law ecdsa_refuses_value_at_order:
+  {Ecdsa.range.ok(Big.of_bytes(Bytes.of_hex("FFFFFFFF00000000FFFFFFFFFFFFFFFFBCE6FAADA7179E84F3B9CAC2FC632551")), Big.of_bytes(Bytes.of_hex("FFFFFFFF00000000FFFFFFFFFFFFFFFFBCE6FAADA7179E84F3B9CAC2FC632551"))) == False{} : Bool}
+
+# LAW: the r of RFC 6979 A.2.5's P-256 vector passes the range rule, so it is not refusing
+# every value.
+law ecdsa_accepts_rfc6979_r:
+  {Ecdsa.range.ok(Big.of_bytes(Bytes.of_hex("FFFFFFFF00000000FFFFFFFFFFFFFFFFBCE6FAADA7179E84F3B9CAC2FC632551")), Big.of_bytes(Bytes.of_hex("EFD48B2AACB6A8FD1140DD9CD45E81D69D2C877B56AAF991C34D0EA84EAF3716"))) == True{} : Bool}
+
+# LAW: a public key coordinate that is not below the field prime is refused.
+law ecdsa_refuses_coordinate_at_p:
+  {Ecdsa.coord.ok(Big.of_bytes(Bytes.of_hex("ffffffff00000001000000000000000000000000ffffffffffffffffffffffff")), Big.of_bytes(Bytes.of_hex("ffffffff00000001000000000000000000000000ffffffffffffffffffffffff"))) == False{} : Bool}
+
+# LAW: an uncompressed key that stops after x, with no y, is refused.
+law ecdsa_refuses_key_missing_y:
+  {Ecdsa.pub.split(Bytes.of_hex("0460FED4BA255A9D31C961EB74C6356D68C049B8923B61FA6CE669622E60F29FB6"), 32) == None{} : Maybe<&2, X509.Two()>}
+
+# LAW: a compressed key, which starts 02 rather than 04, is refused.
+law ecdsa_refuses_compressed_key:
+  {Ecdsa.pub.split(Bytes.of_hex("0260FED4BA255A9D31C961EB74C6356D68C049B8923B61FA6CE669622E60F29FB67903FE1008B8BC99A41AE9E95628BC64F2F1B20C2D7E9F5177A3C294D4462299"), 32) == None{} : Maybe<&2, X509.Two()>}
 
 # end pk
 

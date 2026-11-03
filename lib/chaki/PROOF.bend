@@ -973,6 +973,90 @@ def Laws.x25519_clamp_bytes(b0, mid, last):
 
 # big, rsa, ecdsa [pk]
 # --------------------
+# Every law here is a closed known answer, so each proof is reflexivity: the checker
+# computes both sides at check time and they are the same term. Nothing is case analysed
+# or inducted on, and no proof leans on a def that is not pure.
+
+def Laws.big_of_bytes_to_bytes():
+  {==}
+
+def Laws.big_add_word_31():
+  {==}
+
+def Laws.big_sub_word_62():
+  {==}
+
+def Laws.big_mul_word_31():
+  {==}
+
+def Laws.big_mod_word_31():
+  {==}
+
+def Laws.big_sub_word_31():
+  {==}
+
+def Laws.big_sub_below_zero():
+  {==}
+
+def Laws.big_mod_by_zero():
+  {==}
+
+def Laws.big_cmp_word_31():
+  {==}
+
+def Laws.rsa_mod_bits_2048():
+  {==}
+
+def Laws.rsa_refuses_even_exponent():
+  {==}
+
+def Laws.rsa_refuses_exponent_one():
+  {==}
+
+def Laws.rsa_accepts_exponent_65537():
+  {==}
+
+def Laws.rsa_pkcs1_refuses_short_signature():
+  {==}
+
+def Laws.rsa_pkcs1_refuses_signature_at_modulus():
+  {==}
+
+def Laws.rsa_verify_accepts_exact_encoding():
+  {==}
+
+def Laws.rsa_verify_refuses_changed_encoding():
+  {==}
+
+def Laws.rsa_pkcs1_encoding_is_rfc8017():
+  {==}
+
+def Laws.rsa_mgf1_sha256():
+  {==}
+
+def Laws.rsa_pss_refuses_short_signature():
+  {==}
+
+def Laws.rsa_pss_emlen_2047():
+  {==}
+
+def Laws.ecdsa_refuses_zero_r():
+  {==}
+
+def Laws.ecdsa_refuses_value_at_order():
+  {==}
+
+def Laws.ecdsa_accepts_rfc6979_r():
+  {==}
+
+def Laws.ecdsa_refuses_coordinate_at_p():
+  {==}
+
+def Laws.ecdsa_refuses_key_missing_y():
+  {==}
+
+def Laws.ecdsa_refuses_compressed_key():
+  {==}
 
 # end pk
 
