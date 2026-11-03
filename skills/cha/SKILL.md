@@ -121,6 +121,7 @@ cha completions fish
 ## Runs output and filters
 
 - `runs view --json` is one array: a `kind: "run"` row followed by `kind: "job"` rows. Job rows include `runner_name`, timestamps, `duration` in seconds, and `steps.#` / `steps.N.*` flat string fields. Missing timestamps and durations are empty strings.
+- Forgejo names a run's conclusion in its `status` field (`success`, `failure`, `cancelled`, `skipped`) and sends no `conclusion`; Gitea and GitHub say `completed` and send the conclusion beside it. cha reads the pair the same way on all three, so a finished run on Codeberg reads as finished, and `runs watch` ends there.
 - Run rows include `updated_at`, `completed_at`, `duration` and `attempt`. Only GitHub counts attempts and sends `run_attempt`, so `attempt` is empty on Gitea and Forgejo. `runs view` appends `attempt N` to its header when N is above 1.
 - `runs list --workflow` matches an exact filename, path or display name. Filtering follows pages until `--limit` matches (default 20, range 1–1000), with a 100-page safety cap. A display name resolves first through the workflows the forge lists now, on Gitea and GitHub alike; a name that matches no workflow exits 1 with the names it found, and a filename is used as given, for renamed or removed workflows.
 - When `head_branch` is absent, the branch column falls back to the workflow ref. Tags and pull-request refs retain their `refs/tags/` or `refs/pull/` prefix.

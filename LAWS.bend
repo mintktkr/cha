@@ -309,8 +309,9 @@ law runs_id_empty:
 # A watch follows a run for as long as it takes, so a poll that never reached the forge says
 # nothing about the run: it is retried on the next tick, and only five failed polls in a row
 # end the watch. Giving up exits with a code of its own, so a script that gates on a watch
-# can tell "couldn't see the run" from "the run failed". A rerun builds one endpoint per
-# forge and mode, and a job id reaches it only as digits.
+# can tell "couldn't see the run" from "the run failed". A run ends where its status says
+# so, on every forge. A rerun builds one endpoint per forge and mode, and a job id reaches
+# it only as digits.
 
 # LAW: a poll that never reached the forge is retried.
 law watch_poll_broke:
@@ -344,6 +345,48 @@ law watch_gives_up:
 law watch_not_yet:
   {Runs.poll.gave.up(4n) == False{} : Bool}
 
+# A run ends where its status says so. GitHub and Gitea say "completed" and send the
+# conclusion beside it; Forgejo names the conclusion in the status field itself
+# (success, failure, cancelled, skipped), so a watch that waited for "completed" never
+# finished on Codeberg. A terminal status ends a watch on every forge, a state the run is
+# still in does not, and the ending decides the exit code.
+
+# LAW: a completed status ends a run, as it always has on GitHub and Gitea.
+law watch_done_completed:
+  {Runs.status.terminal("completed") == True{} : Bool}
+
+# LAW: ...and so does a status Forgejo names a conclusion in.
+law watch_done_success:
+  {Runs.status.terminal("success") == True{} : Bool}
+
+# LAW: ...a failed one.
+law watch_done_failure:
+  {Runs.status.terminal("failure") == True{} : Bool}
+
+# LAW: ...a cancelled one.
+law watch_done_cancelled:
+  {Runs.status.terminal("cancelled") == True{} : Bool}
+
+# LAW: ...a skipped one.
+law watch_done_skipped:
+  {Runs.status.terminal("skipped") == True{} : Bool}
+
+# LAW: a run that is running is not done.
+law watch_live_running:
+  {Runs.status.terminal("running") == False{} : Bool}
+
+# LAW: ...nor is a queued one.
+law watch_live_queued:
+  {Runs.status.terminal("queued") == False{} : Bool}
+
+# LAW: ...nor one the forge sent no status for, so a body without one cannot end a watch.
+law watch_live_empty:
+  {Runs.status.terminal("") == False{} : Bool}
+
+# LAW: Forgejo's ending is its status, since it sends no conclusion.
+law watch_end_forgejo:
+  {Runs.state.of("failure", "", True{}) == "failure" : String}
+
 # LAW: a run that concluded in failure exits 1.
 law watch_exit_failed:
   {Runs.watch.code(False{}) == 1 : U32}
@@ -351,6 +394,30 @@ law watch_exit_failed:
 # LAW: a watch that gave up on the forge exits 2, so the two never read alike.
 law watch_exit_gaveup:
   {Runs.watch.code(True{}) == 2 : U32}
+
+# LAW: a run whose ending is failure exits 1.
+law watch_exit_status_failure:
+  {Runs.watch.end.code("failure") == 1 : U32}
+
+# LAW: ...and so does one that was cancelled.
+law watch_exit_status_cancelled:
+  {Runs.watch.end.code("cancelled") == 1 : U32}
+
+# LAW: a run that succeeded exits 0.
+law watch_exit_status_success:
+  {Runs.watch.end.code("success") == 0 : U32}
+
+# LAW: ...and so does one that was skipped, which is not a failure.
+law watch_exit_status_skipped:
+  {Runs.watch.end.code("skipped") == 0 : U32}
+
+# LAW: a GitHub run ends the way it always did: completed with a failed conclusion exits 1.
+law watch_exit_github_failure:
+  {Runs.watch.end.code(Runs.state.of("completed", "failure", True{})) == 1 : U32}
+
+# LAW: ...and completed with a good one exits 0.
+law watch_exit_github_success:
+  {Runs.watch.end.code(Runs.state.of("completed", "success", True{})) == 0 : U32}
 
 # LAW: giving up names the count and the last state the watch saw.
 law watch_gave_up_text:

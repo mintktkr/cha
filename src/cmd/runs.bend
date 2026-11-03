@@ -92,6 +92,12 @@ def zero.instant(+m: Maybe<&2, U32>) -> Bool:
 def failed.labels(+l: String) -> Bool:
   String.eq(l, "failure") || String.eq(l, "failed") || String.eq(l, "error") || String.eq(l, "cancelled") || String.eq(l, "timed_out")
 
+# the statuses that end a run rather than name a state it is still in. GitHub and Gitea say
+# "completed" and send the conclusion beside it; Forgejo names the conclusion in the status
+# field itself, and sends no conclusion at all.
+def status.terminal(+status: String) -> Bool:
+  String.eq(status, "completed") || String.eq(status, "success") || String.eq(status, "failure") || String.eq(status, "cancelled") || String.eq(status, "skipped")
+
 # what to show: the conclusion once it is done, the status before that
 def state.of(+status: String, +conclusion: String, done: Bool) -> String:
   match done:
@@ -920,11 +926,13 @@ def tick.at(+state: String, +conclusion: String, done: Bool) -> Tick:
       More{state, 0n}
 
 # The watch prints the state it reads, so unlike the row builders this reads the source
-# through the clean door.
+# through the clean door. state.of is the run's ending once it has one, and that ending is
+# also the word the exit code is read from, so both come from it.
 def tick.of(+src: Map<&2, String>) -> Tick:
   +status = Api.f(src, "status")
-  +conclusion = Api.f(src, "conclusion")
-  tick.at(state.of(status, conclusion, String.eq(status, "completed")), conclusion, String.eq(status, "completed"))
+  +done : Bool = status.terminal(status)
+  +shown : String = state.of(status, Api.f(src, "conclusion"), done)
+  tick.at(shown, shown, done)
 
 def spinner.at(g: Nat) -> String:
   match g:
@@ -1010,16 +1018,28 @@ def watch.code(gaveup: Bool) -> U32:
     case False{}:
       1
 
-def exit.if(+conclusion: String, bad: Bool) -> IO(Unit):
+# the exit code of a run that ended: a failed ending is the failed command's code, and one
+# that did not fail is not a failure at all
+def watch.end.code.if(+end: String, bad: Bool) -> U32:
   match bad:
     case True{}:
-      IO.die(Unit, watch.code(False{}), "")
+      watch.code(False{})
+    case False{}:
+      0
+
+def watch.end.code(+end: String) -> U32:
+  watch.end.code.if(end, failed.labels(end))
+
+def exit.if(+end: String, bad: Bool) -> IO(Unit):
+  match bad:
+    case True{}:
+      IO.die(Unit, watch.end.code(end), "")
     case False{}:
       IO.pure(Unit, Unit{})
 
 # a run that ended in failure is a failed command
-def watch.exit(+conclusion: String) -> IO(Unit):
-  exit.if(conclusion, failed.labels(conclusion))
+def watch.exit(+end: String) -> IO(Unit):
+  exit.if(end, failed.labels(end))
 
 # the last thing a watch says when it gives up: the count, and the state it last read
 def watch.gave.up.text(+fails: Nat, +shown: String) -> String:

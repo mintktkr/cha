@@ -203,6 +203,21 @@ def main() -> IO(Unit):
     expect(tick.name(Runs.tick.next(2n, Api.Reply{503, "", []})), "again 3")
     expect(tick.name(Runs.tick.next(2n, Api.Reply{404, "", Utf8.encode("{\"message\":\"Not Found\"}")})), "stop HTTP 404: Not Found")
     expect(tick.name(Runs.tick.next(2n, Api.Reply{200, "", Utf8.encode("{\"status\":\"in_progress\"}")})), "more in_progress 0")
+    # Forgejo names the conclusion in the status field and sends none beside it: a finished
+    # run ends the watch there, and that ending is the word its exit code is read from
+    expect(tick.name(Runs.tick.next(0n, Api.Reply{200, "", Utf8.encode("{\"status\":\"success\"}")})), "end success success")
+    expect(tick.name(Runs.tick.next(0n, Api.Reply{200, "", Utf8.encode("{\"status\":\"failure\"}")})), "end failure failure")
+    expect(tick.name(Runs.tick.next(0n, Api.Reply{200, "", Utf8.encode("{\"status\":\"skipped\"}")})), "end skipped skipped")
+    expect(tick.name(Runs.tick.next(0n, Api.Reply{200, "", Utf8.encode("{\"status\":\"running\"}")})), "more running 0")
+    # ...while GitHub's completed pair ends and reads the way it always has
+    expect(tick.name(Runs.tick.next(0n, Api.Reply{200, "", Utf8.encode("{\"status\":\"completed\",\"conclusion\":\"failure\"}")})), "end failure failure")
+    expect(U32.show(Runs.watch.end.code("failure")), "1")
+    expect(U32.show(Runs.watch.end.code("cancelled")), "1")
+    expect(U32.show(Runs.watch.end.code("success")), "0")
+    expect(U32.show(Runs.watch.end.code("skipped")), "0")
+    expect(Bool.show(Runs.status.terminal("queued")), "False")
+    expect(Bool.show(Runs.status.terminal("waiting")), "False")
+    expect(Bool.show(Runs.status.terminal("")), "False")
     expect(U32.show(Runs.watch.code(False{})), "1")
     expect(U32.show(Runs.watch.code(True{})), "2")
     expect(Runs.watch.gave.up.text(5n, "in_progress"), "gave up after 5 failed polls; the run is still in_progress")

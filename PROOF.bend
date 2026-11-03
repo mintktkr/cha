@@ -304,10 +304,58 @@ def Laws.watch_gives_up():
 def Laws.watch_not_yet():
   {==}
 
+# Each of these reads a literal status and normalizes to a Bool, a String or a U32: the two
+# sides of the claim are one term, so reflexivity proves it.
+
+def Laws.watch_done_completed():
+  {==}
+
+def Laws.watch_done_success():
+  {==}
+
+def Laws.watch_done_failure():
+  {==}
+
+def Laws.watch_done_cancelled():
+  {==}
+
+def Laws.watch_done_skipped():
+  {==}
+
+def Laws.watch_live_running():
+  {==}
+
+def Laws.watch_live_queued():
+  {==}
+
+def Laws.watch_live_empty():
+  {==}
+
+def Laws.watch_end_forgejo():
+  {==}
+
 def Laws.watch_exit_failed():
   {==}
 
 def Laws.watch_exit_gaveup():
+  {==}
+
+def Laws.watch_exit_status_failure():
+  {==}
+
+def Laws.watch_exit_status_cancelled():
+  {==}
+
+def Laws.watch_exit_status_success():
+  {==}
+
+def Laws.watch_exit_status_skipped():
+  {==}
+
+def Laws.watch_exit_github_failure():
+  {==}
+
+def Laws.watch_exit_github_success():
   {==}
 
 def Laws.watch_gave_up_text():
