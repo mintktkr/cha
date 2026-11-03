@@ -461,7 +461,8 @@ law url_pct_empty:
 law http1_request_bytes:
   {Http1.request("GET", "example.com", "/x", [("X-Test", "1")], Nil{}) == Some{Bytes.of_ascii("GET /x HTTP/1.1\r\nHost: example.com\r\nX-Test: 1\r\nConnection: close\r\n\r\n")} : Maybe<&2, List<&2, U32>>}
 
-# LAW: a method that isn't a token is refused, so no method can end the request line early.
+# LAW: (known answer) a method that isn't a token is refused, so no method can end the
+# request line early.
 law http1_method_not_token:
   {Http1.request("GE T", "example.com", "/x", Nil{}, Nil{}) == None{} : Maybe<&2, List<&2, U32>>} & {Http1.request("GET\r", "example.com", "/x", Nil{}, Nil{}) == None{} : Maybe<&2, List<&2, U32>>}
 
@@ -490,43 +491,46 @@ law http1_name_not_token:
   for +q: String
   {Http1.request("GET", "example.com", "/x", [(String.append(p, String.append(" ", q)), "v")], Nil{}) == None{} : Maybe<&2, List<&2, U32>>} & {Http1.request("GET", "example.com", "/x", [(String.append(p, String.append("\r", q)), "v")], Nil{}) == None{} : Maybe<&2, List<&2, U32>>}
 
-# LAW: a header name with a byte outside the RFC 9110 token set is refused, here too: a
-# response header named "content-length " is not a content-length.
+# LAW: (known answer) a header name with a byte outside the RFC 9110 token set is refused
+# here too: a response header named "content-length " is not a content-length.
 law http1_bad_header_name:
   {Http1.step(Http1.feed(Http1.parser.room(False{}, 200n), Bytes.of_ascii("HTTP/1.1 200 OK\r\ncontent-length : 5\r\n\r\n"))) == Http1.Bad{"bad header name"} : Http1.Step}
 
-# LAW: a header value holding a NUL is refused, so no NUL can hide the rest of a head.
+# LAW: (known answer) a header value holding a NUL is refused, so no NUL can hide the rest
+# of a head.
 law http1_value_nul:
   {Http1.step(Http1.feed(Http1.parser.room(False{}, 200n), Bytes.cat(Bytes.of_ascii("HTTP/1.1 200 OK\r\nx: a"), Bytes.cat([0], Bytes.of_ascii("b\r\n\r\n"))))) == Http1.Bad{"bad header value"} : Http1.Step}
 
-# LAW: bytes after a complete response are ignored, so nothing in the tail is read as a
-# second response.
+# LAW: (known answer) bytes after a complete response are ignored, so nothing in the tail is
+# read as a second response.
 law http1_trailing_bytes:
   {Http1.step(Http1.feed(Http1.parser.room(False{}, 200n), Bytes.of_ascii("HTTP/1.1 200 OK\r\nContent-Length: 5\r\n\r\nhelloGET /evil HTTP/1.1\r\n\r\n"))) == Http1.Got{Http1.Resp{Http1.Head{200, [("content-length", "5")]}, Bytes.of_ascii("hello")}} : Http1.Step}
 
-# LAW: a status line that isn't HTTP/1.x followed by three digits is refused.
+# LAW: (known answer) a status line that isn't HTTP/1.x followed by three digits is refused.
 law http1_status_not_http:
   {Http1.step(Http1.feed(Http1.parser.room(False{}, 200n), Bytes.of_ascii("HTTP/2 200 OK\r\n\r\n"))) == Http1.Bad{"bad status line"} : Http1.Step} & {Http1.step(Http1.feed(Http1.parser.room(False{}, 200n), Bytes.of_ascii("200 OK\r\n\r\n"))) == Http1.Bad{"bad status line"} : Http1.Step} & {Http1.step(Http1.feed(Http1.parser.room(False{}, 200n), Bytes.of_ascii("HTTP/1.1 20 OK\r\n\r\n"))) == Http1.Bad{"bad status line"} : Http1.Step}
 
-# LAW: a response with both a transfer-encoding and a content-length is refused, as RFC 9112
-# section 6.3 says: the two are two readings of where the body ends.
+# LAW: (known answer) a response with both a transfer-encoding and a content-length is
+# refused, as RFC 9112 section 6.3 says: the two are two readings of where the body ends.
 law http1_te_and_cl:
   {Http1.step(Http1.feed(Http1.parser.room(False{}, 200n), Bytes.of_ascii("HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nContent-Length: 6\r\n\r\n0\r\n\r\n"))) == Http1.Bad{"both transfer-encoding and content-length"} : Http1.Step}
 
-# LAW: two content-length headers that disagree are refused, so no body has two ends.
+# LAW: (known answer) two content-length headers that disagree are refused, so no body has
+# two ends.
 law http1_cl_differs:
   {Http1.step(Http1.feed(Http1.parser.room(False{}, 200n), Bytes.of_ascii("HTTP/1.1 200 OK\r\nContent-Length: 5\r\nContent-Length: 6\r\n\r\nhello"))) == Http1.Bad{"content-length headers differ"} : Http1.Step}
 
-# LAW: a content-length repeated with the same value is that length, so refusing two that
-# differ is not a blanket refusal.
+# LAW: (known answer) a content-length repeated with the same value is that length, so
+# refusing two that differ is not a blanket refusal.
 law http1_cl_agree:
   {Http1.step(Http1.feed(Http1.parser.room(False{}, 200n), Bytes.of_ascii("HTTP/1.1 200 OK\r\nContent-Length: 5\r\nContent-Length: 5\r\n\r\nhello"))) == Http1.Got{Http1.Resp{Http1.Head{200, [("content-length", "5"), ("content-length", "5")]}, Bytes.of_ascii("hello")}} : Http1.Step}
 
-# LAW: a header line folded onto the next one is refused, so a head can't be read two ways.
+# LAW: (known answer) a header line folded onto the next one is refused, so a head can't be
+# read two ways.
 law http1_folded_header:
   {Http1.step(Http1.feed(Http1.parser.room(False{}, 200n), Bytes.of_ascii("HTTP/1.1 200 OK\r\nx: a\r\n\tb\r\n\r\n"))) == Http1.Bad{"folded header"} : Http1.Step}
 
-# LAW: a content-length that isn't all digits is refused.
+# LAW: (known answer) a content-length that isn't all digits is refused.
 law http1_cl_not_digits:
   {Http1.step(Http1.feed(Http1.parser.room(False{}, 200n), Bytes.of_ascii("HTTP/1.1 200 OK\r\nContent-Length: 5x\r\n\r\nhello"))) == Http1.Bad{"bad content-length"} : Http1.Step} & {Http1.step(Http1.feed(Http1.parser.room(False{}, 200n), Bytes.of_ascii("HTTP/1.1 200 OK\r\nContent-Length: -1\r\n\r\n"))) == Http1.Bad{"bad content-length"} : Http1.Step}
 
@@ -534,11 +538,11 @@ law http1_cl_not_digits:
 law http1_chunked_body:
   {Http1.step(Http1.feed(Http1.parser.room(False{}, 200n), Bytes.of_ascii("HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n4\r\nWiki\r\n5\r\npedia\r\n0\r\n\r\n"))) == Http1.Got{Http1.Resp{Http1.Head{200, [("transfer-encoding", "chunked")]}, Bytes.of_ascii("Wikipedia")}} : Http1.Step}
 
-# LAW: a chunk size that isn't hex is refused.
+# LAW: (known answer) a chunk size that isn't hex is refused.
 law http1_chunk_not_hex:
   {Http1.step(Http1.feed(Http1.parser.room(False{}, 200n), Bytes.of_ascii("HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\nz\r\nhello\r\n0\r\n\r\n"))) == Http1.Bad{"bad chunk size"} : Http1.Step}
 
-# LAW: a header is stored and looked up without regard to its case.
+# LAW: (known answer) a header is stored and looked up without regard to its case.
 law http1_header_case:
   {Http1.step(Http1.feed(Http1.parser.room(False{}, 200n), Bytes.of_ascii("HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: 0\r\n\r\n"))) == Http1.Got{Http1.Resp{Http1.Head{200, [("content-type", "text/html"), ("content-length", "0")]}, Nil{}}} : Http1.Step} & {Http1.header(Http1.Head{200, [("content-type", "text/html")]}, "CONTENT-TYPE") == "text/html" : String}
 
