@@ -1104,6 +1104,29 @@ law x509v_chain_no_anchor:
   for c: X509.Cert
   {X509v.path.anchor(None{}, c, 0, Nil{}, 2000) == X509v.Refused{"the chain doesn't lead to a trusted root"} : X509v.Path}
 
+# Signature algorithms
+# --------------------
+# A certificate names the algorithm its issuer signed it with, and the issuer's key names its
+# own. The two must be the same kind, and the algorithm must be one the engine checks: an
+# unchecked algorithm is a refusal, never a pass.
+
+# a certificate for the signature check: the algorithm its signature names, and the algorithm
+# of the key it carries
+def x509v_cert_sig(sig_alg: String, key_alg: String) -> X509.Cert:
+  X509.Cert{Nil{}, Nil{}, sig_alg, Nil{}, Nil{}, Nil{}, 1000, 3000, key_alg, "", Nil{}, Nil{}, False{}, 0, 4294967295, False{}, True{}}
+
+# LAW: an RSA signature is not accepted under an EC key.
+law x509v_signed_rsa_under_ec:
+  {X509v.signed_by(x509v_cert_sig("1.2.840.113549.1.1.11", X509v.EC()), x509v_cert_sig("1.2.840.113549.1.1.11", X509v.EC())) == False{} : Bool}
+
+# LAW: an ECDSA signature is not accepted under an RSA key.
+law x509v_signed_ec_under_rsa:
+  {X509v.signed_by(x509v_cert_sig("1.2.840.10045.4.3.2", X509v.RSA()), x509v_cert_sig("1.2.840.10045.4.3.2", X509v.RSA())) == False{} : Bool}
+
+# LAW: a signature algorithm the engine doesn't check is refused, not trusted by default.
+law x509v_signed_unknown_alg:
+  {X509v.signed_by(x509v_cert_sig("1.2.3.4", X509v.RSA()), x509v_cert_sig("1.2.3.4", X509v.RSA())) == False{} : Bool}
+
 # end x509
 
 # tlsmsg, tls [tls]

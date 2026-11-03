@@ -1053,6 +1053,21 @@ def Laws.x509v_chain_anchor_trusted(a, c):
 def Laws.x509v_chain_no_anchor(c):
   {==}
 
+# Signature algorithms
+# --------------------
+# The signature check compares the named algorithm with the issuer's key kind before it
+# touches any key material, so a mismatch and an algorithm it doesn't know both answer False
+# with the key, the signed bytes and the signature left symbolic.
+
+def Laws.x509v_signed_rsa_under_ec():
+  {==}
+
+def Laws.x509v_signed_ec_under_rsa():
+  {==}
+
+def Laws.x509v_signed_unknown_alg():
+  {==}
+
 # end x509
 
 # tlsmsg, tls [tls]
