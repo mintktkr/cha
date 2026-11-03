@@ -983,6 +983,9 @@ def Laws.chacha20_block_rfc8439_2_3_2():
 def Laws.chacha_poly1305_rfc8439_2_5_2():
   {==}
 
+def Laws.chacha_aead_open_seal():
+  {==}
+
 def Laws.chacha_aead_open_refuses_tag_flip():
   {==}
 

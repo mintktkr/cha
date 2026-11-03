@@ -962,7 +962,7 @@ law width_text_concat:
 # a plaintext of 16 bytes. What the kernel can afford is the tag flip over an empty plaintext,
 # below, which seals to the tag alone.
 
-# The RFC 8439 2.8.2 key, nonce and additional data, which the tag-flip law seals under.
+# The RFC 8439 2.8.2 key, nonce and additional data, which the AEAD laws below use.
 def chacha_key_2_8_2() -> List<&2, U32>:
   Bytes.of_hex("808182838485868788898a8b8c8d8e8f909192939495969798999a9b9c9d9e9f")
 
@@ -971,6 +971,11 @@ def chacha_nonce_2_8_2() -> List<&2, U32>:
 
 def chacha_aad_2_8_2() -> List<&2, U32>:
   Bytes.of_hex("50515253c0c1c2c3c4c5c6c7")
+
+# A 16-byte plaintext for the round trip. The RFC's own 114-byte one costs the kernel too much
+# fuel, and so does the aad here: the round trip below seals without any.
+def chacha_plain_16() -> List<&2, U32>:
+  Bytes.of_ascii("sixteen bytes!!!")
 
 # SHA-256, SHA-384 and SHA-512 (FIPS 180-4 B.1)
 # ---------------------------------------------
@@ -1037,6 +1042,10 @@ law chacha20_block_rfc8439_2_3_2:
 # LAW: Poly1305 of RFC 8439 2.5.2's message is the tag it lists.
 law chacha_poly1305_rfc8439_2_5_2:
   {Chacha.poly1305(Bytes.of_hex("85d6be7857556d337f4452fe42d506a80103808afb0db2fd4abff6af4149f51b"), Bytes.of_ascii("Cryptographic Forum Research Group")) == Bytes.of_hex("a8061dc1305136c6c22b8baf0c0127a9") : List<&2, U32>}
+
+# LAW: sealing a message and opening it again gives the message back.
+law chacha_aead_open_seal:
+  {Chacha.open(chacha_key_2_8_2(), chacha_nonce_2_8_2(), Nil{}, Chacha.seal(chacha_key_2_8_2(), chacha_nonce_2_8_2(), Nil{}, chacha_plain_16())) == Some{chacha_plain_16()} : Maybe<&2, List<&2, U32>>}
 
 # LAW: opening a message whose tag is one bit off is refused, not decrypted. An empty plaintext
 # seals to the tag alone, so the mask turns over the last bit of that tag.
