@@ -255,7 +255,7 @@ Term ossl_available_run(Env e, Term* f, IoWork* w) {
 }
 
 static void __attribute__((constructor)) ossl_available_use(void) {
-  io_eff(CID(available), ossl_available_run, 0);
+  io_eff(CID(available), ossl_available_run);
 }
 
 #endif
@@ -339,7 +339,7 @@ Term ossl_connect_run(Env e, Term* f, IoWork* w) {
 }
 
 static void __attribute__((constructor)) ossl_connect_use(void) {
-  io_eff(CID(connect), ossl_connect_run, 0);
+  io_eff(CID(connect), ossl_connect_run);
 }
 
 #endif
@@ -386,7 +386,7 @@ Term ossl_send_run(Env e, Term* f, IoWork* w) {
 }
 
 static void __attribute__((constructor)) ossl_send_use(void) {
-  io_eff(CID(send), ossl_send_run, 0);
+  io_eff(CID(send), ossl_send_run);
 }
 
 #endif
@@ -447,7 +447,7 @@ Term ossl_recv_run(Env e, Term* f, IoWork* w) {
 }
 
 static void __attribute__((constructor)) ossl_recv_use(void) {
-  io_eff(CID(recv), ossl_recv_run, 0);
+  io_eff(CID(recv), ossl_recv_run);
 }
 
 #endif
@@ -468,7 +468,7 @@ Term ossl_close_run(Env e, Term* f, IoWork* w) {
 }
 
 static void __attribute__((constructor)) ossl_close_use(void) {
-  io_eff(CID(close), ossl_close_run, 0);
+  io_eff(CID(close), ossl_close_run);
 }
 
 #endif

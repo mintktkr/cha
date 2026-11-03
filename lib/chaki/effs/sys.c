@@ -181,7 +181,7 @@ Term chaki_sys_dial_run(Env e, Term* f, IoWork* w) {
 }
 
 static void __attribute__((constructor)) chaki_sys_dial_use(void) {
-  io_eff(CID(dial), chaki_sys_dial_run, 0);
+  io_eff(CID(dial), chaki_sys_dial_run);
 }
 
 #endif
@@ -219,7 +219,7 @@ Term chaki_sys_recv_run(Env e, Term* f, IoWork* w) {
 }
 
 static void __attribute__((constructor)) chaki_sys_recv_use(void) {
-  io_eff(CID(recv), chaki_sys_recv_run, 0);
+  io_eff(CID(recv), chaki_sys_recv_run);
 }
 
 #endif
@@ -232,7 +232,7 @@ Term chaki_sys_now_run(Env e, Term* f, IoWork* w) {
 }
 
 static void __attribute__((constructor)) chaki_sys_now_use(void) {
-  io_eff(CID(now), chaki_sys_now_run, 0);
+  io_eff(CID(now), chaki_sys_now_run);
 }
 
 #endif
@@ -244,7 +244,7 @@ Term chaki_sys_isatty_run(Env e, Term* f, IoWork* w) {
 }
 
 static void __attribute__((constructor)) chaki_sys_isatty_use(void) {
-  io_eff(CID(isatty.raw), chaki_sys_isatty_run, 0);
+  io_eff(CID(isatty.raw), chaki_sys_isatty_run);
 }
 
 #endif
@@ -257,7 +257,7 @@ Term chaki_sys_cols_run(Env e, Term* f, IoWork* w) {
 }
 
 static void __attribute__((constructor)) chaki_sys_cols_use(void) {
-  io_eff(CID(cols), chaki_sys_cols_run, 0);
+  io_eff(CID(cols), chaki_sys_cols_run);
 }
 
 #endif
@@ -270,7 +270,7 @@ Term chaki_sys_rows_run(Env e, Term* f, IoWork* w) {
 }
 
 static void __attribute__((constructor)) chaki_sys_rows_use(void) {
-  io_eff(CID(rows), chaki_sys_rows_run, 0);
+  io_eff(CID(rows), chaki_sys_rows_run);
 }
 
 #endif
