@@ -1,0 +1,47 @@
+---
+title: "TLS 1.3 client handshake: tls.bend at 51c3231, with an adversary server"
+---
+stateDiagram-v2
+  state "Legend" as legend {
+    lg0: handshake
+    lg1: checking
+    lg2: connected
+    lg3: over
+  }
+  class lg0 blue
+  class lg1 yellow
+  class lg2 teal
+  class lg3 pink
+  s0: Waiting for the ServerHello
+  s1: Waiting for the EncryptedExtensions
+  s2: Failed
+  s3: Waiting for the certificate
+  s4: Waiting for the CertificateVerify
+  s5: Waiting for the server's Finished
+  s6: Server's flight in, checking the certificate
+  s7: Connected
+  s8: Closed by the server
+  [*] --> s0
+  s0 --> s1: the ServerHello arrives
+  s0 --> s2: an alert arrives or application data arrives early or the server is done sending [before the handshake ends] or the server answers for TLS 1.2 or the key share is all zeros or an unexpected message arrives or the server asks for another key exchange
+  s1 --> s2: an alert arrives or application data arrives early or the server picks a protocol you didn't offer or the server is done sending [before the handshake ends] or an unexpected message arrives or a second key-exchange request arrives
+  s1 --> s3: the EncryptedExtensions arrive
+  s3 --> s2: an alert arrives or application data arrives early or the server is done sending [before the handshake ends] or the chain is empty or an unexpected message arrives or a second key-exchange request arrives
+  s3 --> s4: the chain arrives
+  s4 --> s2: an alert arrives or application data arrives early or the server is done sending [before the handshake ends] or the CertificateVerify uses a pkcs1 scheme or an unexpected message arrives or a second key-exchange request arrives
+  s4 --> s5: the CertificateVerify arrives
+  s5 --> s2: an alert arrives or application data arrives early or the server's Finished is wrong or the server is done sending [before the handshake ends] or an unexpected message arrives or a second key-exchange request arrives
+  s5 --> s6: the server's Finished checks out
+  s6 --> s2: the chain or the signature is refused or the chain and the signature check out, and a record that ends the connection was waiting
+  s6 --> s7: the chain and the signature check out or the chain and the signature check out, and data was waiting
+  s6 --> s8: the chain and the signature check out, and close_notify was waiting
+  s7 --> s8: the server is done sending
+  class s0 blue
+  class s1 blue
+  class s2 pink
+  class s3 blue
+  class s4 blue
+  class s5 blue
+  class s6 yellow
+  class s7 teal
+  class s8 pink

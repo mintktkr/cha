@@ -1,0 +1,20 @@
+TLC2 Version 2.19 of 08 August 2024 (rev: 5a47802)
+Warning: Please run the Java VM which executes TLC with a throughput optimized garbage collector by passing the "-XX:+UseParallelGC" property.
+(Use the -nowarning option to disable this warning.)
+Running breadth-first search Model-Checking with fp 0 and seed -6363632148162253259 with 1 worker on 16 cores with 3846MB heap and 64MB offheap memory [pid: 523468] (Linux 7.2.11-arch1-1 amd64, Eclipse Adoptium 25.0.5 x86_64, MSBDiskFPSet, DiskStateQueue).
+Parsing file /home/mint/dev/cha-wt/verify-tls/verify/tls/Tls13Client.tla
+Parsing file /tmp/statechart-EvFgXc/statechart-eW8Opw/tmp-verdict-1/Naturals.tla
+Semantic processing of module Naturals
+Semantic processing of module Tls13Client
+Starting... (2026-11-03 16:33:53)
+Computing initial states...
+Finished computing initial states: 1 distinct state generated at 2026-11-03 16:33:53.
+Model checking completed. No error has been found.
+  Estimates of the probability that TLC did not check all reachable states
+  because two distinct states had the same fingerprint:
+  calculated (optimistic):  val = 1.1E-16
+97 states generated, 29 distinct states found, 0 states left on queue.
+The depth of the complete state graph search is 10.
+The average outdegree of the complete state graph is 1 (minimum is 0, the maximum 5 and the 95th percentile is 3).
+Finished in 00s at (2026-11-03 16:33:53)
+
