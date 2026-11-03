@@ -344,8 +344,21 @@ def client_hello(random: List<&2, U32>, session: List<&2, U32>, host: String, sh
 def hrr.random() -> List<&2, U32>:
   Bytes.of_hex("cf 21 ad 74 e5 9a 61 11 be 1d 8c 02 1e 65 b8 91 c2 a2 11 16 7a bb 8c 5e 07 9e 09 e2 c8 a8 33 9c")
 
+# the random: 32 bytes after the legacy version (RFC 8446 4.1.3)
+def sh.random(+body: List<&2, U32>) -> List<&2, U32>:
+  Bytes.take(Bytes.drop(body, 2n), 32n)
+
 def sh.retry(+body: List<&2, U32>) -> Bool:
-  Bytes.eq(Bytes.take(Bytes.drop(body, 2n), 32n), hrr.random())
+  Bytes.eq(sh.random(body), hrr.random())
+
+# 44 4F 57 4E 47 52 44 01: what a server puts in the last 8 bytes of a random when it
+# negotiates TLS 1.2 or below, so a client can tell a real TLS 1.2 handshake from a downgraded
+# one. A server answering TLS 1.3 must never send it (RFC 8446 4.1.3).
+def sh.downgrade() -> List<&2, U32>:
+  Bytes.of_hex("444f574e47524401")
+
+def sh.downgrade.ok(+body: List<&2, U32>) -> Bool:
+  Bool.not(Bytes.eq(Bytes.drop(sh.random(body), 24n), sh.downgrade()))
 
 # where the cipher suite starts: legacy_version, random and the echoed session id
 def sh.suite.at(+body: List<&2, U32>) -> Nat:
@@ -395,13 +408,16 @@ def key.pick(+data: List<&2, U32>) -> List<&2, U32>:
 
 # every check the client makes on a ServerHello, in the order sh.why reports them
 def sh.good(+body: List<&2, U32>, +versions: List<&2, U32>, +share: List<&2, U32>, +retry: Bool) -> Bool:
-  Bool.and(sh.ver.ok(versions), Bool.and(suite.ok(sh.suite(body)), key.ok(share, retry)))
+  Bool.and(sh.ver.ok(versions), Bool.and(suite.ok(sh.suite(body)), Bool.and(sh.downgrade.ok(body), key.ok(share, retry))))
 
 def sh.why.key(+data: List<&2, U32>, +retry: Bool) -> String:
   Bool.pick(String, retry, "the HelloRetryRequest picked a group that isn't x25519", "the key share isn't a 32-byte x25519 key")
 
+def sh.why.tail(+body: List<&2, U32>, +share: List<&2, U32>, +retry: Bool) -> String:
+  Bool.pick(String, sh.downgrade.ok(body), sh.why.key(share, retry), "the server's random carries the TLS 1.2 downgrade sentinel")
+
 def sh.why(+body: List<&2, U32>, +versions: List<&2, U32>, +share: List<&2, U32>, +retry: Bool) -> String:
-  Bool.pick(String, sh.ver.ok(versions), Bool.pick(String, suite.ok(sh.suite(body)), sh.why.key(share, retry), "the server picked a cipher suite we didn't offer"), "supported_versions isn't 0x0304")
+  Bool.pick(String, sh.ver.ok(versions), Bool.pick(String, suite.ok(sh.suite(body)), sh.why.tail(body, share, retry), "the server picked a cipher suite we didn't offer"), "supported_versions isn't 0x0304")
 
 def sh.verdict(+body: List<&2, U32>, +versions: List<&2, U32>, +share: List<&2, U32>, +retry: Bool, good: Bool) -> Result<&1, &1, String, Hello>:
   match good:
@@ -422,7 +438,8 @@ type Hello is Data:
 
 # a ServerHello body: the suite, the server's x25519 key share, and whether it is really a
 # HelloRetryRequest. Fails when the body runs out, when supported_versions isn't 0x0304,
-# when the group isn't x25519, or when the suite isn't one the ClientHello offered.
+# when the group isn't x25519, when the suite isn't one the ClientHello offered, or when the
+# random carries the TLS 1.2 downgrade sentinel.
 def server_hello(+body: List<&2, U32>) -> Result<&1, &1, String, Hello>:
   sh.check(body, sh.ext(body, sh.ext.ok(body)), sh.retry(body))
 

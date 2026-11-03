@@ -388,6 +388,10 @@ def inner.state(m: Maybe<&2, Tls.Rec>) -> String:
 def with16(+body: List<&2, U32>, +off: Nat, +v: U32) -> List<&2, U32>:
   Bytes.cat(Bytes.take(body, off), Bytes.cat(Bytes.be16(v), Bytes.drop(body, Nat.add(off, 2n))))
 
+# the last 8 bytes of a ServerHello's random, the TLS 1.2 downgrade sentinel (RFC 8446 4.1.3)
+def with.sentinel(+body: List<&2, U32>) -> List<&2, U32>:
+  Bytes.cat(Bytes.take(body, 26n), Bytes.cat(Bytes.of_hex("44 4f 57 4e 47 52 44 01"), Bytes.drop(body, 34n)))
+
 def sh.body() -> List<&2, U32>:
   Bytes.drop(sh(), 4n)
 
@@ -548,6 +552,7 @@ def main() -> IO(Unit):
     IO.print(T.eq("server_hello: a body cut short fails", ok.hello(Tls.server_hello(Bytes.take(sh.body(), 20n))), "fail"))
     IO.print(T.eq("server_hello: an empty body fails", ok.hello(Tls.server_hello(Nil{})), "fail"))
     IO.print(T.eq("server_hello: extensions past the body fail", ok.hello(Tls.server_hello(with16(sh.body(), 38n, 200))), "fail"))
+    IO.print(T.eq("server_hello: a TLS 1.2 downgrade sentinel fails", ok.hello(Tls.server_hello(with.sentinel(sh.body()))), "fail"))
 
     # EncryptedExtensions
     IO.print(T.eq("RFC 8448 3: no ALPN in EncryptedExtensions", ok.alpn(Tls.encrypted_extensions(ee.body())), ""))
