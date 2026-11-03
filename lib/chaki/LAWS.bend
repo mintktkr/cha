@@ -950,6 +950,110 @@ law width_text_concat:
 
 # sha2, chacha [hash]
 # -------------------
+# Known answers from the primary texts: the digests of FIPS 180-4 B.1, the HMAC of RFC 4231
+# 4.2, and the ChaCha20 block, Poly1305 and AEAD of RFC 8439 2.3.2, 2.5.2 and 2.8.2. A cipher
+# is not something a law can state from first principles, so it is pinned to what its document
+# says it must produce. Each of those is one closed input, so the checker runs the code itself
+# when it checks the law; the last law of each group is over every input.
+
+# The RFC 8439 2.8.2 inputs, shared by the AEAD laws: the key, the nonce, the additional data,
+# the 114-byte plaintext, and the sealed message as the RFC prints it, ciphertext then tag.
+def chacha_key_2_8_2() -> List<&2, U32>:
+  Bytes.of_hex("808182838485868788898a8b8c8d8e8f909192939495969798999a9b9c9d9e9f")
+
+def chacha_nonce_2_8_2() -> List<&2, U32>:
+  Bytes.of_hex("070000004041424344454647")
+
+def chacha_aad_2_8_2() -> List<&2, U32>:
+  Bytes.of_hex("50515253c0c1c2c3c4c5c6c7")
+
+def chacha_plain_2_8_2() -> List<&2, U32>:
+  Bytes.of_ascii("Ladies and Gentlemen of the class of '99: If I could offer you only one tip for the future, sunscreen would be it.")
+
+def chacha_ct_2_8_2() -> List<&2, U32>:
+  Bytes.of_hex("d31a8d34648e60db7b86afbc53ef7ec2a4aded51296e08fea9e2b5a736ee62d63dbea45e8ca9671282fafb69da92728b1a71de0a9e060b2905d6a5b67ecd3b3692ddbd7f2d778b8c9803aee328091b58fab324e4fad675945585808b4831d7bc3ff4def08e4b7a9de576d26586cec64b6116")
+
+def chacha_tag_2_8_2() -> List<&2, U32>:
+  Bytes.of_hex("1ae10b594f09e26a7e902ecbd0600691")
+
+# SHA-256, SHA-384 and SHA-512 (FIPS 180-4 B.1)
+# ---------------------------------------------
+# "abc" is the one-block example the standard prints for all three, the 56-byte message the
+# one that tips the padding into a second block, and the empty message the digest every
+# implementation is expected to print.
+
+# LAW: SHA-256 of the empty message is the digest NIST publishes for it (FIPS 180-4 B.1).
+law sha2_sha256_empty:
+  {Sha2.hash(Sha2.S256{}, Nil{}) == Bytes.of_hex("e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855") : List<&2, U32>}
+
+# LAW: SHA-256 of "abc" is the digest FIPS 180-4 B.1 lists for it.
+law sha2_sha256_abc:
+  {Sha2.hash(Sha2.S256{}, Bytes.of_ascii("abc")) == Bytes.of_hex("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad") : List<&2, U32>}
+
+# LAW: SHA-256 of FIPS 180-4 B.1's 56-byte message is the digest it lists for it, at the length
+# that makes the padding push over into a second block.
+law sha2_sha256_two_block:
+  {Sha2.hash(Sha2.S256{}, Bytes.of_ascii("abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq")) == Bytes.of_hex("248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1") : List<&2, U32>}
+
+# LAW: SHA-384 of "abc" is the digest FIPS 180-4 B.1 lists for it.
+law sha2_sha384_abc:
+  {Sha2.hash(Sha2.S384{}, Bytes.of_ascii("abc")) == Bytes.of_hex("cb00753f45a35e8bb5a03d699ac65007272c32ab0eded1631a8b605a43ff5bed8086072ba1e7cc2358baeca134c825a7") : List<&2, U32>}
+
+# LAW: SHA-512 of the empty message is the digest NIST publishes for it (FIPS 180-4 B.1).
+law sha2_sha512_empty:
+  {Sha2.hash(Sha2.S512{}, Nil{}) == Bytes.of_hex("cf83e1357eefb8bdf1542850d66d8007d620e4050b5715dc83f4a921d36ce9ce47d0d13c5d85f2b0ff8318d2877eec2f63b931bd47417a81a538327af927da3e") : List<&2, U32>}
+
+# LAW: SHA-512 of "abc" is the digest FIPS 180-4 B.1 lists for it.
+law sha2_sha512_abc:
+  {Sha2.hash(Sha2.S512{}, Bytes.of_ascii("abc")) == Bytes.of_hex("ddaf35a193617abacc417349ae20413112e6fa4e89a97ea20a9eeee64b55d39a2192992a274fc1a836ba3c23a3feebbd454d4423643ce80e2a9ac94fa54ca49f") : List<&2, U32>}
+
+# HMAC and HKDF (RFC 4231, RFC 5869)
+# ----------------------------------
+
+# LAW: HMAC-SHA-256 of RFC 4231 test case 1 is the MAC it lists.
+law sha2_hmac_sha256_rfc4231_1:
+  {Sha2.hmac(Sha2.S256{}, Bytes.of_hex("0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b"), Bytes.of_ascii("Hi There")) == Bytes.of_hex("b0344c61d8db38535ca8afceaf0bf12b881dc200c9833da726e9376c2e32cff7") : List<&2, U32>}
+
+# LAW: HKDF-Expand asked for no bytes answers none, whatever the secret and info are.
+law sha2_expand_zero:
+  for prk: List<&2, U32>
+  for info: List<&2, U32>
+  {Sha2.expand(Sha2.S256{}, prk, info, 0) == Nil{} : List<&2, U32>}
+
+# ChaCha20, Poly1305 and the AEAD (RFC 8439)
+# ------------------------------------------
+
+# LAW: the ChaCha20 block function of RFC 8439 2.3.2 is the 64 bytes it lists.
+law chacha20_block_rfc8439_2_3_2:
+  {Chacha.block(Bytes.of_hex("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"), 1, Bytes.of_hex("000000090000004a00000000")) == Bytes.of_hex("10f1e7e4d13b5915500fdd1fa32071c4c7d1f4c733c068030422aa9ac3d46c4ed2826446079faa0914c2d705d98b02a2b5129cd1de164eb9cbd083e8a2503c4e") : List<&2, U32>}
+
+# LAW: Poly1305 of RFC 8439 2.5.2's message is the tag it lists.
+law chacha_poly1305_rfc8439_2_5_2:
+  {Chacha.poly1305(Bytes.of_hex("85d6be7857556d337f4452fe42d506a80103808afb0db2fd4abff6af4149f51b"), Bytes.of_ascii("Cryptographic Forum Research Group")) == Bytes.of_hex("a8061dc1305136c6c22b8baf0c0127a9") : List<&2, U32>}
+
+# LAW: sealing RFC 8439 2.8.2's message gives the ciphertext and the tag it lists.
+law chacha_aead_seal_rfc8439_2_8_2:
+  {Chacha.seal(chacha_key_2_8_2(), chacha_nonce_2_8_2(), chacha_aad_2_8_2(), chacha_plain_2_8_2()) == Bytes.cat(chacha_ct_2_8_2(), chacha_tag_2_8_2()) : List<&2, U32>}
+
+# LAW: opening RFC 8439 2.8.2's sealed message gives its plaintext back.
+law chacha_aead_open_rfc8439_2_8_2:
+  {Chacha.open(chacha_key_2_8_2(), chacha_nonce_2_8_2(), chacha_aad_2_8_2(), Bytes.cat(chacha_ct_2_8_2(), chacha_tag_2_8_2())) == Some{chacha_plain_2_8_2()} : Maybe<&2, List<&2, U32>>}
+
+# LAW: opening a message whose tag is one bit off is refused, not decrypted.
+law chacha_aead_open_refuses_tag_flip:
+  {Chacha.open(chacha_key_2_8_2(), chacha_nonce_2_8_2(), chacha_aad_2_8_2(), Bytes.cat(chacha_ct_2_8_2(), Bytes.xor(chacha_tag_2_8_2(), [1]))) == None{} : Maybe<&2, List<&2, U32>>}
+
+# LAW: opening a message whose ciphertext is one bit off is refused, so the plaintext never
+# comes back for a tampered message even though the tag is then recomputed over it.
+law chacha_aead_open_refuses_ciphertext_flip:
+  {Chacha.open(chacha_key_2_8_2(), chacha_nonce_2_8_2(), chacha_aad_2_8_2(), Bytes.cat(Bytes.xor(chacha_ct_2_8_2(), [1]), chacha_tag_2_8_2())) == None{} : Maybe<&2, List<&2, U32>>}
+
+# LAW: a sealed message with no room for a tag is refused before anything is decrypted.
+law chacha_aead_open_refuses_empty:
+  for key: List<&2, U32>
+  for nonce: List<&2, U32>
+  for aad: List<&2, U32>
+  {Chacha.open(key, nonce, aad, Nil{}) == None{} : Maybe<&2, List<&2, U32>>}
 
 # end hash
 
