@@ -930,9 +930,9 @@ law x25519_clamp_bytes:
 
 # Constructed certificates
 # ------------------------
-# Some of these laws are about a decision rather than about DER: what the checks make of
-# a certificate whose fields are already known. These two build one, with only the
-# fields a check reads set.
+# Some of these laws are about a decision rather than about DER: what the checks make of a
+# certificate whose fields are already known. These three build one, with only the fields a
+# check reads set.
 
 # a certificate with only the fields the checks read: a validity, the CA flag,
 # pathLenConstraint, and the dNSName entries. The key usage is absent (every bit), the
