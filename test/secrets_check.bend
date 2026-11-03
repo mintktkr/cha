@@ -165,10 +165,10 @@ def check_value() -> IO(Unit):
     +blank : String = Cli.flag(["--value", ""], "--value", "")
     expect(yes_no(Secrets.value.given(blank, "")), "no")
     expect(Secrets.value.msg("secrets set"), "secrets set: a value is required, from --value or --value-file")
-    expect(yes_no(Secrets.read.over("s3cret")), "no")
+    expect(yes_no(Cli.text.over(6, Cli.file.cap())), "no")
+    expect(yes_no(Cli.text.over(1048576, Cli.file.cap())), "no")
+    expect(yes_no(Cli.text.over(1048577, Cli.file.cap())), "yes")
     # a value file of exactly the cap fits; one byte more is refused, not sent cut short
-    expect(yes_no(Secrets.read.over(fill(1048576n))), "no")
-    expect(yes_no(Secrets.read.over(fill(1048577n))), "yes")
 
 
 def check_guard() -> IO(Unit):
