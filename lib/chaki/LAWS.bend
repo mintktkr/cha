@@ -967,6 +967,10 @@ law asn1_read_long_count:
 law asn1_read_past_end:
   {Asn1.read(Bytes.of_hex("04 05 01 02")) == None{} : Maybe<&2, Asn1.Tlv>}
 
+# LAW: 127 bytes is still a short-form length, so it is carried by the one-byte form.
+law asn1_read_short_max:
+  {Asn1.read(Bytes.cat(Bytes.of_hex("04 7f"), Bytes.zeros(127n))) == Some{Asn1.Tlv{4, Bytes.zeros(127n), Nil{}}} : Maybe<&2, Asn1.Tlv>}
+
 # LAW: a short-form element hands back exactly its value and exactly the bytes after it, so
 # no byte is read that wasn't there and none is swallowed.
 law asn1_read_exact:
@@ -978,6 +982,10 @@ law asn1_read_exact:
 law asn1_read_zero_len:
   for +t: List<&2, U32>
   {Asn1.read(Con{4, Con{0, t}}) == Some{Asn1.Tlv{4, Nil{}, t}} : Maybe<&2, Asn1.Tlv>}
+
+# LAW: a UTCTime's two-digit year reads as 20xx below 50, so 49 is 2049 and not 1949.
+law asn1_time_pivot:
+  {Asn1.time(23, Bytes.of_ascii("491231235959Z")) == Some{2524607999} : Maybe<&2, U32>}
 
 # Hosts
 # -----
@@ -1011,6 +1019,15 @@ law x509v_name_wild_leftmost:
 law x509v_name_wild_two_labels:
   {X509v.name.ok("*.com", "a.com") == False{} : Bool}
 
+# LAW: a wildcard stands for one label, so it doesn't match an empty one.
+law x509v_name_wild_no_empty_label:
+  {X509v.name.ok("*.example.com", ".example.com") == False{} : Bool}
+
+# LAW: a certificate that names no host in a dNSName entry matches no host at all.
+law x509v_names_empty:
+  for +h: String
+  {X509v.names.ok(Nil{}, h) == False{} : Bool}
+
 # LAW: the host is lowercased before it is compared, so X.Example.Com is x.example.com.
 law x509v_host_norm:
   {X509v.host.norm("X.Example.Test") == "x.example.test" : String}
@@ -1027,42 +1044,54 @@ law x509v_ip_never_matches:
   for ok: {X509v.host.ip(n) == True{} : Bool}
   {X509v.host_ok.if(X509v.host.ip(n), c, n) == False{} : Bool}
 
+# LAW: a host with one trailing dot is the host without it.
+law x509v_host_trailing_dot:
+  {X509v.host_ok(x509v_cert(1000, 3000, False{}, 0, ["cha.test"]), "cha.test.") == True{} : Bool}
+
+# LAW: an IPv4 literal is read as an address, so no name is compared against it.
+law x509v_ip_is_address:
+  {X509v.host.ip("127.0.0.1") == True{} : Bool}
+
 # Time and issuers
 # ----------------
 # The leaf is checked before the chain is walked, and every issuer above it is checked as
 # the walk passes it. These are those decisions over constructed certificates: the fields
 # they read, and nothing else, set.
 
-# a certificate with only the fields the checks read: a validity, the CA flag, and
-# pathLenConstraint. The key usage is absent (every bit), the critical extensions are none,
-# and the certificate is for TLS servers.
-def x509v_cert(nb: U32, na: U32, ca: Bool, path_len: U32) -> X509.Cert:
-  X509.Cert{Nil{}, Nil{}, "", Nil{}, Nil{}, Nil{}, nb, na, "", "", Nil{}, Nil{}, ca, path_len, 4294967295, False{}, True{}}
+# a certificate with only the fields the checks read: a validity, the CA flag,
+# pathLenConstraint, and the dNSName entries. The key usage is absent (every bit), the
+# critical extensions are none, and the certificate is for TLS servers.
+def x509v_cert(nb: U32, na: U32, ca: Bool, path_len: U32, dns: List<&2, String>) -> X509.Cert:
+  X509.Cert{Nil{}, Nil{}, "", Nil{}, Nil{}, Nil{}, nb, na, "", "", Nil{}, dns, ca, path_len, 4294967295, False{}, True{}}
 
 # LAW: a certificate whose notAfter is before now is refused, whatever else is right with it.
 law x509v_leaf_expired:
-  {X509v.leaf.why(x509v_cert(1000, 2000, False{}, 0), "cha.test", 2001, True{}) == "the server's certificate has expired" : String}
+  {X509v.leaf.why(x509v_cert(1000, 2000, False{}, 0, Nil{}), "cha.test", 2001, True{}) == "the server's certificate has expired" : String}
 
 # LAW: a certificate whose notBefore is after now is refused.
 law x509v_leaf_not_yet:
-  {X509v.leaf.why(x509v_cert(2000, 3000, False{}, 0), "cha.test", 1999, True{}) == "the server's certificate isn't valid yet" : String}
+  {X509v.leaf.why(x509v_cert(2000, 3000, False{}, 0, Nil{}), "cha.test", 1999, True{}) == "the server's certificate isn't valid yet" : String}
 
 # LAW: a certificate that is valid now, for TLS servers and for this host, is accepted.
 law x509v_leaf_ok:
-  {X509v.leaf.why(x509v_cert(1000, 3000, False{}, 0), "cha.test", 2000, True{}) == "" : String}
+  {X509v.leaf.why(x509v_cert(1000, 3000, False{}, 0, Nil{}), "cha.test", 2000, True{}) == "" : String}
 
 # LAW: an issuer without the CA basicConstraints flag is refused, so a leaf can't sign for
 # another host.
 law x509v_inter_not_ca:
-  {X509v.inter.why(x509v_cert(1000, 3000, False{}, 0), 1, 2000) == "an issuer in the chain isn't a CA" : String}
+  {X509v.inter.why(x509v_cert(1000, 3000, False{}, 0, Nil{}), 1, 2000) == "an issuer in the chain isn't a CA" : String}
 
 # LAW: an issuer's pathLenConstraint caps how many issuers may sit between it and the leaf.
 law x509v_inter_pathlen:
-  {X509v.inter.why(x509v_cert(1000, 3000, True{}, 0), 1, 2000) == "the chain is longer than an issuer allows" : String}
+  {X509v.inter.why(x509v_cert(1000, 3000, True{}, 0, Nil{}), 1, 2000) == "the chain is longer than an issuer allows" : String}
 
 # LAW: the same issuer is accepted when it sits directly above the leaf.
 law x509v_inter_pathlen_room:
-  {X509v.inter.why(x509v_cert(1000, 3000, True{}, 0), 0, 2000) == "" : String}
+  {X509v.inter.why(x509v_cert(1000, 3000, True{}, 0, Nil{}), 0, 2000) == "" : String}
+
+# LAW: an issuer that has expired is refused, even a CA with room below it.
+law x509v_inter_expired:
+  {X509v.inter.why(x509v_cert(1000, 2000, True{}, 5, Nil{}), 0, 2001) == "an issuer in the chain has expired" : String}
 
 # LAW: a certificate that issued the one at hand ends the walk as trusted.
 law x509v_chain_anchor_trusted:

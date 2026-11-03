@@ -952,10 +952,16 @@ def Laws.asn1_read_long_count(t):
 def Laws.asn1_read_past_end():
   {==}
 
+def Laws.asn1_read_short_max():
+  {==}
+
 def Laws.asn1_read_exact(v, t):
   {==}
 
 def Laws.asn1_read_zero_len(t):
+  {==}
+
+def Laws.asn1_time_pivot():
   {==}
 
 # Hosts
@@ -990,6 +996,12 @@ def Laws.x509v_name_wild_leftmost():
 def Laws.x509v_name_wild_two_labels():
   {==}
 
+def Laws.x509v_name_wild_no_empty_label():
+  {==}
+
+def Laws.x509v_names_empty(h):
+  {==}
+
 def Laws.x509v_host_norm():
   {==}
 
@@ -1001,6 +1013,12 @@ def Laws.x509v_name_exact_only_itself(h):
 # proof rewrites the hypothesis into the goal and the certificate stays symbolic.
 def Laws.x509v_ip_never_matches(c, n, ok):
   %Equal.sym(Bool, X509v.host.ip(n), True{}, ok) : {X509v.host_ok.if(_, c, n) == False{} : Bool}
+  {==}
+
+def Laws.x509v_ip_is_address():
+  {==}
+
+def Laws.x509v_host_trailing_dot():
   {==}
 
 # Time and issuers
@@ -1024,6 +1042,9 @@ def Laws.x509v_inter_pathlen():
   {==}
 
 def Laws.x509v_inter_pathlen_room():
+  {==}
+
+def Laws.x509v_inter_expired():
   {==}
 
 def Laws.x509v_chain_anchor_trusted(a, c):
