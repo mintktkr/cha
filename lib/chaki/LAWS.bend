@@ -187,6 +187,10 @@ law b64_reject_non_ascii:
 law b64_reject_pad_bits:
   {B64.decode("Zh==") == None{} : Maybe<&2, List<&2, U32>>}
 
+# LAW: a PEM body wrapped over lines decodes to the one payload its lines spell together.
+law b64_decode_wrapped:
+  {B64.decode("Zm9v\nYmFy") == Some{Bytes.of_ascii("foobar")} : Maybe<&2, List<&2, U32>>}
+
 # LAW: a trailing newline, which every PEM line but the last carries, doesn't change what
 # base64 text decodes to.
 law b64_decode_newline:
@@ -201,6 +205,19 @@ law b64_pem_block:
 # certificate.
 law b64_pem_no_end:
   {B64.pem("-----BEGIN CERTIFICATE-----\nZm9v\n", "CERTIFICATE") == Nil{} : List<&2, List<&2, U32>>}
+
+# LAW: two blocks in a row are two payloads, in the order they appear.
+law b64_pem_two_blocks:
+  {B64.pem("-----BEGIN CERTIFICATE-----\nZm9v\n-----END CERTIFICATE-----\n-----BEGIN CERTIFICATE-----\nYmFy\n-----END CERTIFICATE-----\n", "CERTIFICATE") == [Bytes.of_ascii("foo"), Bytes.of_ascii("bar")] : List<&2, List<&2, U32>>}
+
+# LAW: a block of another label is not a certificate, so it is left out.
+law b64_pem_other_label:
+  {B64.pem("-----BEGIN PRIVATE KEY-----\nYmFy\n-----END PRIVATE KEY-----\n-----BEGIN CERTIFICATE-----\nZm9v\n-----END CERTIFICATE-----\n", "CERTIFICATE") == [Bytes.of_ascii("foo")] : List<&2, List<&2, U32>>}
+
+# LAW: a block whose body is empty yields an empty payload, so a bad block is caught by the
+# parse and not by the scan.
+law b64_pem_empty_body:
+  {B64.pem("-----BEGIN CERTIFICATE-----\n-----END CERTIFICATE-----\n", "CERTIFICATE") == [Nil{}] : List<&2, List<&2, U32>>}
 
 # end enc
 

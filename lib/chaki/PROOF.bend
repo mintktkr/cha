@@ -217,6 +217,15 @@ def Laws.b64_pem_block():
 def Laws.b64_pem_no_end():
   {==}
 
+def Laws.b64_pem_two_blocks():
+  {==}
+
+def Laws.b64_pem_other_label():
+  {==}
+
+def Laws.b64_pem_empty_body():
+  {==}
+
 # base64 text with a trailing newline
 # -----------------------------------
 # Whitespace is skipped wherever it sits, so a newline after the last character leaves the
@@ -232,6 +241,9 @@ def enc.newline_go(s: String, +st: B64.B64.State) -> {B64.decode.go(String.appen
           {==}
     case SCon{Chr{+c}, +t}:
       enc.newline_go(t, B64.feed(st, B64.sym(c)))
+
+def Laws.b64_decode_wrapped():
+  {==}
 
 def Laws.b64_decode_newline(s):
   +r = enc.newline_go(s, B64.B64.State{0, 0n, 0n, Nil{}, True{}})
