@@ -6,6 +6,7 @@ import ../lib/chaki/bytes.bend as Bytes
 import ../lib/chaki/url.bend as Url
 import ../lib/chaki/http1.bend as Http1
 import ../lib/chaki/sys.bend as Sys
+import ../lib/chaki/hop.bend as Hop
 import ../lib/chaki/http.bend as Http
 import ../lib/chaki/check.bend as T
 
@@ -156,7 +157,7 @@ def post(+port: U32, +path: String) -> IO(Result<&1, &1, String, Http.Res>):
 
 def st.show(st: Http.St) -> String:
   match st:
-    case Http.Go{Http.Hop{m, u, hs, b}}:
+    case Http.Go{Hop.Hop{m, u, hs, b}}:
       "go " ++ m ++ " " ++ u
     case Http.Got{h, u, r}:
       "got"
@@ -167,7 +168,7 @@ def st.show(st: Http.St) -> String:
 
 # a hop from https to http, judged without a network: refused
 def downgrade() -> String:
-  st.show(Http.judge(Http.Hop{"GET", "https://a.example/x", Nil{}, Nil{}}, Maybe.default(&2, Url.Url, Url.parse("https://a.example/x"), Url.Url{"", "", 0, ""}),
+  st.show(Http.judge(Hop.Hop{"GET", "https://a.example/x", Nil{}, Nil{}}, Maybe.default(&2, Url.Url, Url.parse("https://a.example/x"), Url.Url{"", "", 0, ""}),
     Done{Http1.Resp{Http1.Head{302, [("location", "http://a.example/y")]}, Nil{}}}))
 
 def main() -> IO(Unit):

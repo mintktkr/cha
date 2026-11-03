@@ -24,6 +24,7 @@ import ./x509.bend as X509
 import ./x509v.bend as X509v
 import ./tlsmsg.bend as Tlsmsg
 import ./tls.bend as Tls
+import ./hop.bend as Hop
 
 # bytes, utf8, b64 [enc]
 # ----------------------
@@ -575,7 +576,81 @@ law width_text_concat:
 
 # end tls
 
-# http (its pure decisions) [http]
+# hop (http's pure decisions) [http]
 # --------------------------------
+
+# LAW: a hop to another origin carries no credentials: a request that sends AUTHORIZATION and
+# Cookie reaches it as the same request without them.
+law hop_cross_origin_drops_credentials:
+  for +hs: List<&2, Http1.Field()>
+  for +b: List<&2, U32>
+  {Hop.judge.go(Hop.Hop{"GET", "http://a.example/x", ("AUTHORIZATION", "t") <> ("Cookie", "c") <> hs, b}, Url.Url{"http", "a.example", 80, "/x"}, Url.Url{"http", "b.example", 80, "/y"}, 307) == Hop.judge.go(Hop.Hop{"GET", "http://a.example/x", hs, b}, Url.Url{"http", "a.example", 80, "/x"}, Url.Url{"http", "b.example", 80, "/y"}, 307) : Hop.Hop}
+
+# LAW: a hop within one origin sends the same request again at the new url: a 307 keeps the
+# method, every header and the body.
+law hop_same_origin_keeps_request:
+  for +m: String
+  for +hs: List<&2, Http1.Field()>
+  for +b: List<&2, U32>
+  {Hop.judge.go(Hop.Hop{m, "http://a.example/x", hs, b}, Url.Url{"http", "a.example", 80, "/x"}, Url.Url{"http", "a.example", 80, "/y"}, 307) == Hop.Hop{m, "http://a.example/y", hs, b} : Hop.Hop}
+
+# LAW: a 308, like a 307, sends the same request again.
+law hop_308_keeps_request:
+  for +m: String
+  for +hs: List<&2, Http1.Field()>
+  for +b: List<&2, U32>
+  {Hop.judge.go(Hop.Hop{m, "http://a.example/x", hs, b}, Url.Url{"http", "a.example", 80, "/x"}, Url.Url{"http", "a.example", 80, "/y"}, 308) == Hop.Hop{m, "http://a.example/y", hs, b} : Hop.Hop}
+
+# LAW: only 307 and 308 send the method and the body again; 301, 302 and 303 don't.
+law hop_keeps_status:
+  {[Hop.redirect.keeps(301), Hop.redirect.keeps(302), Hop.redirect.keeps(303), Hop.redirect.keeps(307), Hop.redirect.keeps(308)] == [False{}, False{}, False{}, True{}, True{}] : List<Bool>}
+
+# LAW: a redirect from https to http is refused, whatever the request and the status.
+law hop_downgrade_refused:
+  for h: Hop.Hop
+  for status: U32
+  {Hop.judge.next(h, Url.Url{"https", "a.example", 443, "/x"}, status, Some{Url.Url{"http", "a.example", 80, "/y"}}) == Hop.Refuse{"refused a redirect from https to http"} : Hop.Next}
+
+# LAW: a 303 sends a POST again as a GET with no body, and the headers that framed the body
+# go with it.
+law hop_see_other_get:
+  for +hs: List<&2, Http1.Field()>
+  for +b: List<&2, U32>
+  {Hop.judge.go(Hop.Hop{"POST", "http://a.example/x", hs, b}, Url.Url{"http", "a.example", 80, "/x"}, Url.Url{"http", "a.example", 80, "/y"}, 303) == Hop.Hop{"GET", "http://a.example/y", Hop.drop(["content-type", "content-length"], hs), Nil{}} : Hop.Hop}
+
+# LAW: a 303 leaves a HEAD a HEAD: it has no body to give up.
+law hop_see_other_head:
+  for +hs: List<&2, Http1.Field()>
+  for +b: List<&2, U32>
+  {Hop.judge.go(Hop.Hop{"HEAD", "http://a.example/x", hs, b}, Url.Url{"http", "a.example", 80, "/x"}, Url.Url{"http", "a.example", 80, "/y"}, 303) == Hop.Hop{"HEAD", "http://a.example/y", Hop.drop(["content-type", "content-length"], hs), Nil{}} : Hop.Hop}
+
+# LAW: a status that isn't a redirect sends nothing further: the response is the answer.
+law hop_no_redirect_no_hop:
+  for h: Hop.Hop
+  {Hop.judge.resp(h, Url.Url{"http", "a.example", 80, "/x"}, 200, "http://a.example/y", Hop.judge.follows(200, "http://a.example/y")) == Hop.Answer{h} : Hop.Next}
+
+# LAW: a redirect that names no Location sends nothing further either.
+law hop_empty_location_no_hop:
+  for h: Hop.Hop
+  {Hop.judge.resp(h, Url.Url{"http", "a.example", 80, "/x"}, 302, "", Hop.judge.follows(302, "")) == Hop.Answer{h} : Hop.Next}
+
+# LAW: a redirect to a Location that isn't an http(s) url is refused.
+law hop_bad_location_refused:
+  for h: Hop.Hop
+  for status: U32
+  {Hop.judge.next(h, Url.Url{"http", "a.example", 80, "/x"}, status, Url.resolve(Url.Url{"http", "a.example", 80, "/x"}, "ftp://a.example/y")) == Hop.Refuse{"a redirect to a location that isn't a url"} : Hop.Next}
+
+# LAW: drop takes out exactly the headers it names, whatever their case, and keeps the rest in
+# the order they came: two names, spelled in another case, gone from three headers.
+law hop_drop_named:
+  for v: String
+  {Hop.drop(["authorization", "cookie"], [("Authorization", v), ("x-other", "1"), ("COOKIE", "c")]) == [("x-other", "1")] : List<&2, Http1.Field()>}
+
+# LAW: credentials dropped at one hop stay dropped: after a.example -> b.example -> a.example,
+# the request carries none, even back at the origin that was sent them.
+law hop_credentials_stay_dropped:
+  for +hs: List<&2, Http1.Field()>
+  for +b: List<&2, U32>
+  {Hop.judge.go(Hop.judge.go(Hop.judge.go(Hop.Hop{"GET", "http://a.example/x", ("authorization", "t") <> hs, b}, Url.Url{"http", "a.example", 80, "/x"}, Url.Url{"http", "b.example", 80, "/y"}, 307), Url.Url{"http", "b.example", 80, "/y"}, Url.Url{"http", "a.example", 80, "/x"}, 307), Url.Url{"http", "a.example", 80, "/x"}, Url.Url{"http", "b.example", 80, "/y"}, 307) == Hop.judge.go(Hop.judge.go(Hop.judge.go(Hop.Hop{"GET", "http://a.example/x", hs, b}, Url.Url{"http", "a.example", 80, "/x"}, Url.Url{"http", "b.example", 80, "/y"}, 307), Url.Url{"http", "b.example", 80, "/y"}, Url.Url{"http", "a.example", 80, "/x"}, 307), Url.Url{"http", "a.example", 80, "/x"}, Url.Url{"http", "b.example", 80, "/y"}, 307) : Hop.Hop}
 
 # end http

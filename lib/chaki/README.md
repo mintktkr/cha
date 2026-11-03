@@ -19,6 +19,7 @@ hidden state, and has a surface you can read in one sitting.
 | `width.bend` | terminal display width of text (generated table) | mk_wcwidth |
 | `url.bend` | http(s) URL parse, resolve (RFC 3986 §5.2), origin, percent-encoding | |
 | `http1.bend` | HTTP/1.1 request writer and incremental response parser | picohttpparser |
+| `hop.bend` | what a redirect means for the next request: RFC 9110's method, body and credential rules | |
 | `asn1.bend`, `x509.bend` | DER reader and X.509 certificate parser | BearSSL's x509 minimal engine |
 | `sha2.bend` | SHA-256/384/512, HMAC, HKDF, TLS 1.3 HKDF-Expand-Label | Monocypher |
 | `chacha.bend` | ChaCha20, Poly1305, the RFC 8439 AEAD | Monocypher, TweetNaCl |

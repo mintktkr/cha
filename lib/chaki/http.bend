@@ -6,6 +6,7 @@ import Base
 import ./bytes.bend as Bytes
 import ./url.bend as Url
 import ./http1.bend as Http1
+import ./hop.bend as Hop
 import ./sys.bend as Sys
 import ./ossl.bend as Ssl
 import ./x509.bend as X509
@@ -283,93 +284,35 @@ def once(t: Transport, +anchors: List<&2, X509.Cert>, +deadline: U32, +method: S
 # Redirects
 # ---------
 
-type Hop is Data:
-  Hop{method: String, url: String, headers: List<&2, Http1.Field()>, body: List<&2, U32>}
-
+# the walk's state: a request to send, a response to judge, or the end
 type St is Type:
-  Go{h: Hop}
-  Got{h: Hop, u: Url.Url, r: Result<&1, &1, String, Http1.Resp>}
+  Go{h: Hop.Hop}
+  Got{h: Hop.Hop, u: Url.Url, r: Result<&1, &1, String, Http1.Resp>}
   Out{r: Result<&1, &1, String, Res>}
 
-def redirect.code(+s: U32) -> Bool:
-  Bool.or(Bool.or(U32.is_eq(s, 301), U32.is_eq(s, 302)), Bool.or(U32.is_eq(s, 303), Bool.or(U32.is_eq(s, 307), U32.is_eq(s, 308))))
-
-def drop.has(+name: String, names: List<&2, String>) -> Bool:
-  match names:
-    case Nil{}:
-      False{}
-    case Con{+n, t}:
-      Bool.or(String.eq(n, name), drop.has(name, t))
-
-def drop.keep(+k: String, +v: String, acc: List<&2, Http1.Field()>, gone: Bool) -> List<&2, Http1.Field()>:
-  match gone:
-    case True{}:
-      acc
-    case False{}:
-      (k, v) <> acc
-
-def drop.go(+names: List<&2, String>, hs: List<&2, Http1.Field()>, acc: List<&2, Http1.Field()>) -> List<&2, Http1.Field()>:
-  match hs:
-    case Nil{}:
-      List.reverse(&2, Http1.Field(), acc)
-    case Con{(+k, +v), t}:
-      drop.go(names, t, drop.keep(k, v, acc, drop.has(String.to_lower(k), names)))
-
-# the headers but those named (names lowercase; header names compare case-insensitively)
-def drop(+names: List<&2, String>, hs: List<&2, Http1.Field()>) -> List<&2, Http1.Field()>:
-  drop.go(names, hs, Nil{})
-
-def scheme.of(u: Url.Url) -> String:
-  match u:
-    case Url.Url{scheme, h, p, t}:
-      scheme
-
-# the next hop, as RFC 9110 15.4 and WHATWG fetch apply it: 307 and 308 keep the method and
-# body; 301, 302 and 303 become a GET without them (a HEAD stays a HEAD); another origin
-# loses authorization and cookie
-def judge.go(h: Hop, +u: Url.Url, +v: Url.Url, +status: U32) -> St:
+def judge.answer(h: Hop.Hop, +status: U32, rhs: List<&2, Http1.Field()>, rbody: List<&2, U32>) -> St:
   match h:
-    case Hop{+method, url, +hs, +body}:
-      +keep = Bool.or(U32.is_eq(status, 307), U32.is_eq(status, 308))
-      +head = String.eq(method, "HEAD")
-      +hs1 = Bool.pick(List<&2, Http1.Field()>, keep, hs, drop(["content-type", "content-length"], hs))
-      +cross = Bool.not(String.eq(Url.origin(u), Url.origin(v)))
-      Go{Hop{Bool.pick(String, Bool.or(keep, head), method, "GET"), Url.show(v), Bool.pick(List<&2, Http1.Field()>, cross, drop(["authorization", "cookie"], hs1), hs1), Bool.pick(List<&2, U32>, keep, body, Nil{})}}
-
-def judge.hop(h: Hop, +u: Url.Url, +v: Url.Url, +status: U32, down: Bool) -> St:
-  match down:
-    case True{}:
-      Out{Fail{"refused a redirect from https to http"}}
-    case False{}:
-      judge.go(h, u, v, status)
-
-def judge.next(h: Hop, +u: Url.Url, +status: U32, m: Maybe<&2, Url.Url>) -> St:
-  match m:
-    case None{}:
-      Out{Fail{"a redirect to a location that isn't a url"}}
-    case Some{+v}:
-      judge.hop(h, u, v, status, Bool.and(String.eq(scheme.of(u), "https"), String.eq(scheme.of(v), "http")))
-
-def judge.answer(h: Hop, +status: U32, rhs: List<&2, Http1.Field()>, rbody: List<&2, U32>) -> St:
-  match h:
-    case Hop{m, url, hs, b}:
+    case Hop.Hop{m, url, hs, b}:
       Out{Done{Res{status, rhs, rbody, url}}}
 
-def judge.resp(h: Hop, +u: Url.Url, +status: U32, +rhs: List<&2, Http1.Field()>, rbody: List<&2, U32>, +loc: String, follow: Bool) -> St:
-  match follow:
-    case False{}:
+# the state a decision from hop.bend leaves the walk in
+def judge.state(+status: U32, rhs: List<&2, Http1.Field()>, rbody: List<&2, U32>, n: Hop.Next) -> St:
+  match n:
+    case Hop.Follow{g}:
+      Go{g}
+    case Hop.Answer{h}:
       judge.answer(h, status, rhs, rbody)
-    case True{}:
-      judge.next(h, u, status, Url.resolve(u, loc))
+    case Hop.Refuse{+why}:
+      Out{Fail{why}}
 
 # what a response means for the walk: the answer, or the next hop
-def judge(h: Hop, +u: Url.Url, r: Result<&1, &1, String, Http1.Resp>) -> St:
+def judge(h: Hop.Hop, +u: Url.Url, r: Result<&1, &1, String, Http1.Resp>) -> St:
   match r:
     case Fail{w}:
       Out{Fail{w}}
     case Done{Http1.Resp{Http1.Head{+status, +rhs}, rbody}}:
       +loc = Http1.header(Http1.Head{status, rhs}, "location")
-      judge.resp(h, u, status, rhs, rbody, loc, Bool.and(redirect.code(status), Bool.not(String.is_empty(loc))))
+      judge.state(status, rhs, rbody, Hop.judge.resp(h, u, status, loc, Hop.judge.follows(status, loc)))
 
 def step.at(t: Transport, +anchors: List<&2, X509.Cert>, +deadline: U32, +method: String, +url: String, +hs: List<&2, Http1.Field()>, +body: List<&2, U32>, m: Maybe<&2, Url.Url>) -> IO(St):
   match m:
@@ -378,11 +321,11 @@ def step.at(t: Transport, +anchors: List<&2, X509.Cert>, +deadline: U32, +method
     case Some{+u}:
       do IO<St>:
         r : Result<&1, &1, String, Http1.Resp> <- once(t, anchors, deadline, method, u, hs, body)
-        return Got{Hop{method, url, hs, body}, u, r}
+        return Got{Hop.Hop{method, url, hs, body}, u, r}
 
-def step(t: Transport, +anchors: List<&2, X509.Cert>, +deadline: U32, h: Hop) -> IO(St):
+def step(t: Transport, +anchors: List<&2, X509.Cert>, +deadline: U32, h: Hop.Hop) -> IO(St):
   match h:
-    case Hop{+method, +url, hs, body}:
+    case Hop.Hop{+method, +url, hs, body}:
       step.at(t, anchors, deadline, method, url, hs, body, Url.parse(url))
 
 # a hop is two steps (request, judge), so 10 redirects fit in 23
@@ -408,4 +351,4 @@ def fetch(c: Client, method: String, url: String, headers: List<&2, Http1.Field(
     case Client{+t, +anchors, +ms}:
       do IO<Result<&1, &1, String, Res>>:
         now : U32 <- Sys.now()
-        walk(23n, t, anchors, deadline(now, ms), Go{Hop{method, url, headers, body}})
+        walk(23n, t, anchors, deadline(now, ms), Go{Hop.Hop{method, url, headers, body}})

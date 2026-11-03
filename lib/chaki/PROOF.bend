@@ -20,6 +20,7 @@ import ./x509.bend as X509
 import ./x509v.bend as X509v
 import ./tlsmsg.bend as Tlsmsg
 import ./tls.bend as Tls
+import ./hop.bend as Hop
 import ./LAWS.bend as Laws
 
 # bytes, utf8, b64 [enc]
@@ -438,7 +439,43 @@ def Laws.width_text_concat():
 
 # end tls
 
-# http (its pure decisions) [http]
+# hop (http's pure decisions) [http]
 # --------------------------------
+
+def Laws.hop_cross_origin_drops_credentials(hs, b):
+  {==}
+
+def Laws.hop_same_origin_keeps_request(m, hs, b):
+  {==}
+
+def Laws.hop_308_keeps_request(m, hs, b):
+  {==}
+
+def Laws.hop_keeps_status():
+  {==}
+
+def Laws.hop_downgrade_refused(h, status):
+  {==}
+
+def Laws.hop_see_other_get(hs, b):
+  {==}
+
+def Laws.hop_see_other_head(hs, b):
+  {==}
+
+def Laws.hop_no_redirect_no_hop(h):
+  {==}
+
+def Laws.hop_empty_location_no_hop(h):
+  {==}
+
+def Laws.hop_bad_location_refused(h, status):
+  {==}
+
+def Laws.hop_drop_named(v):
+  {==}
+
+def Laws.hop_credentials_stay_dropped(hs, b):
+  {==}
 
 # end http
