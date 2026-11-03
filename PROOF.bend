@@ -382,6 +382,17 @@ def Laws.rerun_path_github_job():
 def Laws.rerun_job_id_digits():
   {==}
 
+# runs view --json
+# ---------------
+# The document builder is the whole shape: two literals in, and the text that starts with the
+# run and carries the jobs beside it.
+
+def Laws.view_json_run_first():
+  {==}
+
+def Laws.view_json_jobs_array():
+  {==}
+
 # Path segments
 # -------------
 # Each law names a closed name, so its walk through String.split and segs.ok reduces to a

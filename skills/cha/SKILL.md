@@ -23,7 +23,7 @@ description: Use cha for Gitea, Forgejo and GitHub work from the terminal - issu
 - Bare `--json` prints every field. `--json a,b` or `--json=a,b` prints only those fields, in that order. Spaces after commas are trimmed when the list is quoted.
 - The word after a bare `--json` is the field list unless it starts with `-` or a digit, or is a command name. So `cha issue view --json 7` is issue 7, and `cha issue view --json title 7` selects the title. In scripts, use `--json=a,b`.
 - An unknown field exits 1 with `unknown JSON field X; valid fields: a, b, c`, so `--json nope` is a cheap way to list a command's fields.
-- `issue view --comments`, `runs view` and `moved` print nested records. They take no field list and exit 1 if given one; bare `--json` still works.
+- `issue view --comments`, `runs view` and `moved` print nested records: one object, not a list. `issue view --comments` prints `{"issue":{...},"comments":[...]}`, `runs view` prints `{"run":{...},"jobs":[...]}` and `moved` prints the issue and the repo it went to. They take no field list and exit 1 if given one; bare `--json` still works.
 - Write commands print the URL of what they created or changed on stdout; `release upload` prints one line per file, the asset's download URL. `repo delete` prints nothing on success, only a `✓ deleted OWNER/NAME` line on stderr, because the forge answers 204. `comment-edit` prints the edited comment's URL; `comment-delete` prints nothing, and exit 0 is the receipt.
 - `issue labels` and `issue create --label` resolve the names against the repo's labels before they write, so a typo exits 1 instead of applying a label the repo doesn't have (on GitHub the error also names the labels the repo does have).
 - Errors go to stderr with exit code 1. `pr checks` also exits 1 when a check failed. `runs watch` has three codes, so a script can gate on it: 0 the run succeeded, 1 the run concluded in failure, 2 cha gave up watching. cha gives up only when five polls in a row fail (a timeout, a connect error or a 5xx; a good poll resets the count) and says `gave up after 5 failed polls; the run is still <state>` on stderr.
@@ -65,7 +65,7 @@ cha pr comment-delete ID --yes
 cha pr checks N                       # statuses and check runs of the head commit
 
 cha runs list [--branch B] [--status S] [--workflow FILE|NAME] [--limit N] [--json]
-cha runs view ID                      # run, jobs, runners and step timings
+cha runs view ID                      # one run: run, jobs, runners and step timings
 cha runs logs ID [--job ID|NAME] [--failed] [--step NAME]
 cha runs watch ID                     # polls until it ends: exit 0 ok, 1 failed, 2 gave up watching
 cha runs dispatch WORKFLOW_FILE [--ref main] [--input k=v]
@@ -120,7 +120,7 @@ cha completions fish
 
 ## Runs output and filters
 
-- `runs view --json` is one array: a `kind: "run"` row followed by `kind: "job"` rows. Job rows include `runner_name`, timestamps, `duration` in seconds, and `steps.#` / `steps.N.*` flat string fields. Missing timestamps and durations are empty strings.
+- `runs view --json` is one object: the run under `run`, its jobs under `jobs`. Job entries include `runner_name`, timestamps, `duration` in seconds, and `steps.#` / `steps.N.*` flat string fields. Missing timestamps and durations are empty strings. Before this, the two were one array (a `kind: "run"` row followed by `kind: "job"` rows), so a script that read `.[0]` now reads `.run`.
 - Forgejo names a run's conclusion in its `status` field (`success`, `failure`, `cancelled`, `skipped`) and sends no `conclusion`; Gitea and GitHub say `completed` and send the conclusion beside it. cha reads the pair the same way on all three, so a finished run on Codeberg reads as finished, and `runs watch` ends there.
 - Run rows include `updated_at`, `completed_at`, `duration` and `attempt`. Only GitHub counts attempts and sends `run_attempt`, so `attempt` is empty on Gitea and Forgejo. `runs view` appends `attempt N` to its header when N is above 1.
 - `runs list --workflow` matches an exact filename, path or display name. Filtering follows pages until `--limit` matches (default 20, range 1–1000), with a 100-page safety cap. A display name resolves first through the workflows the forge lists now, on Gitea and GitHub alike; a name that matches no workflow exits 1 with the names it found, and a filename is used as given, for renamed or removed workflows.

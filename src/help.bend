@@ -322,7 +322,7 @@ def pr.page() -> Page:
 
 def runs.rows() -> List<&2, Row>:
   [Row{"list [--branch B] [--status S] [--workflow W] [--limit N]", "recent action runs", "cha runs list --branch main"},
-   Row{"view ID", "run, jobs, runners and step timings", "cha runs view 4142"},
+   Row{"view ID", "one run: jobs, runners and step timings; --json is {\"run\",\"jobs\"}", "cha runs view 4142"},
    Row{"logs ID [--job J] [--failed] [--step NAME]", "a run's logs", "cha runs logs 4142 --failed"},
    Row{"watch ID", "follow a run: exit 0 done, 1 failed, 2 gave up", "cha runs watch 4142"},
    Row{"dispatch FILE [--ref R] [--input k=v]", "start a workflow, print its run", "cha runs dispatch ci.yml --ref main"},

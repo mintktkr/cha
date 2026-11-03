@@ -533,8 +533,13 @@ def view.json.jobs(xs: List<&2, Map<&2, String>>) -> List<&2, String>:
     case Con{+x, rest}:
       Cli.json.row(x, job.json.fields(x)) <> view.json.jobs(rest)
 
+# One object, the way issue view --comments prints one: the run under "run" and its jobs
+# under "jobs", rather than an array mixing a run row with job rows.
+def view.json.doc(+run: String, +jobs: String) -> String:
+  "{\"run\":" ++ run ++ ",\"jobs\":" ++ jobs ++ "}"
+
 def view.json.text(+row: Map<&2, String>, jobs: List<&2, Map<&2, String>>) -> String:
-  "[" ++ String.join(Cli.json.row(row, run.fields()) <> view.json.jobs(jobs), ",\n") ++ "]"
+  view.json.doc(Cli.json.row(row, run.fields()), "[" ++ String.join(view.json.jobs(jobs), ",\n") ++ "]")
 
 def view.json(+row: Map<&2, String>, +jobs: List<&2, Map<&2, String>>) -> IO(Unit):
   IO.print(view.json.text(row, jobs))

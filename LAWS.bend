@@ -451,6 +451,18 @@ law rerun_path_github_job:
 law rerun_job_id_digits:
   {Cli.digits("42/cancel") == False{} : Bool}
 
+# runs view --json
+# ---------------
+# A command that addresses one run prints one object, as issue view --comments does.
+
+# LAW: the document starts with the run.
+law view_json_run_first:
+  {String.starts_with(Runs.view.json.doc("{}", "[]"), "{\"run\":") == True{} : Bool}
+
+# LAW: ...and carries the jobs as an array beside it, not as more run objects.
+law view_json_jobs_array:
+  {String.contains(Runs.view.json.doc("{}", "[]"), ",\"jobs\":[") == True{} : Bool}
+
 # Path segments
 # -------------
 # A name that keeps its slashes goes into a URL path as it is, so no segment of it may be
