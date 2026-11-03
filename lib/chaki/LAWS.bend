@@ -928,6 +928,153 @@ law x25519_clamp_bytes:
 # asn1, x509, x509v [x509]
 # ------------------------
 
+# Strict DER
+# ----------
+# Two readers that agree on an element's bytes but not on where it ends disagree about what
+# was signed, so asn1.read takes one encoding per element and refuses everything DER leaves
+# out: another form of tag, another form of length, or a length that runs past the bytes it
+# was given. None of those refusals reads the byte string that follows, so each holds for
+# every tail.
+
+# LAW: a tag in the high-tag-number form is refused.
+law asn1_read_high_tag:
+  for +t: List<&2, U32>
+  {Asn1.read(Con{31, t}) == None{} : Maybe<&2, Asn1.Tlv>}
+
+# LAW: the indefinite length form, which DER forbids, is refused.
+law asn1_read_indefinite:
+  for +t: List<&2, U32>
+  {Asn1.read(Con{4, Con{128, t}}) == None{} : Maybe<&2, Asn1.Tlv>}
+
+# LAW: a long-form length with a leading zero byte is refused, so 82 00 80 can't stand in
+# for the one-byte form of 128.
+law asn1_read_long_zero:
+  for +t: List<&2, U32>
+  {Asn1.read(Con{4, Con{130, Con{0, Con{128, t}}}}) == None{} : Maybe<&2, Asn1.Tlv>}
+
+# LAW: a long-form length that the short form could carry is refused.
+law asn1_read_long_short:
+  for +t: List<&2, U32>
+  {Asn1.read(Con{4, Con{129, Con{127, t}}}) == None{} : Maybe<&2, Asn1.Tlv>}
+
+# LAW: a count octet naming more than four length bytes is refused.
+law asn1_read_long_count:
+  for +t: List<&2, U32>
+  {Asn1.read(Con{4, Con{133, t}}) == None{} : Maybe<&2, Asn1.Tlv>}
+
+# LAW: a length that runs past the end of the input is refused: five bytes are announced and
+# two follow.
+law asn1_read_past_end:
+  {Asn1.read(Bytes.of_hex("04 05 01 02")) == None{} : Maybe<&2, Asn1.Tlv>}
+
+# LAW: a short-form element hands back exactly its value and exactly the bytes after it, so
+# no byte is read that wasn't there and none is swallowed.
+law asn1_read_exact:
+  for +v: U32
+  for +t: List<&2, U32>
+  {Asn1.read(Con{4, Con{1, Con{v, t}}}) == Some{Asn1.Tlv{4, [v], t}} : Maybe<&2, Asn1.Tlv>}
+
+# LAW: an element of length zero carries no value and leaves the rest where it was.
+law asn1_read_zero_len:
+  for +t: List<&2, U32>
+  {Asn1.read(Con{4, Con{0, t}}) == Some{Asn1.Tlv{4, Nil{}, t}} : Maybe<&2, Asn1.Tlv>}
+
+# Hosts
+# -----
+# The name in a certificate decides which host is served, so a wildcard may stand for one
+# label and no more: not the bare domain, not several labels, not the labels on either side
+# of a name it only appears to end. Case is settled before the comparison (the host is
+# lowercased and the dNSName entries are lowercased as they are parsed), and an IP literal
+# is never a name.
+
+# LAW: *.example.com matches a host one label below example.com.
+law x509v_name_wild_one_label:
+  {X509v.name.ok("*.example.com", "a.example.com") == True{} : Bool}
+
+# LAW: *.example.com does not match example.com itself.
+law x509v_name_wild_not_apex:
+  {X509v.name.ok("*.example.com", "example.com") == False{} : Bool}
+
+# LAW: *.example.com does not match a host two labels below it.
+law x509v_name_wild_not_two_labels:
+  {X509v.name.ok("*.example.com", "a.b.example.com") == False{} : Bool}
+
+# LAW: *.example.com does not match a longer domain that ends in its name.
+law x509v_name_wild_not_suffix:
+  {X509v.name.ok("*.example.com", "a.example.com.evil") == False{} : Bool}
+
+# LAW: a * that isn't the whole leftmost label is an ordinary character, not a wildcard.
+law x509v_name_wild_leftmost:
+  {X509v.name.ok("a*.example.com", "ab.example.com") == False{} : Bool}
+
+# LAW: a wildcard under a bare top-level domain matches nothing.
+law x509v_name_wild_two_labels:
+  {X509v.name.ok("*.com", "a.com") == False{} : Bool}
+
+# LAW: the host is lowercased before it is compared, so X.Example.Com is x.example.com.
+law x509v_host_norm:
+  {X509v.host.norm("X.Example.Test") == "x.example.test" : String}
+
+# LAW: a name with no wildcard matches the host equal to it, and no other host.
+law x509v_name_exact_only_itself:
+  for +h: String
+  {X509v.name.ok("cha.test", h) == String.eq("cha.test", h) : Bool}
+
+# LAW: when the host is an IP literal, no certificate name matches it, wildcard or not.
+law x509v_ip_never_matches:
+  for c: X509.Cert
+  for +n: String
+  for ok: {X509v.host.ip(n) == True{} : Bool}
+  {X509v.host_ok.if(X509v.host.ip(n), c, n) == False{} : Bool}
+
+# Time and issuers
+# ----------------
+# The leaf is checked before the chain is walked, and every issuer above it is checked as
+# the walk passes it. These are those decisions over constructed certificates: the fields
+# they read, and nothing else, set.
+
+# a certificate with only the fields the checks read: a validity, the CA flag, and
+# pathLenConstraint. The key usage is absent (every bit), the critical extensions are none,
+# and the certificate is for TLS servers.
+def x509v_cert(nb: U32, na: U32, ca: Bool, path_len: U32) -> X509.Cert:
+  X509.Cert{Nil{}, Nil{}, "", Nil{}, Nil{}, Nil{}, nb, na, "", "", Nil{}, Nil{}, ca, path_len, 4294967295, False{}, True{}}
+
+# LAW: a certificate whose notAfter is before now is refused, whatever else is right with it.
+law x509v_leaf_expired:
+  {X509v.leaf.why(x509v_cert(1000, 2000, False{}, 0), "cha.test", 2001, True{}) == "the server's certificate has expired" : String}
+
+# LAW: a certificate whose notBefore is after now is refused.
+law x509v_leaf_not_yet:
+  {X509v.leaf.why(x509v_cert(2000, 3000, False{}, 0), "cha.test", 1999, True{}) == "the server's certificate isn't valid yet" : String}
+
+# LAW: a certificate that is valid now, for TLS servers and for this host, is accepted.
+law x509v_leaf_ok:
+  {X509v.leaf.why(x509v_cert(1000, 3000, False{}, 0), "cha.test", 2000, True{}) == "" : String}
+
+# LAW: an issuer without the CA basicConstraints flag is refused, so a leaf can't sign for
+# another host.
+law x509v_inter_not_ca:
+  {X509v.inter.why(x509v_cert(1000, 3000, False{}, 0), 1, 2000) == "an issuer in the chain isn't a CA" : String}
+
+# LAW: an issuer's pathLenConstraint caps how many issuers may sit between it and the leaf.
+law x509v_inter_pathlen:
+  {X509v.inter.why(x509v_cert(1000, 3000, True{}, 0), 1, 2000) == "the chain is longer than an issuer allows" : String}
+
+# LAW: the same issuer is accepted when it sits directly above the leaf.
+law x509v_inter_pathlen_room:
+  {X509v.inter.why(x509v_cert(1000, 3000, True{}, 0), 0, 2000) == "" : String}
+
+# LAW: a certificate that issued the one at hand ends the walk as trusted.
+law x509v_chain_anchor_trusted:
+  for a: X509.Cert
+  for c: X509.Cert
+  {X509v.path.anchor(Some{a}, c, 0, Nil{}, 2000) == X509v.Trusted{} : X509v.Path}
+
+# LAW: a chain that ends at no trust anchor is refused.
+law x509v_chain_no_anchor:
+  for c: X509.Cert
+  {X509v.path.anchor(None{}, c, 0, Nil{}, 2000) == X509v.Refused{"the chain doesn't lead to a trusted root"} : X509v.Path}
+
 # end x509
 
 # tlsmsg, tls [tls]

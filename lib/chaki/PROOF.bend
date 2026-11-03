@@ -930,6 +930,107 @@ def Laws.x25519_clamp_bytes(b0, mid, last):
 
 # asn1, x509, x509v [x509]
 # ------------------------
+# Each DER refusal is decided before the bytes that follow are looked at, so the claim holds
+# with the tail left symbolic: reflexivity alone proves it. The two positive claims reduce
+# the read over a literal tag and length and a symbolic value and tail.
+
+def Laws.asn1_read_high_tag(t):
+  {==}
+
+def Laws.asn1_read_indefinite(t):
+  {==}
+
+def Laws.asn1_read_long_zero(t):
+  {==}
+
+def Laws.asn1_read_long_short(t):
+  {==}
+
+def Laws.asn1_read_long_count(t):
+  {==}
+
+def Laws.asn1_read_past_end():
+  {==}
+
+def Laws.asn1_read_exact(v, t):
+  {==}
+
+def Laws.asn1_read_zero_len(t):
+  {==}
+
+# Hosts
+# -----
+# The wildcard and exact-name laws are closed names, or one closed name against a symbolic
+# host, so each reduces to a Bool. name.ok keeps its first argument until the name is
+# compared, so the exact-name law needs the two sides joined: or with a False is the Bool
+# itself.
+
+def x509v_or_false(+b: Bool) -> {Bool.or(b, False{}) == b : Bool}:
+  match b:
+    case True{}:
+      {==}
+    case False{}:
+      {==}
+
+def Laws.x509v_name_wild_one_label():
+  {==}
+
+def Laws.x509v_name_wild_not_apex():
+  {==}
+
+def Laws.x509v_name_wild_not_two_labels():
+  {==}
+
+def Laws.x509v_name_wild_not_suffix():
+  {==}
+
+def Laws.x509v_name_wild_leftmost():
+  {==}
+
+def Laws.x509v_name_wild_two_labels():
+  {==}
+
+def Laws.x509v_host_norm():
+  {==}
+
+def Laws.x509v_name_exact_only_itself(h):
+  %Equal.sym(Bool, Bool.or(String.eq("cha.test", h), False{}), String.eq("cha.test", h), x509v_or_false(String.eq("cha.test", h))) : {_ == String.eq("cha.test", h) : Bool}
+  {==}
+
+# host_ok.if decides on the host's kind before it reads the certificate, so an IP literal's
+# proof rewrites the hypothesis into the goal and the certificate stays symbolic.
+def Laws.x509v_ip_never_matches(c, n, ok):
+  %Equal.sym(Bool, X509v.host.ip(n), True{}, ok) : {X509v.host_ok.if(_, c, n) == False{} : Bool}
+  {==}
+
+# Time and issuers
+# ----------------
+# Each claim is a closed certificate and a closed instant, so the decision reduces to its
+# text. The two anchor laws read the found anchor's presence, not its bytes.
+
+def Laws.x509v_leaf_expired():
+  {==}
+
+def Laws.x509v_leaf_not_yet():
+  {==}
+
+def Laws.x509v_leaf_ok():
+  {==}
+
+def Laws.x509v_inter_not_ca():
+  {==}
+
+def Laws.x509v_inter_pathlen():
+  {==}
+
+def Laws.x509v_inter_pathlen_room():
+  {==}
+
+def Laws.x509v_chain_anchor_trusted(a, c):
+  {==}
+
+def Laws.x509v_chain_no_anchor(c):
+  {==}
 
 # end x509
 
