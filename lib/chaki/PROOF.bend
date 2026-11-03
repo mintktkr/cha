@@ -939,10 +939,6 @@ def Laws.width_text_concat():
 # end time
 
 # sha2, chacha [hash]
-# -------------------
-# The known answers are closed bytes on both sides, so reflexivity is the whole proof: the
-# checker runs the hash or the cipher itself when it checks the law. The two laws over every
-# input are the ones whose code path never reads the symbolic part.
 
 def Laws.sha2_sha256_empty():
   {==}
@@ -964,12 +960,20 @@ def Laws.sha2_sha512_empty():
 def Laws.sha2_sha512_abc():
   {==}
 
+# pad.to counts the bytes it has to fill from the message length alone: 55 bytes leave room for
+# the 0x80 and the 8-byte length in one 64-byte block, and one more byte does not
+def Laws.sha2_pad_55_one_block():
+  {==}
+
+def Laws.sha2_pad_56_two_blocks():
+  {==}
+
 # the pads are a whole block wide, so one MAC is four compressions
 def Laws.sha2_hmac_sha256_rfc4231_1():
   {==}
 
-# expand counts its blocks from the length asked for, and zero blocks is no work at all, so
-# the prk and the info are never read
+# expand counts its blocks from the length asked for, and zero blocks is no work at all, so the
+# prk and the info are never read
 def Laws.sha2_expand_zero(prk, info):
   {==}
 
@@ -979,23 +983,15 @@ def Laws.chacha20_block_rfc8439_2_3_2():
 def Laws.chacha_poly1305_rfc8439_2_5_2():
   {==}
 
-# the one-time key is block 0 of the keystream, the tag covers the aad and the ciphertext
-def Laws.chacha_aead_seal_rfc8439_2_8_2():
-  {==}
-
-def Laws.chacha_aead_open_rfc8439_2_8_2():
-  {==}
-
-# the tags here are the RFC's, with the low bit of one byte turned over
 def Laws.chacha_aead_open_refuses_tag_flip():
   {==}
 
-def Laws.chacha_aead_open_refuses_ciphertext_flip():
+# Bytes.len of the empty list is 0 and of fifteen zeros is 15, both below a tag, so open's guard
+# answers None before the key, the nonce or the aad are touched
+def Laws.chacha_aead_open_refuses_empty(key, nonce, aad):
   {==}
 
-# Bytes.len of the empty list is 0, below a tag, so open's guard answers None before the key,
-# the nonce or the aad are touched
-def Laws.chacha_aead_open_refuses_empty(key, nonce, aad):
+def Laws.chacha_aead_open_refuses_short(key, nonce, aad):
   {==}
 
 # end hash
