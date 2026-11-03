@@ -454,6 +454,99 @@ law url_pct_empty:
 
 # time, width [time]
 # ------------------
+# Both modules decide every result with U32 arithmetic and comparison, and bend reduces those
+# only on a constructor, so a claim over a symbolic U32 is stuck at its first division or
+# comparison. Base proves commutativity of addition and nothing else about a 32-bit word. So
+# the calendar and the width table are pinned by known answers: each law names its inputs, and
+# each side of it is a closed term. Where the shape of a claim could hide a wrong answer, the
+# law carries its neighbours too (the two ends of a range, or the whole range at once).
+
+# LAW: showing the epoch writes the RFC 3339 text 1970-01-01T00:00:00Z.
+law time_show_epoch:
+  {Time.show(0) == "1970-01-01T00:00:00Z" : String}
+
+# LAW: the day count and the civil date are inverse at the epoch: 1970-01-01 is day 0, and day
+# 0 is 1970-01-01.
+law time_civil_days_epoch:
+  {Time.days(1970, 1, 1) == 0 : U32} & {Time.civil(0) == (1970, 1, 1) : U32 & U32 & U32}
+
+# LAW: the two are inverse on a leap day: 2000-02-29 is day 11016, and day 11016 is 2000-02-29.
+law time_civil_days_leap:
+  {Time.days(2000, 2, 29) == 11016 : U32} & {Time.civil(11016) == (2000, 2, 29) : U32 & U32 & U32}
+
+# LAW: the two are inverse on 2100-02-28, the last day of February in a century that skips its
+# leap day: it is day 47540, and day 47540 is 2100-02-28.
+law time_civil_days_century:
+  {Time.days(2100, 2, 28) == 47540 : U32} & {Time.civil(47540) == (2100, 2, 28) : U32 & U32 & U32}
+
+# LAW: showing a leap day, a skipped century's last February day, the second a signed 32-bit
+# clock overflows at, and the last instant a U32 holds, each writes its RFC 3339 text.
+law time_show_known:
+  {Time.show(951782400) == "2000-02-29T00:00:00Z" : String} &
+  {Time.show(4107456000) == "2100-02-28T00:00:00Z" : String} &
+  {Time.show(2147483647) == "2038-01-19T03:14:07Z" : String} &
+  {Time.show(4294967295) == "2106-02-07T06:28:15Z" : String}
+
+# LAW: parsing what showing wrote gives the instant back, at the epoch, a leap day, a skipped
+# century's last February day, the 2038 overflow and the last second a U32 holds.
+law time_parse_show_roundtrip:
+  {Time.parse(Time.show(0)) == Some{0} : Maybe<&2, U32>} &
+  {Time.parse(Time.show(951782400)) == Some{951782400} : Maybe<&2, U32>} &
+  {Time.parse(Time.show(4107456000)) == Some{4107456000} : Maybe<&2, U32>} &
+  {Time.parse(Time.show(2147483647)) == Some{2147483647} : Maybe<&2, U32>} &
+  {Time.parse(Time.show(4294967295)) == Some{4294967295} : Maybe<&2, U32>}
+
+# LAW: a stamp that names a day or a month or an hour that doesn't exist is refused: February
+# 29 in 2023, April 31, month 13 and hour 24.
+law time_parse_refuses:
+  {Time.parse("2023-02-29T00:00:00Z") == None{} : Maybe<&2, U32>} &
+  {Time.parse("2023-04-31T00:00:00Z") == None{} : Maybe<&2, U32>} &
+  {Time.parse("2023-13-01T00:00:00Z") == None{} : Maybe<&2, U32>} &
+  {Time.parse("2023-01-01T24:00:00Z") == None{} : Maybe<&2, U32>}
+
+# LAW: an offset is applied to the wall time before the instant is taken: 09:00 at -03:00 is
+# 12:00 UTC, and 09:00 at +05:30 is 03:30 UTC.
+law time_parse_offset:
+  {Time.parse("2026-09-30T09:00:00-03:00") == Some{1790769600} : Maybe<&2, U32>} &
+  {Time.parse("2026-09-30T09:00:00+05:30") == Some{1790739000} : Maybe<&2, U32>}
+
+# LAW: February has 29 days in 2024 and 2000, and 28 in 1900 and 2100: a leap year is
+# divisible by four, but not by a hundred, unless by four hundred.
+law time_february_len:
+  {Time.month.len(2024, 2) == 29 : U32} &
+  {Time.month.len(2000, 2) == 29 : U32} &
+  {Time.month.len(1900, 2) == 28 : U32} &
+  {Time.month.len(2100, 2) == 28 : U32}
+
+# LAW: every printable ASCII character is one column: the run from space to tilde is 95 columns
+# wide, and the two ends of it are one column each.
+law width_ascii_printable:
+  {Width.text(" !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\u{5c}]^_`abc" ++
+    "defghijklmnopqrstuvwxyz{|}~") == 95 : U32} &
+  {Width.char(32) == 1 : U32} & {Width.char(126) == 1 : U32}
+
+# LAW: every C0 control, every C1 control and DEL take no column.
+law width_ascii_controls:
+  {Width.text("\u{0}\u{1}\u{2}\u{3}\u{4}\u{5}\u{6}\u{7}\u{8}\u{9}\u{a}\u{b}\u{c}\u{d}\u{e}\u{f}" ++
+    "\u{10}\u{11}\u{12}\u{13}\u{14}\u{15}\u{16}\u{17}\u{18}\u{19}\u{1a}\u{1b}\u{1c}\u{1d}" ++
+    "\u{1e}\u{1f}\u{7f}\u{80}\u{81}\u{82}\u{83}\u{84}\u{85}\u{86}\u{87}\u{88}\u{89}\u{8a}" ++
+    "\u{8b}\u{8c}\u{8d}\u{8e}\u{8f}\u{90}\u{91}\u{92}\u{93}\u{94}\u{95}\u{96}\u{97}\u{98}" ++
+    "\u{99}\u{9a}\u{9b}\u{9c}\u{9d}\u{9e}\u{9f}") == 0 : U32}
+
+# LAW: a combining mark (U+0300) takes no column, so a letter carrying its accent is one column.
+law width_combining_mark:
+  {Width.char(768) == 0 : U32} & {Width.text("e\u{301}") == 1 : U32}
+
+# LAW: the East Asian wide blocks and an emoji take two columns: a Han character (U+4E00), a
+# Hangul syllable (U+AC00) and an emoji (U+1F600).
+law width_wide:
+  {Width.char(19968) == 2 : U32} & {Width.char(44032) == 2 : U32} & {Width.char(128512) == 2 : U32}
+
+# LAW: widths add up when text sits side by side: "cha " is 4 columns, "茶" is 2, and the
+# two together are 6; the same holds for "日本" and "語".
+law width_text_concat:
+  {Width.text("cha 茶") == (Width.text("cha ") + Width.text("茶") : U32) : U32} &
+  {Width.text("日本語") == (Width.text("日本") + Width.text("語") : U32) : U32}
 
 # end time
 

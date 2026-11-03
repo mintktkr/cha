@@ -363,6 +363,53 @@ def Laws.url_pct_empty():
 
 # time, width [time]
 # ------------------
+# Every claim names a closed input, so both sides of it reduce to the same term and
+# reflexivity is the whole proof; a law that is a conjunction proves as a tuple of those.
+# There is nothing to induct on: the calendar and the width table reach their answers through
+# U32 division, multiplication and comparison, and those are opaque on anything but a
+# constructor.
+
+def Laws.time_show_epoch():
+  {==}
+
+def Laws.time_civil_days_epoch():
+  ({==}, {==})
+
+def Laws.time_civil_days_leap():
+  ({==}, {==})
+
+def Laws.time_civil_days_century():
+  ({==}, {==})
+
+def Laws.time_show_known():
+  ({==}, {==}, {==}, {==})
+
+def Laws.time_parse_show_roundtrip():
+  ({==}, {==}, {==}, {==}, {==})
+
+def Laws.time_parse_refuses():
+  ({==}, {==}, {==}, {==})
+
+def Laws.time_parse_offset():
+  ({==}, {==})
+
+def Laws.time_february_len():
+  ({==}, {==}, {==}, {==})
+
+def Laws.width_ascii_printable():
+  ({==}, {==}, {==})
+
+def Laws.width_ascii_controls():
+  {==}
+
+def Laws.width_combining_mark():
+  ({==}, {==})
+
+def Laws.width_wide():
+  ({==}, {==}, {==})
+
+def Laws.width_text_concat():
+  ({==}, {==})
 
 # end time
 
