@@ -504,9 +504,6 @@ def http1.name(p: String, c: U32, q: String, e: {False{} == Http1.is.tchar(c) : 
 # The laws
 # --------
 
-def Laws.http1_feed_split():
-  ({==}, {==}, {==})
-
 def Laws.http1_request_bytes():
   {==}
 
@@ -560,6 +557,9 @@ def Laws.http1_chunk_not_hex():
 
 def Laws.http1_header_case():
   ({==}, {==})
+
+def Laws.http1_feed_split():
+  ({==}, {==}, {==})
 
 # end http1
 
