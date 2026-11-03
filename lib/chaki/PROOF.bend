@@ -989,6 +989,9 @@ def Laws.chacha_aead_open_seal():
 def Laws.chacha_aead_open_refuses_tag_flip():
   {==}
 
+def Laws.chacha_aead_open_refuses_ciphertext_flip():
+  {==}
+
 # Bytes.len of the empty list is 0 and of fifteen zeros is 15, both below a tag, so open's guard
 # answers None before the key, the nonce or the aad are touched
 def Laws.chacha_aead_open_refuses_empty(key, nonce, aad):

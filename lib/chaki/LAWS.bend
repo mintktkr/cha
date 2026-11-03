@@ -1052,6 +1052,12 @@ law chacha_aead_open_seal:
 law chacha_aead_open_refuses_tag_flip:
   {Chacha.open(chacha_key_2_8_2(), chacha_nonce_2_8_2(), chacha_aad_2_8_2(), Bytes.xor(Chacha.seal(chacha_key_2_8_2(), chacha_nonce_2_8_2(), chacha_aad_2_8_2(), Nil{}), Bytes.cat(Bytes.zeros(15n), [1]))) == None{} : Maybe<&2, List<&2, U32>>}
 
+# LAW: opening a message whose ciphertext is one bit off is refused, so nothing comes back for a
+# tampered message even though the tag is then recomputed over it. The mask turns over the first
+# byte of the ciphertext, which the tag's 16 bytes follow.
+law chacha_aead_open_refuses_ciphertext_flip:
+  {Chacha.open(chacha_key_2_8_2(), chacha_nonce_2_8_2(), Nil{}, Bytes.xor(Chacha.seal(chacha_key_2_8_2(), chacha_nonce_2_8_2(), Nil{}, chacha_plain_16()), Bytes.cat([1], Bytes.zeros(31n)))) == None{} : Maybe<&2, List<&2, U32>>}
+
 # LAW: a sealed message with no room for a tag is refused before anything is decrypted.
 law chacha_aead_open_refuses_empty:
   for key: List<&2, U32>
