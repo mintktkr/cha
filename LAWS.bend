@@ -389,7 +389,8 @@ law pr_ref_dotdot:
 # -------------
 # A pull request's number reaches a URL path, so it is digits only, the way a run id is.
 # close and reopen differ in one word, the state both forges read on the same PATCH, and a
-# listed pull request carries the merge either as a flag or as merged_at alone.
+# listed pull request carries the merge as merged_at, which a forge sends as null when it
+# did not merge.
 
 # LAW: a number is a pull request number.
 law pr_number_digits:

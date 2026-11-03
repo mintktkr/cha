@@ -303,12 +303,22 @@ def view.row(+env: Cli.Env, +n: String, +row: Map<&2, String>) -> IO(Unit):
         IO.write(view.text(on, row, t))
         view.comments(env, repo, tok, n, on, Cli.has(args, "--comments"))
 
+# --comments is read as text, so with --json it would vanish: the pair is refused instead
+def view.json.if(+on: Bool, j: Cli.Json, +row: Map<&2, String>, comments: Bool) -> IO(Unit):
+  match comments:
+    case True{}:
+      do IO<Unit>:
+        Ui.error(on, "pr view --json takes no --comments; read them with pr view N --comments")
+        IO.die(Unit, 1, "")
+    case False{}:
+      Cli.json.emit.one(on, j, row, ["number", "title", "state", "head.ref", "base.ref", "user.login", "mergeable", "html_url", "body"])
+
 def view.pick(+env: Cli.Env, +n: String, json: Cli.Json, +row: Map<&2, String>) -> IO(Unit):
   match env json:
     case Cli.Env{r, t, c, k, a} Cli.Off{}:
       view.row(env, n, row)
     case Cli.Env{r, t, +on, k, a} j:
-      Cli.json.emit.one(on, j, row, ["number", "title", "state", "head.ref", "base.ref", "user.login", "mergeable", "html_url", "body"])
+      view.json.if(on, j, row, Cli.has(a, "--comments"))
 
 def view.good(+env: Cli.Env, +n: String, json: Cli.Json, body: List<&2, U32>, +status: U32, good: Bool) -> IO(Unit):
   match good:

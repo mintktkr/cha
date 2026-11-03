@@ -45,6 +45,7 @@ On GitHub, an issue and a pull request share one number sequence: the first PR i
 | | `C issue close 1 --comment C`, `reopen 1`, `close 1` | state follows |
 | pr | `C pr create --head feat-merge --base main --title T --body B` | URL of #2 |
 | | `C pr edit 2 --title T2 --body B2`, `C pr comment 2 --body B` | `pr view 2 --comments` shows both |
+| | `C pr close 2 --comment C`, `C pr reopen 2`, `C pr close 2` | state follows; the comment lands on the pull request |
 | | `C pr comment-edit ID --body B3`, `C pr comment-delete ID --yes` | a PR's conversation comment, edited then gone (same ids as `issue`) |
 | | `C pr diff 2` | the unified diff |
 | | `C pr checks 2` | `flaky` failed, exit 1 |

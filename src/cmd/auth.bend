@@ -35,7 +35,7 @@ def out(+on: Bool, json: Cli.Json, +x: Map<&2, String>) -> IO(Unit):
     case Cli.Off{}:
       IO.write(text(on, x))
     case j:
-      Cli.json.emit(on, j, [x], fields())
+      Cli.json.emit.one(on, j, x, fields())
 
 # exit 1 when there is no usable token, so scripts can test it
 def verdict(+env: Cli.Env, +why: String, ok: Bool) -> IO(Unit):
