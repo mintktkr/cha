@@ -21,11 +21,22 @@ def recv(sock: Socket, max: U32, ms: U32) ->
   import "./effs/sys.c"
   import "./effs/sys.js"
 
+# a failed send's error, without the bytes it left unsent: a failure ends the connection,
+# so nobody resends them
+def send.sent(r: Socket & Result<&1, &1, (U32 & String) & List<&2, U32>, Unit>) -> Socket & Result<&1, &1, U32 & String, Unit>:
+  match r:
+    case (sock, Done{u}):
+      (sock, Done{u})
+    case (sock, Fail{(e, rest)}):
+      (sock, Fail{e})
+
 # all of data, or a failure. Base's TCP.send_bytes already sends everything, parking until
 # a full socket drains, so this is that call.
 def send(sock: Socket, data: List<&2, U32>) ->
   IO(Socket & Result<&1, &1, U32 & String, Unit>):
-  TCP.send_bytes(sock, data)
+  do IO<Socket & Result<&1, &1, U32 & String, Unit>>:
+    r : Socket & Result<&1, &1, (U32 & String) & List<&2, U32>, Unit> <- TCP.send_bytes(sock, data)
+    return send.sent(r)
 
 # Unix time in seconds (wall clock, not monotonic)
 def now() -> IO(U32):

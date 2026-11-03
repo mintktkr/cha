@@ -152,15 +152,15 @@ def rand.go(n: Nat, acc: Maybe<&2, List<&2, U32>>) -> IO(Maybe<&2, List<&2, U32>
 
 # The wire
 # --------
-# One machine runs both the handshake and the reads after it. It ends in Ready (the
+# One machine runs both the handshake and the reads after it. It ends in ShReady (the
 # handshake is done, or data came in: buf), Eof (close_notify, with any data that came
 # before it), or Bad.
 
 type Sh is Type:
-  Wait{sock: Socket, st: Core.Hs}
+  ShWait{sock: Socket, st: Core.Hs}
   Send{sock: Socket, st: Core.Hs, out: List<&2, U32>, evs: List<&2, Core.Reply>, buf: List<&2, U32>}
   Events{sock: Socket, st: Core.Hs, evs: List<&2, Core.Reply>, buf: List<&2, U32>}
-  Ready{sock: Socket, st: Core.Hs, buf: List<&2, U32>}
+  ShReady{sock: Socket, st: Core.Hs, buf: List<&2, U32>}
   Eof{sock: Socket, st: Core.Hs, buf: List<&2, U32>}
   Bad{sock: Socket, st: Core.Hs, code: U32, why: String}
 
@@ -238,7 +238,7 @@ def sh.one(sock: Socket, st: Core.Hs, e: Core.Reply, rest: List<&2, Core.Reply>,
     case Core.Reply.check{certs, scheme, signed, sig}:
       sh.verdict(sock, st, trust(certs, scheme, signed, sig, anchors, host, now), rest, buf)
     case Core.Reply.ready{}:
-      Ready{sock, st, data.of(rest, buf)}
+      ShReady{sock, st, data.of(rest, buf)}
     case Core.Reply.data{bs}:
       Events{sock, st, rest, Bytes.cat(buf, bs)}
     case Core.Reply.closed{}:
@@ -249,9 +249,9 @@ def sh.one(sock: Socket, st: Core.Hs, e: Core.Reply, rest: List<&2, Core.Reply>,
 def sh.events.end(sock: Socket, st: Core.Hs, +buf: List<&2, U32>, empty: Bool) -> Sh:
   match empty:
     case True{}:
-      Wait{sock, st}
+      ShWait{sock, st}
     case False{}:
-      Ready{sock, st, buf}
+      ShReady{sock, st, buf}
 
 def sh.events(sock: Socket, st: Core.Hs, evs: List<&2, Core.Reply>, +buf: List<&2, U32>, +anchors: List<&2, X509.Cert>, +host: String, +now: U32) -> Sh:
   match evs:
@@ -264,7 +264,7 @@ def sh.go(fuel: Nat, +deadline: U32, +anchors: List<&2, X509.Cert>, +host: Strin
   match fuel s:
     case 0n x:
       IO.pure(Sh, x)
-    case 1n+k Wait{sock, st}:
+    case 1n+k ShWait{sock, st}:
       do IO<Sh>:
         t : U32 <- Sys.now()
         r : Socket & Result<&1, &1, U32 & String, List<&2, U32>> <- Sys.recv(sock, 65536, left.ms(deadline, t))
@@ -273,8 +273,8 @@ def sh.go(fuel: Nat, +deadline: U32, +anchors: List<&2, X509.Cert>, +host: Strin
       IO.bind(Socket & Result<&1, &1, U32 & String, Unit>, Sh, Sys.send(sock, out), w => sh.go(k, deadline, anchors, host, now, sh.sent(st, evs, buf, w)))
     case 1n+k Events{sock, st, evs, buf}:
       sh.go(k, deadline, anchors, host, now, sh.events(sock, st, evs, buf, anchors, host, now))
-    case 1n+k Ready{sock, st, buf}:
-      IO.pure(Sh, Ready{sock, st, buf})
+    case 1n+k ShReady{sock, st, buf}:
+      IO.pure(Sh, ShReady{sock, st, buf})
     case 1n+k Eof{sock, st, buf}:
       IO.pure(Sh, Eof{sock, st, buf})
     case 1n+k Bad{sock, st, c, w}:
@@ -289,7 +289,7 @@ type Conn is Type:
 
 def connect.end(s: Sh) -> IO(Result<&1, &1, U32 & String, Conn>):
   match s:
-    case Ready{sock, st, buf}:
+    case ShReady{sock, st, buf}:
       IO.pure(Result<&1, &1, U32 & String, Conn>, Done{Conn{sock, st, buf, False{}}})
     case Eof{sock, st, buf}:
       do IO<Result<&1, &1, U32 & String, Conn>>:
@@ -299,7 +299,7 @@ def connect.end(s: Sh) -> IO(Result<&1, &1, U32 & String, Conn>):
       do IO<Result<&1, &1, U32 & String, Conn>>:
         Socket.close(sock)
         return Fail{(c, w)}
-    case Wait{sock, st}:
+    case ShWait{sock, st}:
       do IO<Result<&1, &1, U32 & String, Conn>>:
         Socket.close(sock)
         return Fail{(110, "the handshake took too long")}
@@ -356,13 +356,13 @@ def give(sock: Socket, st: Core.Hs, +buf: List<&2, U32>, eof: Bool, +max: U32) -
 
 def recv.end(+max: U32, s: Sh) -> IO(Conn & Result<&1, &1, U32 & String, List<&2, U32>>):
   match s:
-    case Ready{sock, st, buf}:
+    case ShReady{sock, st, buf}:
       IO.pure(Conn & Result<&1, &1, U32 & String, List<&2, U32>>, give(sock, st, buf, False{}, max))
     case Eof{sock, st, buf}:
       IO.pure(Conn & Result<&1, &1, U32 & String, List<&2, U32>>, give(sock, st, buf, True{}, max))
     case Bad{sock, st, c, w}:
       IO.pure(Conn & Result<&1, &1, U32 & String, List<&2, U32>>, (Conn{sock, st, Nil{}, False{}}, Fail{(c, w)}))
-    case Wait{sock, st}:
+    case ShWait{sock, st}:
       IO.pure(Conn & Result<&1, &1, U32 & String, List<&2, U32>>, (Conn{sock, st, Nil{}, False{}}, Fail{(110, "timed out")}))
     case Send{sock, st, out, evs, buf}:
       IO.pure(Conn & Result<&1, &1, U32 & String, List<&2, U32>>, (Conn{sock, st, Nil{}, False{}}, Fail{(110, "timed out")}))
@@ -377,7 +377,7 @@ def recv.read(sock: Socket, st: Core.Hs, +max: U32, +ms: U32, eof: Bool) -> IO(C
     case False{}:
       do IO<Conn & Result<&1, &1, U32 & String, List<&2, U32>>>:
         +now : U32 <- Sys.now()
-        s : Sh <- sh.go(200n, deadline(now, ms), Nil{}, "", now, Wait{sock, st})
+        s : Sh <- sh.go(200n, deadline(now, ms), Nil{}, "", now, ShWait{sock, st})
         recv.end(max, s)
 
 def recv.at(sock: Socket, st: Core.Hs, +buf: List<&2, U32>, eof: Bool, +max: U32, +ms: U32, empty: Bool) -> IO(Conn & Result<&1, &1, U32 & String, List<&2, U32>>):
