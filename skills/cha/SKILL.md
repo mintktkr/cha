@@ -18,7 +18,8 @@ description: Use cha for Gitea, Forgejo and GitHub work from the terminal - issu
 ## Output
 
 - Piped output is plain text: no colour, no animation, one line per item in lists.
-- `--json` gives an array of objects with flat string fields (`"user.login"`, `"labels"`), booleans as `"true"`/`"false"`.
+- `--json` gives objects with flat string fields (`"user.login"`, `"labels"`), booleans as `"true"`/`"false"`.
+- A command that addresses one object prints that object, not a one-element array: `pr view`, `issue view`, `release view`, `release latest` and `repo view` print `{"number":"7",…}`. Lists (`pr list`, `issue list`, `repo branches`, …) still print an array. Scripts that indexed those five with `[0]` can drop it.
 - Bare `--json` prints every field. `--json a,b` or `--json=a,b` prints only those fields, in that order. Spaces after commas are trimmed when the list is quoted.
 - The word after a bare `--json` is the field list unless it starts with `-` or a digit, or is a command name. So `cha issue view --json 7` is issue 7, and `cha issue view --json title 7` selects the title. In scripts, use `--json=a,b`.
 - An unknown field exits 1 with `unknown JSON field X; valid fields: a, b, c`, so `--json nope` is a cheap way to list a command's fields.
@@ -49,11 +50,15 @@ cha issue close N [--comment C]  /  cha issue reopen N
 cha issue labels N add a,b | remove a,b | set a,b
 
 cha pr list [--state open|closed|all] [--all] [--limit N] [--json]
+# --json fields: number, title, state, merged, merged_at, head.ref, base.ref, user.login, html_url
+# merged is "true" exactly when the pull request was merged; state closed covers both cases
 cha pr view N [--comments]            # state, head -> base, mergeable, review summary, body
 cha pr diff N                         # raw unified diff
 cha pr create --head H [--base main] --title T [--body B | --body-file F]
 cha pr merge N [--squash|--merge|--rebase] [--delete-branch]
 cha pr edit N [--title T] [--body B]
+cha pr close N [--comment C]          # close without merging; --comment is posted first
+cha pr reopen N
 cha pr comment N --body B
 cha pr comment-edit ID --body B       # the same comments a PR's conversation holds
 cha pr comment-delete ID --yes

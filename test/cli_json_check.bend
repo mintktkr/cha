@@ -18,6 +18,9 @@ def sel(j: Cli.Json) -> String:
     case Cli.Only{+fs}:
       "only:" ++ joined(fs)
 
+def row.kv(+k: String, +v: String) -> Map<&2, String>:
+  Map.set(&2, String, Map.new(&2, String), k, v)
+
 def check.if(+name: String, +got: String, +want: String, same: Bool) -> IO(Unit):
   match same:
     case True{}:
@@ -56,3 +59,10 @@ def main() -> IO(Unit):
     expect("json.pick falls back to the defaults", joined(Cli.json.pick(Nil{}, ["x"])), "x")
     expect("json.pick keeps a selection", joined(Cli.json.pick(["number"], ["x"])), "number")
     expect("json.bad names the valid fields", Cli.json.bad("nope", ["number", "title"]), "unknown JSON field nope; valid fields: number, title")
+    expect("json.doc: one object", Cli.json.doc("7", True{}), "{7}")
+    expect("json.doc: a list is an array", Cli.json.doc("7", False{}), "[7]")
+    expect("json.row is one object of the fields given", Cli.json.row(row.kv("number", "7"), ["number"]), "{\"number\":\"7\"}")
+    expect("json.row: an empty field list is an empty object", Cli.json.row(row.kv("number", "7"), Nil{}), "{}")
+    expect("json.rows is an array, one object per line", Cli.json.rows([row.kv("number", "7"), row.kv("number", "8")], ["number"]), "[{\"number\":\"7\"},\n{\"number\":\"8\"}]")
+    expect("json.rows: an empty list is an empty array", Cli.json.rows(Nil{}, ["number"]), "[]")
+    expect("json.text quotes and keeps a control character escaped", Cli.json.text("a\u{1b}b"), "\"a\\u001bb\"")

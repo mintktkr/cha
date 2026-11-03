@@ -178,7 +178,7 @@ def view.out(+on: Bool, json: Cli.Json, +x: Map<&2, String>) -> IO(Unit):
     case Cli.Off{}:
       IO.write(view.text(on, x))
     case j:
-      Cli.json.emit(on, j, [x], view.fields(x))
+      Cli.json.emit.one(on, j, x, view.fields(x))
 
 # which endpoint answers a tag: latest, or releases/tags/<tag>
 def latest.of(+tag: String) -> Bool:
@@ -221,12 +221,15 @@ def view(+env: Cli.Env) -> IO(Unit):
 def latest.line(+on: Bool, +x: Map<&2, String>) -> String:
   Ui.bold(on, Ui.fg(on, Ui.aqua(), Api.f(x, "tag_name"))) ++ "  " ++ Api.f(x, "name") ++ "  " ++ Ui.dim(on, String.take(Api.f(x, "published"), 10n)) ++ "  " ++ Api.f(x, "html_url") ++ "\n"
 
+def latest.fields() -> List<&2, String>:
+  ["tag_name", "name", "published", "draft", "prerelease", "html_url"]
+
 def latest.out(+on: Bool, json: Cli.Json, +x: Map<&2, String>) -> IO(Unit):
   match json:
     case Cli.Off{}:
       IO.write(latest.line(on, x))
     case j:
-      Cli.json.emit(on, j, [x], ["tag_name", "name", "published", "draft", "prerelease", "html_url"])
+      Cli.json.emit.one(on, j, x, latest.fields())
 
 def latest(+env: Cli.Env) -> IO(Unit):
   match env:

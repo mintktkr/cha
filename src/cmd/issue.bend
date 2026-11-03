@@ -595,7 +595,7 @@ def view.json.out(+on: Bool, j: Cli.Json, +x: Map<&2, String>, +cs: List<&2, Map
         Cli.json.whole(on, j, "issue view --comments")
         IO.write(view.json(x, cs, True{}) ++ "\n")
     case False{}:
-      Cli.json.emit(on, j, [Map.set(&2, String, x, "labels", Api.raw.join(x, "labels", "name", ", "))], issue.fields())
+      Cli.json.emit.one(on, j, Map.set(&2, String, x, "labels", Api.raw.join(x, "labels", "name", ", ")), issue.fields())
 
 def view.print.if(json: Cli.Json, +on: Bool, +x: Map<&2, String>, +cs: List<&2, Map<&2, String>>, want: Bool) -> IO(Unit):
   match json:

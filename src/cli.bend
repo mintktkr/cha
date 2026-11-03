@@ -114,30 +114,46 @@ def arg(args: List<&2, String>, n: Nat) -> String:
 # Output
 # ------
 
-# one row as a JSON object of the given flat fields, all values strings, exactly as the
-# forge sent them: the JSON writer escapes a control character as \uXXXX, so --json keeps
-# the data instead of losing what Clean drops from the printed text
-def json.obj(+row: Map<&2, String>, fields: List<&2, String>) -> List<&2, Json.Val>:
+# a value as JSON spells it: the string, quoted, with a control character escaped as
+# \uXXXX, so --json keeps the data instead of losing what Clean drops from the printed text
+def json.text(+s: String) -> String:
+  Json.encode(Json.Str{s})
+
+# one row's fields as the body of a JSON object, "k":"v" each, in the order given
+def json.members.go(+row: Map<&2, String>, fields: List<&2, String>) -> List<&2, String>:
   match fields:
     case Nil{}:
       Nil{}
     case Con{+k, rest}:
-      Con{Json.field(k, Json.Str{Api.raw.f(row, k)}), json.obj(row, rest)}
+      Con{json.text(k) ++ ":" ++ json.text(Api.raw.f(row, k)), json.members.go(row, rest)}
+
+def json.members(+row: Map<&2, String>, +fields: List<&2, String>) -> String:
+  String.join(json.members.go(row, fields), ",")
+
+# the brackets around those members: a list prints an array, while a command that addresses
+# one object prints the object itself, so a script reads json["number"] and not the one
+# element's [0]["number"]
+def json.doc(+inside: String, one: Bool) -> String:
+  match one:
+    case True{}:
+      "{" ++ inside ++ "}"
+    case False{}:
+      "[" ++ inside ++ "]"
 
 # one row as a JSON object of the given flat fields, all values strings
 def json.row(+row: Map<&2, String>, +fields: List<&2, String>) -> String:
-  Json.encode(Json.Obj{json.obj(row, fields)})
+  json.doc(json.members(row, fields), True{})
 
 def json.rows.go(xs: List<&2, Map<&2, String>>, +fields: List<&2, String>) -> List<&2, String>:
   match xs:
     case Nil{}:
       Nil{}
-    case Con{x, rest}:
+    case Con{+x, rest}:
       json.row(x, fields) <> json.rows.go(rest, fields)
 
 # rows as a JSON array of objects, one per line
 def json.rows(xs: List<&2, Map<&2, String>>, +fields: List<&2, String>) -> String:
-  "[" ++ String.join(json.rows.go(xs, fields), ",\n") ++ "]"
+  json.doc(String.join(json.rows.go(xs, fields), ",\n"), False{})
 
 # --json field selection
 # ----------------------
@@ -307,6 +323,25 @@ def json.emit(+on: Bool, j: Json, xs: List<&2, Map<&2, String>>, +valid: List<&2
       json.emit.if(on, xs, fs, valid, bad, String.is_empty(bad))
     case x:
       IO.print(json.rows(xs, valid))
+
+def json.emit.one.if(+on: Bool, row: Map<&2, String>, +sel: List<&2, String>, +valid: List<&2, String>, +bad: String, ok: Bool) -> IO(Unit):
+  match ok:
+    case True{}:
+      IO.print(json.row(row, json.pick(sel, valid)))
+    case False{}:
+      do IO<Unit>:
+        Ui.error(on, json.bad(bad, valid))
+        IO.die(Unit, 1, "")
+
+# one row as JSON, for a command that addresses one object: the object itself, where a list
+# prints an array of them
+def json.emit.one(+on: Bool, j: Json, row: Map<&2, String>, +valid: List<&2, String>) -> IO(Unit):
+  match j:
+    case Only{+fs}:
+      +bad = json.unknown(fs, valid)
+      json.emit.one.if(on, row, fs, valid, bad, String.is_empty(bad))
+    case x:
+      IO.print(json.row(row, valid))
 
 def json.whole.if(+on: Bool, +what: String, ok: Bool) -> IO(Unit):
   match ok:
