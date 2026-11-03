@@ -6,6 +6,7 @@ import ./src/ctx.bend as Ctx
 import ./src/cli.bend as Cli
 import ./src/api.bend as Api
 import ./src/cmd/packages.bend as Packages
+import ./src/cmd/runs.bend as Runs
 import ./src/cmd/pr.bend as Pr
 import ./src/hooks.bend as Hooks
 import ./src/cmd/secrets.bend as Secrets
@@ -272,6 +273,151 @@ def Laws.runs_id_path():
   {==}
 
 def Laws.runs_id_empty():
+  {==}
+
+# Watching and rerunning runs
+# ----------------------------
+# Each law is a closed value: the classifier, the counter, the path builder and the message
+# all read a literal and normalize to one term, so reflexivity is the whole proof.
+
+def Laws.watch_poll_broke():
+  {==}
+
+def Laws.watch_poll_5xx():
+  {==}
+
+def Laws.watch_poll_4xx():
+  {==}
+
+def Laws.watch_poll_2xx():
+  {==}
+
+def Laws.watch_count_reset():
+  {==}
+
+def Laws.watch_count_retry():
+  {==}
+
+def Laws.watch_gives_up():
+  {==}
+
+def Laws.watch_not_yet():
+  {==}
+
+# Each of these reads a literal status and normalizes to a Bool, a String or a U32: the two
+# sides of the claim are one term, so reflexivity proves it.
+
+def Laws.watch_done_completed():
+  {==}
+
+def Laws.watch_done_success():
+  {==}
+
+def Laws.watch_done_failure():
+  {==}
+
+def Laws.watch_done_cancelled():
+  {==}
+
+def Laws.watch_done_skipped():
+  {==}
+
+def Laws.watch_live_running():
+  {==}
+
+def Laws.watch_live_queued():
+  {==}
+
+def Laws.watch_live_empty():
+  {==}
+
+def Laws.watch_end_forgejo():
+  {==}
+
+def Laws.watch_exit_failed():
+  {==}
+
+def Laws.watch_exit_gaveup():
+  {==}
+
+def Laws.watch_exit_status_failure():
+  {==}
+
+def Laws.watch_exit_status_cancelled():
+  {==}
+
+def Laws.watch_exit_status_success():
+  {==}
+
+def Laws.watch_exit_status_skipped():
+  {==}
+
+def Laws.watch_exit_github_failure():
+  {==}
+
+def Laws.watch_exit_github_success():
+  {==}
+
+def Laws.watch_gave_up_text():
+  {==}
+
+def Laws.watch_exhausted_text():
+  {==}
+
+def Laws.watch_exhausted_code():
+  {==}
+
+def Laws.rerun_path_gitea():
+  {==}
+
+def Laws.rerun_path_gitea_failed():
+  {==}
+
+def Laws.rerun_path_gitea_job():
+  {==}
+
+def Laws.rerun_path_github():
+  {==}
+
+def Laws.rerun_path_github_failed():
+  {==}
+
+def Laws.rerun_path_github_job():
+  {==}
+
+def Laws.missing_api_gitea():
+  {==}
+
+def Laws.missing_api_github():
+  {==}
+
+def Laws.missing_api_other():
+  {==}
+
+# Each of these reads a literal job id through the guard and normalizes to a Bool, so
+# reflexivity proves it.
+
+def Laws.rerun_job_ok_digits():
+  {==}
+
+def Laws.rerun_job_ok_empty():
+  {==}
+
+def Laws.rerun_job_ok_slash():
+  {==}
+
+def Laws.rerun_job_ok_dots():
+  {==}
+
+# runs view --json
+# ---------------
+# The document builder is the whole shape: two literals in, and the text that starts with the
+# run and carries the jobs beside it.
+
+def Laws.view_json_run_first():
+  {==}
+
+def Laws.view_json_jobs_array():
   {==}
 
 # Path segments

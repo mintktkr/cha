@@ -41,35 +41,29 @@ def fake.first(attempt: String) -> Map<&2, String>:
   m = Map.set(&2, String, m, "workflow", "ci")
   Map.set(&2, String, m, "attempt", attempt)
 
-# View JSON must stay a flat array of string-valued objects: it parses back to one
-# row per record through Api.rows, and check.rows below reads every field of each.
-def flat.count(+json: String, +want: String) -> IO(Unit):
-  expect(Nat.show(List.length(&2, Map<&2, String>, Api.rows(Utf8.encode(json)))), want)
-
-def check.rows(xs: List<&2, Map<&2, String>>) -> IO(Unit):
-  match xs:
-    case Con{+run, Con{+job, Con{+pending, Nil{}}}}:
-      do IO<Unit>:
-        expect(Api.f(run, "id"), "7")
-        expect(Api.f(run, "kind"), "run")
-        expect(Api.f(run, "attempt"), "2")
-        expect(Api.f(job, "kind"), "job")
-        expect(Api.f(job, "id"), "101")
-        expect(Api.f(job, "runner_name"), "runner-a")
-        expect(Api.f(job, "started_at"), "2026-01-02T10:00:00-03:00")
-        expect(Api.f(job, "completed_at"), "2026-01-02T13:01:30Z")
-        expect(Api.f(job, "duration"), "90")
-        expect(Api.f(job, "steps.#"), "2")
-        expect(Api.raw.f(job, "steps.0.name"), "Compile \"app\"\nnext")
-        expect(Api.f(job, "steps.0.duration"), "12")
-        expect(Api.f(job, "steps.1.state"), "skipped")
-        expect(Api.f(job, "steps.1.duration"), "")
-        expect(Api.f(pending, "id"), "102")
-        expect(Api.f(pending, "runner_name"), "")
-        expect(Api.f(pending, "duration"), "")
-        expect(Api.f(pending, "steps.#"), "0")
-    case _:
-      IO.die(Unit, 1, "view JSON must contain one run followed by two jobs")
+# runs view --json prints one object: the run under "run", its jobs under "jobs". It
+# parses back through Api.obj, and check.doc reads every field of the run and each job.
+def check.doc(+doc: Map<&2, String>) -> IO(Unit):
+  do IO<Unit>:
+    expect(Api.f(doc, "run.id"), "7")
+    expect(Api.f(doc, "run.kind"), "run")
+    expect(Api.f(doc, "run.attempt"), "2")
+    expect(Api.f(doc, "jobs.#"), "2")
+    expect(Api.f(doc, "jobs.0.kind"), "job")
+    expect(Api.f(doc, "jobs.0.id"), "101")
+    expect(Api.f(doc, "jobs.0.runner_name"), "runner-a")
+    expect(Api.f(doc, "jobs.0.started_at"), "2026-01-02T10:00:00-03:00")
+    expect(Api.f(doc, "jobs.0.completed_at"), "2026-01-02T13:01:30Z")
+    expect(Api.f(doc, "jobs.0.duration"), "90")
+    expect(Api.f(doc, "jobs.0.steps.#"), "2")
+    expect(Api.raw.f(doc, "jobs.0.steps.0.name"), "Compile \"app\"\nnext")
+    expect(Api.f(doc, "jobs.0.steps.0.duration"), "12")
+    expect(Api.f(doc, "jobs.0.steps.1.state"), "skipped")
+    expect(Api.f(doc, "jobs.0.steps.1.duration"), "")
+    expect(Api.f(doc, "jobs.1.id"), "102")
+    expect(Api.f(doc, "jobs.1.runner_name"), "")
+    expect(Api.f(doc, "jobs.1.duration"), "")
+    expect(Api.f(doc, "jobs.1.steps.#"), "0")
 
 def jobs.last(page: Runs.JobPages) -> IO(Unit):
   match page:
@@ -151,9 +145,10 @@ def main() -> IO(Unit):
     gitea.jobs.done(Runs.jobs.page("", "fallback-2", Utf8.encode("{\"total_count\":9,\"jobs\":[]}"), Nil{}))
     expect(Nat.show(List.length(&2, Runlogs.Step, Runlogs.steps.of(Runs.job.row(src, "jobs.0"), "steps", "UPLOAD"))), "1")
     +json : String = Runs.view.json.text(fake.run(), jobs)
-    flat.count(json, "3")
-    check.rows(Api.rows(Utf8.encode(json)))
-    expect(Nat.show(List.length(&2, Map<&2, String>, Api.rows(Utf8.encode(Runs.view.json.text(fake.run(), Nil{}))))), "1")
+    yes(String.starts_with(json, "{\"run\":{\"kind\":\"run\""))
+    yes(String.contains(json, ",\"jobs\":[{\"kind\":\"job\""))
+    check.doc(Api.obj(Utf8.encode(json)))
+    expect(Api.f(Api.obj(Utf8.encode(Runs.view.json.text(fake.run(), Nil{}))), "jobs.#"), "0")
     +text : String = Runs.view.text(False{}, fake.run(), jobs)
     yes(String.contains(text, "#7  failure  ci  attempt 2\n"))
     yes(String.contains(text, "  build  success  #101  runner-a  90s\n"))

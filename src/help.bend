@@ -322,12 +322,12 @@ def pr.page() -> Page:
 
 def runs.rows() -> List<&2, Row>:
   [Row{"list [--branch B] [--status S] [--workflow W] [--limit N]", "recent action runs", "cha runs list --branch main"},
-   Row{"view ID", "run, jobs, runners and step timings", "cha runs view 4142"},
+   Row{"view ID", "one run: jobs, runners and step timings; --json is {\"run\",\"jobs\"}", "cha runs view 4142"},
    Row{"logs ID [--job J] [--failed] [--step NAME]", "a run's logs", "cha runs logs 4142 --failed"},
-   Row{"watch ID", "follow a run", "cha runs watch 4142"},
+   Row{"watch ID", "follow a run: exit 0 done, 1 failed, 2 gave up", "cha runs watch 4142"},
    Row{"dispatch FILE [--ref R] [--input k=v]", "start a workflow, print its run", "cha runs dispatch ci.yml --ref main"},
-   Row{"rerun ID [--failed | --job ID]", "rerun a run or selected jobs", "cha runs rerun 4142"},
-   Row{"cancel ID", "cancel a run", "cha runs cancel 4142"}]
+   Row{"rerun ID [--failed | --job ID]", "rerun a run or selected jobs (Gitea >= 1.26)", "cha runs rerun 4142"},
+   Row{"cancel ID", "cancel a run (Gitea >= 28)", "cha runs cancel 4142"}]
 
 def runs.flags() -> List<&2, Row>:
   [Row{"--branch B", "only runs of this branch", ""},

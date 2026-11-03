@@ -65,7 +65,7 @@ your shell
 | Gitea needs label ids, drops unknown names | resolves names first |
 | Gitea `PUT` labels replaces the whole set | sends the full set |
 | Gitea 405 "Please try again later" | means a conflict, not a limit |
-| Gitea 1.25 has no rerun or cancel API | the command says so |
+| Gitea 1.25 has no rerun or cancel API | cha tries the request, and maps a 404 to a message naming the Gitea version |
 | Gitea timestamps carry a local offset | compares parsed instants |
 | Gitea lists: `total_count`, no Link | asks until the rows reach it |
 | GitHub lists PRs among issues | drops rows with `pull_request.url` |

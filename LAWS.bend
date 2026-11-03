@@ -12,6 +12,7 @@ import ./src/api.bend as Api
 import ./src/url.bend as Url
 import ./src/cmd/repo.bend as Repo
 import ./src/cmd/runners.bend as Runners
+import ./src/cmd/runs.bend as Runs
 import ./src/cmd/packages.bend as Packages
 import ./src/cmd/pr.bend as Pr
 import ./src/hooks.bend as Hooks
@@ -302,6 +303,199 @@ law runs_id_path:
 # LAW: ...and neither is an empty id.
 law runs_id_empty:
   {Cli.digits("") == False{} : Bool}
+
+# Watching and rerunning runs
+# ----------------------------
+# A watch follows a run for as long as it takes, so a poll that never reached the forge says
+# nothing about the run: it is retried on the next tick, and only five failed polls in a row
+# end the watch. Giving up exits with a code of its own, so a script that gates on a watch
+# can tell "couldn't see the run" from "the run failed", and a watch that runs out of polls
+# exits the same way instead of passing for a run that ended. A run ends where its status
+# says so, on every forge. A rerun builds one endpoint per forge and mode, and a job id
+# reaches it only as digits, or not at all. A 404 is a missing API only on Gitea: GitHub
+# answers it for a run or a job that is not there, and its own message says so.
+
+# LAW: a poll that never reached the forge is retried.
+law watch_poll_broke:
+  {Runs.poll.of(None{}) == Runs.Retry{} : Runs.Polled}
+
+# LAW: a 5xx is the forge being unreachable, so it is retried too.
+law watch_poll_5xx:
+  {Runs.poll.of(Some{503}) == Runs.Retry{} : Runs.Polled}
+
+# LAW: a 4xx is the forge answering, so it ends the watch.
+law watch_poll_4xx:
+  {Runs.poll.of(Some{404}) == Runs.Fatal{} : Runs.Polled}
+
+# LAW: a 2xx is the run to read.
+law watch_poll_2xx:
+  {Runs.poll.of(Some{200}) == Runs.Good{} : Runs.Polled}
+
+# LAW: a poll that got an answer resets the count of failed polls.
+law watch_count_reset:
+  {Runs.poll.count(4n, Runs.Good{}) == 0n : Nat}
+
+# LAW: a retried poll adds one to the count.
+law watch_count_retry:
+  {Runs.poll.count(4n, Runs.Retry{}) == 5n : Nat}
+
+# LAW: the watch gives up exactly when five polls in a row have failed.
+law watch_gives_up:
+  {Runs.poll.gave.up(5n) == True{} : Bool}
+
+# LAW: ...and not before.
+law watch_not_yet:
+  {Runs.poll.gave.up(4n) == False{} : Bool}
+
+# A run ends where its status says so. GitHub and Gitea say "completed" and send the
+# conclusion beside it; Forgejo names the conclusion in the status field itself
+# (success, failure, cancelled, skipped), so a watch that waited for "completed" never
+# finished on Codeberg. A terminal status ends a watch on every forge, a state the run is
+# still in does not, and the ending decides the exit code.
+
+# LAW: a completed status ends a run, as it always has on GitHub and Gitea.
+law watch_done_completed:
+  {Runs.status.terminal("completed") == True{} : Bool}
+
+# LAW: ...and so does a status Forgejo names a conclusion in.
+law watch_done_success:
+  {Runs.status.terminal("success") == True{} : Bool}
+
+# LAW: ...a failed one.
+law watch_done_failure:
+  {Runs.status.terminal("failure") == True{} : Bool}
+
+# LAW: ...a cancelled one.
+law watch_done_cancelled:
+  {Runs.status.terminal("cancelled") == True{} : Bool}
+
+# LAW: ...a skipped one.
+law watch_done_skipped:
+  {Runs.status.terminal("skipped") == True{} : Bool}
+
+# LAW: a run that is running is not done.
+law watch_live_running:
+  {Runs.status.terminal("running") == False{} : Bool}
+
+# LAW: ...nor is a queued one.
+law watch_live_queued:
+  {Runs.status.terminal("queued") == False{} : Bool}
+
+# LAW: ...nor one the forge sent no status for, so a body without one cannot end a watch.
+law watch_live_empty:
+  {Runs.status.terminal("") == False{} : Bool}
+
+# LAW: Forgejo's ending is its status, since it sends no conclusion.
+law watch_end_forgejo:
+  {Runs.state.of("failure", "", True{}) == "failure" : String}
+
+# LAW: a run that concluded in failure exits 1.
+law watch_exit_failed:
+  {Runs.watch.code(False{}) == 1 : U32}
+
+# LAW: a watch that gave up on the forge exits 2, so the two never read alike.
+law watch_exit_gaveup:
+  {Runs.watch.code(True{}) == 2 : U32}
+
+# LAW: a run whose ending is failure exits 1.
+law watch_exit_status_failure:
+  {Runs.watch.end.code("failure") == 1 : U32}
+
+# LAW: ...and so does one that was cancelled.
+law watch_exit_status_cancelled:
+  {Runs.watch.end.code("cancelled") == 1 : U32}
+
+# LAW: a run that succeeded exits 0.
+law watch_exit_status_success:
+  {Runs.watch.end.code("success") == 0 : U32}
+
+# LAW: ...and so does one that was skipped, which is not a failure.
+law watch_exit_status_skipped:
+  {Runs.watch.end.code("skipped") == 0 : U32}
+
+# LAW: a GitHub run ends the way it always did: completed with a failed conclusion exits 1.
+law watch_exit_github_failure:
+  {Runs.watch.end.code(Runs.state.of("completed", "failure", True{})) == 1 : U32}
+
+# LAW: ...and completed with a good one exits 0.
+law watch_exit_github_success:
+  {Runs.watch.end.code(Runs.state.of("completed", "success", True{})) == 0 : U32}
+
+# LAW: giving up names the count and the last state the watch saw.
+law watch_gave_up_text:
+  {Runs.watch.gave.up.text(5n, "in_progress") == "gave up after 5 failed polls; the run is still in_progress" : String}
+
+# LAW: a watch that runs out of polls says so, and names the last state it read.
+law watch_exhausted_text:
+  {Runs.watch.exhausted.text("in_progress") == "ran out of polls; the run is still in_progress" : String}
+
+# LAW: ...and exits as one that gave up does, so a script still reads 2.
+law watch_exhausted_code:
+  {Runs.watch.exhausted.code() == Runs.watch.code(True{}) : U32}
+
+# LAW: a Gitea rerun of a run is actions/runs/<run>/rerun.
+law rerun_path_gitea:
+  {Runs.rerun.path(Ctx.Gitea{}, "5056", "", False{}, False{}) == "actions/runs/5056/rerun" : String}
+
+# LAW: ...its failed jobs are at the same path with -failed-jobs.
+law rerun_path_gitea_failed:
+  {Runs.rerun.path(Ctx.Gitea{}, "5056", "", True{}, False{}) == "actions/runs/5056/rerun-failed-jobs" : String}
+
+# LAW: a Gitea job rerun nests under its run.
+law rerun_path_gitea_job:
+  {Runs.rerun.path(Ctx.Gitea{}, "5056", "42", False{}, True{}) == "actions/runs/5056/jobs/42/rerun" : String}
+
+# LAW: a GitHub rerun of a run is the same path.
+law rerun_path_github:
+  {Runs.rerun.path(Ctx.GitHub{}, "5056", "", False{}, False{}) == "actions/runs/5056/rerun" : String}
+
+# LAW: ...and so are its failed jobs.
+law rerun_path_github_failed:
+  {Runs.rerun.path(Ctx.GitHub{}, "5056", "", True{}, False{}) == "actions/runs/5056/rerun-failed-jobs" : String}
+
+# LAW: a GitHub job rerun names the job alone, not its run.
+law rerun_path_github_job:
+  {Runs.rerun.path(Ctx.GitHub{}, "5056", "42", False{}, True{}) == "actions/jobs/42/rerun" : String}
+
+# LAW: a 404 on Gitea is the forge saying it has no such API.
+law missing_api_gitea:
+  {Runs.missing.api(Ctx.Gitea{}, 404) == True{} : Bool}
+
+# LAW: ...but a 404 on GitHub is a run or a job that is not there, so its own message stands.
+law missing_api_github:
+  {Runs.missing.api(Ctx.GitHub{}, 404) == False{} : Bool}
+
+# LAW: any other status is the forge's own refusal on either forge.
+law missing_api_other:
+  {Runs.missing.api(Ctx.Gitea{}, 500) == False{} : Bool}
+
+# LAW: a job id that is digits only reaches a rerun path.
+law rerun_job_ok_digits:
+  {Runs.rerun.job.ok("42") == True{} : Bool}
+
+# LAW: no --job at all is an empty job, which is allowed.
+law rerun_job_ok_empty:
+  {Runs.rerun.job.ok("") == True{} : Bool}
+
+# LAW: a job id with a slash would walk out of the path, so it is refused.
+law rerun_job_ok_slash:
+  {Runs.rerun.job.ok("42/cancel") == False{} : Bool}
+
+# LAW: ...and so is "..", which U32.read would take as a zero.
+law rerun_job_ok_dots:
+  {Runs.rerun.job.ok("..") == False{} : Bool}
+
+# runs view --json
+# ---------------
+# A command that addresses one run prints one object, as issue view --comments does.
+
+# LAW: the document starts with the run.
+law view_json_run_first:
+  {String.starts_with(Runs.view.json.doc("{}", "[]"), "{\"run\":") == True{} : Bool}
+
+# LAW: ...and carries the jobs as an array beside it, not as more run objects.
+law view_json_jobs_array:
+  {String.contains(Runs.view.json.doc("{}", "[]"), ",\"jobs\":[") == True{} : Bool}
 
 # Path segments
 # -------------
