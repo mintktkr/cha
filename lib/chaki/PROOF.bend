@@ -26,6 +26,218 @@ import ./LAWS.bend as Laws
 # bytes, utf8, b64 [enc]
 # ----------------------
 
+# bytes: as lists
+# ---------------
+# bytes.bend reverses onto an accumulator and builds cat out of rev, so its proofs need a
+# plain append and its order laws.
+
+def enc.app(xs: List<&2, U32>, ys: List<&2, U32>) -> List<&2, U32>:
+  match xs:
+    case Nil{}:
+      ys
+    case Con{h, t}:
+      h <> enc.app(t, ys)
+
+# app(xs, Nil) is xs
+
+def enc.app_nil(xs: List<&2, U32>) -> {enc.app(xs, Nil{}) == xs : List<&2, U32>}:
+  match xs:
+    case Nil{}:
+      {==}
+    case Con{+h, t}:
+      Equal.cong(List<&2, U32>, List<&2, U32>, x => Con{h, x}, enc.app(t, Nil{}), t, enc.app_nil(t))
+
+# app regroups: app(app(a, b), c) is app(a, app(b, c))
+
+def enc.app_assoc(a: List<&2, U32>, b: List<&2, U32>, c: List<&2, U32>) -> {enc.app(enc.app(a, b), c) == enc.app(a, enc.app(b, c)) : List<&2, U32>}:
+  match a:
+    case Nil{}:
+      {==}
+    case Con{+h, t}:
+      Equal.cong(List<&2, U32>, List<&2, U32>, x => Con{h, x}, enc.app(enc.app(t, b), c), enc.app(t, enc.app(b, c)), enc.app_assoc(t, b, c))
+
+# reversing onto an accumulator is appending a reversed string in front
+
+def enc.rev_onto_app(xs: List<&2, U32>, +ys: List<&2, U32>) -> {Bytes.rev.onto(xs, ys) == enc.app(Bytes.rev(xs), ys) : List<&2, U32>}:
+  match xs:
+    case Nil{}:
+      {==}
+    case Con{+h, +t}:
+      +s1 = Equal.sym(List<&2, U32>, Bytes.rev.onto(t, Con{h, Nil{}}), enc.app(Bytes.rev(t), Con{h, Nil{}}), enc.rev_onto_app(t, Con{h, Nil{}}))
+      %s1 : {Bytes.rev.onto(t, h <> ys) == enc.app(_, ys) : List<&2, U32>}
+      +s2 = Equal.sym(List<&2, U32>, enc.app(enc.app(Bytes.rev(t), Con{h, Nil{}}), ys), enc.app(Bytes.rev(t), enc.app(Con{h, Nil{}}, ys)), enc.app_assoc(Bytes.rev(t), Con{h, Nil{}}, ys))
+      %s2 : {Bytes.rev.onto(t, h <> ys) == _ : List<&2, U32>}
+      +s3 = Equal.sym(List<&2, U32>, Bytes.rev.onto(t, h <> ys), enc.app(Bytes.rev(t), h <> ys), enc.rev_onto_app(t, h <> ys))
+      %s3 : {_ == enc.app(Bytes.rev(t), h <> ys) : List<&2, U32>}
+      {==}
+
+# reversing twice is the identity: rev(rev.onto(xs, acc)) is app(rev(acc), xs), and the
+# accumulator is empty for the law itself
+
+def enc.rev_rev_go(xs: List<&2, U32>, +acc: List<&2, U32>) -> {Bytes.rev(Bytes.rev.onto(xs, acc)) == enc.app(Bytes.rev(acc), xs) : List<&2, U32>}:
+  match xs:
+    case Nil{}:
+      Equal.sym(List<&2, U32>, enc.app(Bytes.rev(acc), Nil{}), Bytes.rev(acc), enc.app_nil(Bytes.rev(acc)))
+    case Con{+h, +t}:
+      +r = Equal.sym(List<&2, U32>, Bytes.rev(Bytes.rev.onto(t, h <> acc)), enc.app(Bytes.rev(h <> acc), t), enc.rev_rev_go(t, h <> acc))
+      %r : {_ == enc.app(Bytes.rev(acc), h <> t) : List<&2, U32>}
+      +e = Equal.sym(List<&2, U32>, Bytes.rev.onto(acc, Con{h, Nil{}}), enc.app(Bytes.rev(acc), Con{h, Nil{}}), enc.rev_onto_app(acc, Con{h, Nil{}}))
+      %e : {enc.app(_, t) == enc.app(Bytes.rev(acc), h <> t) : List<&2, U32>}
+      +a = Equal.sym(List<&2, U32>, enc.app(enc.app(Bytes.rev(acc), Con{h, Nil{}}), t), enc.app(Bytes.rev(acc), enc.app(Con{h, Nil{}}, t)), enc.app_assoc(Bytes.rev(acc), Con{h, Nil{}}, t))
+      %a : {_ == enc.app(Bytes.rev(acc), h <> t) : List<&2, U32>}
+      {==}
+
+def Laws.bytes_rev_rev(b):
+  enc.rev_rev_go(b, Nil{})
+
+# counting one late is counting one early: the length of a list, added on after the count,
+# is the length counted from one more
+
+def enc.len_shift(xs: List<&2, U32>, n: U32) -> {U32.add(Bytes.len.go(xs, n), 1) == Bytes.len.go(xs, U32.add(n, 1)) : U32}:
+  match xs:
+    case Nil{}:
+      {==}
+    case Con{h, t}:
+      enc.len_shift(t, U32.add(n, 1))
+
+# reversing onto an accumulator keeps the count: the count of the reversed string starting
+# at n is the count of acc starting at the count of xs
+
+def enc.len_rev_acc(xs: List<&2, U32>, +acc: List<&2, U32>, +n: U32) -> {Bytes.len.go(Bytes.rev.onto(xs, acc), n) == Bytes.len.go(acc, Bytes.len.go(xs, n)) : U32}:
+  match xs:
+    case Nil{}:
+      {==}
+    case Con{+h, +t}:
+      +r = Equal.sym(U32, Bytes.len.go(Bytes.rev.onto(t, h <> acc), n), Bytes.len.go(h <> acc, Bytes.len.go(t, n)), enc.len_rev_acc(t, h <> acc, n))
+      %r : {_ == Bytes.len.go(acc, Bytes.len.go(t, U32.add(n, 1))) : U32}
+      %enc.len_shift(t, n) : {Bytes.len.go(acc, U32.add(Bytes.len.go(t, n), 1)) == Bytes.len.go(acc, _) : U32}
+      {==}
+
+def Laws.bytes_len_rev(b):
+  enc.len_rev_acc(b, Nil{}, 0)
+
+def Laws.bytes_hex_round_trip():
+  {==}
+
+def Laws.bytes_eq_self():
+  {==}
+
+def Laws.bytes_ct_eq_agrees():
+  {==}
+
+def Laws.bytes_ct_eq_agrees_differs():
+  {==}
+
+# utf8 and b64: known answers
+# ---------------------------
+# Each of these laws names one closed text or byte string, so both sides reduce to the same
+# term and reflexivity is the whole proof: the DFA and the decoder run at check time.
+
+def Laws.utf8_decode_encode():
+  {==}
+
+def Laws.utf8_encode_boundaries():
+  {==}
+
+def Laws.utf8_encode_length():
+  {==}
+
+def Laws.utf8_valid_encode():
+  {==}
+
+def Laws.utf8_decode_valid():
+  {==}
+
+def Laws.utf8_reject_overlong():
+  {==}
+
+def Laws.utf8_reject_surrogate():
+  {==}
+
+def Laws.utf8_reject_past_limit():
+  {==}
+
+def Laws.utf8_reject_truncated():
+  {==}
+
+def Laws.utf8_decode_truncated():
+  {==}
+
+def Laws.utf8_decode_subparts():
+  {==}
+
+def Laws.b64_rfc4648_empty():
+  {==}
+
+def Laws.b64_rfc4648_f():
+  {==}
+
+def Laws.b64_rfc4648_fo():
+  {==}
+
+def Laws.b64_rfc4648_foo():
+  {==}
+
+def Laws.b64_rfc4648_foob():
+  {==}
+
+def Laws.b64_rfc4648_fooba():
+  {==}
+
+def Laws.b64_rfc4648_foobar():
+  {==}
+
+def Laws.b64_decode_one():
+  {==}
+
+def Laws.b64_decode_two():
+  {==}
+
+def Laws.b64_decode_three():
+  {==}
+
+def Laws.b64_decode_encode():
+  {==}
+
+def Laws.b64_length():
+  {==}
+
+def Laws.b64_reject_char():
+  {==}
+
+def Laws.b64_reject_non_ascii():
+  {==}
+
+def Laws.b64_reject_pad_bits():
+  {==}
+
+def Laws.b64_pem_block():
+  {==}
+
+def Laws.b64_pem_no_end():
+  {==}
+
+# base64 text with a trailing newline
+# -----------------------------------
+# Whitespace is skipped wherever it sits, so a newline after the last character leaves the
+# decoder in the state the walk over the text alone reached. The proof is that induction,
+# and the state it holds for is any state at all. b64.bend names its own types with the B64
+# prefix, so the state's full name here is B64.B64.State.
+
+def enc.newline_go(s: String, +st: B64.B64.State) -> {B64.decode.go(String.append(s, "\n"), st) == B64.decode.go(s, st) : B64.B64.State}:
+  match s:
+    case SNil{}:
+      match st:
+        case B64.B64.State{v, n, pad, out, ok}:
+          {==}
+    case SCon{Chr{+c}, +t}:
+      enc.newline_go(t, B64.feed(st, B64.sym(c)))
+
+def Laws.b64_decode_newline(s):
+  +r = enc.newline_go(s, B64.B64.State{0, 0n, 0n, Nil{}, True{}})
+  %r : {B64.decode.end(B64.decode.go(String.append(s, "\n"), B64.B64.State{0, 0n, 0n, Nil{}, True{}})) == B64.decode.end(_) : Maybe<&2, List<&2, U32>>}
+  {==}
+
 # end enc
 
 # json [json]

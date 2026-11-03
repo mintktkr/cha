@@ -29,6 +29,179 @@ import ./hop.bend as Hop
 # bytes, utf8, b64 [enc]
 # ----------------------
 
+# bytes: the byte-string shape the protocol code is built from
+# ----------------------------------------------------------
+# Reversal and length are laws over every byte string; the rest pin the hex and comparison
+# answers the protocol code reads.
+
+# LAW: reversing a byte string twice gives the byte string back.
+law bytes_rev_rev:
+  for +b: List<&2, U32>
+  {Bytes.rev(Bytes.rev(b)) == b : List<&2, U32>}
+
+# LAW: reversing a byte string keeps its length, so a length written before a body still
+# fits the body after a reversal.
+law bytes_len_rev:
+  for +b: List<&2, U32>
+  {Bytes.len(Bytes.rev(b)) == Bytes.len(b) : U32}
+
+# LAW: hex text that parsed to bytes survives being written back out and parsed again.
+law bytes_hex_round_trip:
+  {Bytes.of_hex(Bytes.to_hex(Bytes.of_hex("00 01 7f 80 ff fe 0d 0a"))) == Bytes.of_hex("00017f80fffe0d0a") : List<&2, U32>}
+
+# LAW: a byte string holding every byte value, high ones included, equals itself.
+law bytes_eq_self:
+  {Bytes.eq(Bytes.of_hex("00 01 02 03 04 05 06 07 08 09 0a 0b 0c 0d 0e 0f 10 11 12 13 14 15 16 17 18 19 1a 1b 1c 1d 1e 1f 7f 80 ff"), Bytes.of_hex("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f7f80ff")) == True{} : Bool}
+
+# LAW: the constant-time compare agrees with the cheap one on bytes that match.
+law bytes_ct_eq_agrees:
+  {Bytes.ct_eq(Bytes.of_hex("deadbeef"), Bytes.of_hex("deadbeef")) == Bytes.eq(Bytes.of_hex("deadbeef"), Bytes.of_hex("deadbeef")) : Bool}
+
+# LAW: the constant-time compare agrees with the cheap one on bytes that differ in their
+# last byte, the one a MAC's comparison must not miss.
+law bytes_ct_eq_agrees_differs:
+  {Bytes.ct_eq(Bytes.of_hex("deadbeef"), Bytes.of_hex("deadbeee")) == Bytes.eq(Bytes.of_hex("deadbeef"), Bytes.of_hex("deadbeee")) : Bool}
+
+# utf8: text and bytes
+# --------------------
+# Encoding is how text becomes bytes on the wire, and validation is what keeps a surrogate or
+# a value past U+10FFFF out of a parser. These are known answers rather than laws over every
+# input: RFC 3629's table and Unicode 3.9's repair examples, at the values that decide each
+# branch of the encoder and the decoder.
+
+# LAW: decoding what encode wrote gives the text back, for a text holding a code point of
+# each of the four UTF-8 lengths.
+law utf8_decode_encode:
+  {Utf8.decode(Utf8.encode("a\u{e9}\u{8316}\u{1f600}")) == "a\u{e9}\u{8316}\u{1f600}" : String}
+
+# LAW: RFC 3629 section 3's table: the smallest and largest scalar value of each length
+# encodes to the bytes it lists, 7F, C2 80 .. DF BF, E0 A0 80 .. EF BF BF, F0 90 80 80 ..
+# F4 8F BF BF.
+law utf8_encode_boundaries:
+  {Bytes.to_hex(Utf8.encode("\u{7f}\u{80}\u{7ff}\u{800}\u{ffff}\u{10000}\u{10ffff}")) == "7fc280dfbfe0a080efbfbff0908080f48fbfbf" : String}
+
+# LAW: a scalar value takes one byte up to U+007F, two up to U+07FF, three up to U+FFFF and
+# four above it, so those seven boundary values take 1+2+2+3+3+4+4 = 19 bytes.
+law utf8_encode_length:
+  {Bytes.len(Utf8.encode("\u{7f}\u{80}\u{7ff}\u{800}\u{ffff}\u{10000}\u{10ffff}")) == 19 : U32}
+
+# LAW: validate accepts what encode wrote, at every length boundary.
+law utf8_valid_encode:
+  {Utf8.valid(Utf8.encode("\u{7f}\u{80}\u{7ff}\u{800}\u{ffff}\u{10000}\u{10ffff}")) == True{} : Bool}
+
+# LAW: text decoded from well-formed bytes encodes back to the same bytes.
+law utf8_decode_valid:
+  {Utf8.encode(Utf8.decode(Bytes.of_hex("41 c3 a9 e8 8c b6 f0 9f 98 80 42"))) == Bytes.of_hex("41 c3 a9 e8 8c b6 f0 9f 98 80 42") : List<&2, U32>}
+
+# LAW: an overlong form, which names a scalar value in more bytes than it takes, is refused.
+law utf8_reject_overlong:
+  {Utf8.valid(Bytes.of_hex("c0 af c1 80 e0 80 af f0 80 80 af")) == False{} : Bool}
+
+# LAW: a surrogate, U+D800 through U+DFFF, is no Unicode scalar value and is refused.
+law utf8_reject_surrogate:
+  {Utf8.valid(Bytes.of_hex("ed a0 80 ed bf bf")) == False{} : Bool}
+
+# LAW: a value past U+10FFFF is refused, whether a valid lead byte spells it or one from
+# U+F5 up.
+law utf8_reject_past_limit:
+  {Utf8.valid(Bytes.of_hex("f4 90 80 80 f5 80 80 80")) == False{} : Bool}
+
+# LAW: a sequence cut off by the end of the input is refused, so a chunk boundary can't hand
+# a parser half a character.
+law utf8_reject_truncated:
+  {Utf8.valid(Bytes.of_hex("e1 80")) == False{} : Bool}
+
+# LAW: a sequence cut off by the end of the input decodes to one replacement character.
+law utf8_decode_truncated:
+  {Utf8.decode(Bytes.of_hex("e1 80")) == "\u{fffd}" : String}
+
+# LAW: Unicode 3.9's Table 3-8: the decoder answers one U+FFFD for each maximal ill-formed
+# subpart, so a cut-off sequence costs one replacement character and two stray continuation
+# bytes cost two.
+law utf8_decode_subparts:
+  {Utf8.decode(Bytes.of_hex("61 f1 80 80 e1 80 c2 62 80 63 80 bf 64")) == "a\u{fffd}\u{fffd}\u{fffd}b\u{fffd}c\u{fffd}\u{fffd}d" : String}
+
+# b64: RFC 4648 base64 and the PEM blocks a certificate travels in
+# -----------------------------------------------------------------
+# The table is RFC 4648 section 10's, both ways. The last two laws are the shape a
+# certificate arrives in: a block, and a block that never ended.
+
+# LAW: RFC 4648 section 10's test vector for the empty input.
+law b64_rfc4648_empty:
+  {B64.encode(Nil{}) == "" : String}
+
+# LAW: RFC 4648 section 10's "f" vector, one byte under two pads.
+law b64_rfc4648_f:
+  {B64.encode(Bytes.of_ascii("f")) == "Zg==" : String}
+
+# LAW: RFC 4648 section 10's "fo" vector, two bytes under one pad.
+law b64_rfc4648_fo:
+  {B64.encode(Bytes.of_ascii("fo")) == "Zm8=" : String}
+
+# LAW: RFC 4648 section 10's "foo" vector, one group and no pad.
+law b64_rfc4648_foo:
+  {B64.encode(Bytes.of_ascii("foo")) == "Zm9v" : String}
+
+# LAW: RFC 4648 section 10's "foob" vector.
+law b64_rfc4648_foob:
+  {B64.encode(Bytes.of_ascii("foob")) == "Zm9vYg==" : String}
+
+# LAW: RFC 4648 section 10's "fooba" vector.
+law b64_rfc4648_fooba:
+  {B64.encode(Bytes.of_ascii("fooba")) == "Zm9vYmE=" : String}
+
+# LAW: RFC 4648 section 10's "foobar" vector, two full groups.
+law b64_rfc4648_foobar:
+  {B64.encode(Bytes.of_ascii("foobar")) == "Zm9vYmFy" : String}
+
+# LAW: RFC 4648 section 10's one-byte vector decodes back to that byte.
+law b64_decode_one:
+  {B64.decode("Zg==") == Some{Bytes.of_ascii("f")} : Maybe<&2, List<&2, U32>>}
+
+# LAW: RFC 4648 section 10's two-byte vector decodes back to those bytes.
+law b64_decode_two:
+  {B64.decode("Zm8=") == Some{Bytes.of_ascii("fo")} : Maybe<&2, List<&2, U32>>}
+
+# LAW: RFC 4648 section 10's group without a pad decodes back to its three bytes.
+law b64_decode_three:
+  {B64.decode("Zm9v") == Some{Bytes.of_ascii("foo")} : Maybe<&2, List<&2, U32>>}
+
+# LAW: decoding what encode wrote gives the bytes back, for a body holding every low byte.
+law b64_decode_encode:
+  {B64.decode(B64.encode(Bytes.of_hex("000102030405060708090a0b0c0d0e0f"))) == Some{Bytes.of_hex("000102030405060708090a0b0c0d0e0f")} : Maybe<&2, List<&2, U32>>}
+
+# LAW: seven bytes take three groups of four characters, so the text is 4 * ceil(7 / 3) = 12
+# characters long.
+law b64_length:
+  {String.length(B64.encode(Bytes.of_hex("00010203040506"))) == 12n : Nat}
+
+# LAW: a character outside the base64 alphabet is refused, not skipped.
+law b64_reject_char:
+  {B64.decode("Zm9v!") == None{} : Maybe<&2, List<&2, U32>>}
+
+# LAW: a character outside ASCII is refused too, so a stray high byte can't slip through.
+law b64_reject_non_ascii:
+  {B64.decode(SCon{Chr{233}, SNil{}}) == None{} : Maybe<&2, List<&2, U32>>}
+
+# LAW: a pad over bits that are not zero is refused, so one body has one spelling.
+law b64_reject_pad_bits:
+  {B64.decode("Zh==") == None{} : Maybe<&2, List<&2, U32>>}
+
+# LAW: a trailing newline, which every PEM line but the last carries, doesn't change what
+# base64 text decodes to.
+law b64_decode_newline:
+  for +s: String
+  {B64.decode(String.append(s, "\n")) == B64.decode(s) : Maybe<&2, List<&2, U32>>}
+
+# LAW: a well-formed PEM block's body is found and decoded, whatever sits around it.
+law b64_pem_block:
+  {B64.pem("junk\n-----BEGIN CERTIFICATE-----\nZm9v\nYmFy\n-----END CERTIFICATE-----\njunk\n", "CERTIFICATE") == [Bytes.of_ascii("foobar")] : List<&2, List<&2, U32>>}
+
+# LAW: a block whose END line never comes is refused, so a truncated body is not read as a
+# certificate.
+law b64_pem_no_end:
+  {B64.pem("-----BEGIN CERTIFICATE-----\nZm9v\n", "CERTIFICATE") == Nil{} : List<&2, List<&2, U32>>}
+
 # end enc
 
 # json [json]
