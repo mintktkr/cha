@@ -97,6 +97,11 @@ law utf8_decode_valid:
 law utf8_reject_overlong:
   {Utf8.valid(Bytes.of_hex("c0 af c1 80 e0 80 af f0 80 80 af")) == False{} : Bool}
 
+# LAW: an overlong NUL, the byte a filter that only looks for a zero byte would miss, is
+# refused.
+law utf8_reject_overlong_nul:
+  {Utf8.valid(Bytes.of_hex("c0 80")) == False{} : Bool}
+
 # LAW: a surrogate, U+D800 through U+DFFF, is no Unicode scalar value and is refused.
 law utf8_reject_surrogate:
   {Utf8.valid(Bytes.of_hex("ed a0 80 ed bf bf")) == False{} : Bool}
@@ -114,6 +119,11 @@ law utf8_reject_truncated:
 # LAW: a sequence cut off by the end of the input decodes to one replacement character.
 law utf8_decode_truncated:
   {Utf8.decode(Bytes.of_hex("e1 80")) == "\u{fffd}" : String}
+
+# LAW: a NUL byte is text like any other, so it decodes and encodes back unchanged and does
+# not end the text.
+law utf8_decode_nul:
+  {Utf8.encode(Utf8.decode(Bytes.of_hex("00 41 00"))) == Bytes.of_hex("00 41 00") : List<&2, U32>}
 
 # LAW: Unicode 3.9's Table 3-8: the decoder answers one U+FFFD for each maximal ill-formed
 # subpart, so a cut-off sequence costs one replacement character and two stray continuation

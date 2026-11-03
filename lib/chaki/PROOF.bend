@@ -151,6 +151,9 @@ def Laws.utf8_decode_valid():
 def Laws.utf8_reject_overlong():
   {==}
 
+def Laws.utf8_reject_overlong_nul():
+  {==}
+
 def Laws.utf8_reject_surrogate():
   {==}
 
@@ -161,6 +164,9 @@ def Laws.utf8_reject_truncated():
   {==}
 
 def Laws.utf8_decode_truncated():
+  {==}
+
+def Laws.utf8_decode_nul():
   {==}
 
 def Laws.utf8_decode_subparts():
