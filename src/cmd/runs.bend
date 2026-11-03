@@ -969,27 +969,27 @@ def input.key(kv: String) -> String:
 def input.val(kv: String) -> String:
   Ctx.rest(String.split(kv, '='), "=")
 
-def input.pairs(xs: List<&2, String>) -> List<&2, Json.Member()>:
+def input.pairs(xs: List<&2, String>) -> List<&2, Json.Val>:
   match xs:
     case Nil{}:
       Nil{}
     case Con{+kv, rest}:
-      Con{(input.key(kv), Api.utf8(input.val(kv))), input.pairs(rest)}
+      Con{Json.field(input.key(kv), Api.utf8(input.val(kv))), input.pairs(rest)}
 
-def dispatch.pairs(+ref: String, xs: List<&2, String>) -> List<&2, Json.Member()>:
-  [("ref", Api.utf8(ref)), ("inputs", Json.Obj{input.pairs(xs)})]
+def dispatch.pairs(+ref: String, xs: List<&2, String>) -> List<&2, Json.Val>:
+  [Json.field("ref", Api.utf8(ref)), Json.field("inputs", Json.Obj{input.pairs(xs)})]
 
 # GitHub names the run it made when asked; Gitea and Forgejo have no such field,
 # and are not sent one
-def dispatch.detail.pairs(details: Bool) -> List<&2, Json.Member()>:
+def dispatch.detail.pairs(details: Bool) -> List<&2, Json.Val>:
   match details:
     case True{}:
-      [("return_run_details", Json.Flag{True{}})]
+      [Json.field("return_run_details", Json.Flag{True{}})]
     case False{}:
       Nil{}
 
 def dispatch.body(+ref: String, xs: List<&2, String>, details: Bool) -> Json.Val:
-  Json.Obj{List.append(&2, Json.Member(), dispatch.pairs(ref, xs), dispatch.detail.pairs(details))}
+  Json.Obj{List.append(&2, Json.Val, dispatch.pairs(ref, xs), dispatch.detail.pairs(details))}
 
 def inputs.go(ms: List<&2, Cli.Arg>) -> List<&2, String>:
   match ms:

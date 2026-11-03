@@ -46,10 +46,10 @@ These are the walls every newcomer hits. `src/` has a working example of each.
   - **classify, then match**: map each item to a small Data type with a non-recursive helper, then recurse over the classified list with nested patterns. See `Cli.flag` (`mark`, `flag.find`).
   - **a fuel-counted state machine**: one def whose first argument is a `Nat` fuel and whose second is a state constructor. Every step costs one fuel. See `Api.all.go`.
 - **Affine by default.** `+x` makes a Data parameter or pattern field reusable. Never walk JSON in commands: `Api.rows(body)` / `Api.obj(body)` read the bytes straight into flat `Map<&2, String>` rows (chaki's JSON reader builds no tree), then `Api.f(row, "user.login")` and `Api.join(row, "labels", "name", ",")` read them.
-- **A tuple `A & B` is affine**, even of Data, so `List<&2, A & B>` doesn't typecheck. chaki names its Data pairs: `Http1.Field()` for a header, `Json.Member()` for an object member. Tuples still build and destructure them.
+- **A tuple `A & B` is affine**, even of Data, so `List<&2, A & B>` doesn't typecheck. chaki names its Data pairs: `Http1.Field()` for a header. Tuples still build and destructure them. A JSON object member is a value, `Json.field(k, v)`.
 - **Operators need a type**: `(a + b : U32)`. For `Nat`, prefer `Nat.sub`, `Nat.is_gt`, and so on.
 - **Bytes are `List<&2, U32>`**, one byte per cell, the shape Base's socket and file effects use. `Utf8.encode` / `Utf8.decode` cross to text. Walk them with tail calls: a body can be megabytes.
-- **JSON bodies** are `Json.Obj{[(k, Api.utf8(v)), ..]}` passed to `Api.send(repo, tok, "POST", url, Some{body})`.
+- **JSON bodies** are `Json.Obj{[Json.field(k, Api.utf8(v)), ..]}` passed to `Api.send(repo, tok, "POST", url, Some{body})`.
 - **Name clashes**: Base already has types such as `Word`, and `where` is a keyword. Check `bend base --types`.
 - **Running**:
   - `bend main.bend -- <args>` runs on the JS lane in seconds.

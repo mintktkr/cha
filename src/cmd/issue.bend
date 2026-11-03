@@ -483,13 +483,10 @@ def label.check.names(+env: Cli.Env, +repo: Ctx.Repo, +tok: String, +names: List
 # json
 # ----
 
-def field(+k: String, v: Json.Val) -> Json.Member():
-  (k, v)
-
-def kv.if(+k: String, +v: String, give: Bool, rest: List<&2, Json.Member()>) -> List<&2, Json.Member()>:
+def kv.if(+k: String, +v: String, give: Bool, rest: List<&2, Json.Val>) -> List<&2, Json.Val>:
   match give:
     case True{}:
-      Con{field(k, Api.utf8(v)), rest}
+      Con{Json.field(k, Api.utf8(v)), rest}
     case False{}:
       rest
 
@@ -524,7 +521,7 @@ def one.of(+s: String) -> List<&2, String>:
   one.of.if(s, String.is_empty(s))
 
 def obj.of(+k: String, v: Json.Val) -> Json.Val:
-  Json.Obj{Con{field(k, v), Nil{}}}
+  Json.Obj{Con{Json.field(k, v), Nil{}}}
 
 def state.obj(+s: String) -> Json.Val:
   obj.of("state", Api.utf8(s))
@@ -533,7 +530,7 @@ def comment.obj(+body: String) -> Json.Val:
   obj.of("body", Api.utf8(body))
 
 def create.obj(+title: String, +body: String, labels: Json.Val, +assignee: String) -> Json.Val:
-  Json.Obj{Con{field("title", Api.utf8(title)), Con{field("body", Api.utf8(body)), Con{field("labels", labels), Con{field("assignees", strs.items(one.of(assignee))), Nil{}}}}}}
+  Json.Obj{Con{Json.field("title", Api.utf8(title)), Con{Json.field("body", Api.utf8(body)), Con{Json.field("labels", labels), Con{Json.field("assignees", strs.items(one.of(assignee))), Nil{}}}}}}
 
 def edit.obj(+title: String, +body: String, title_on: Bool, body_on: Bool) -> Json.Val:
   Json.Obj{kv.if("title", title, title_on, kv.if("body", body, body_on, Nil{}))}

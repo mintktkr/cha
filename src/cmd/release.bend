@@ -306,18 +306,18 @@ def notes.of(+env: Cli.Env, +notes: String, +path: String, from_file: Bool) -> I
     case False{}:
       IO.pure(String, notes)
 
-def kv.text(kvs: List<&2, Json.Member()>, +k: String, +v: String, keep: Bool) -> List<&2, Json.Member()>:
+def kv.text(kvs: List<&2, Json.Val>, +k: String, +v: String, keep: Bool) -> List<&2, Json.Val>:
   match keep:
     case True{}:
-      Con{(k, Api.utf8(v)), kvs}
+      Con{Json.field(k, Api.utf8(v)), kvs}
     case False{}:
       kvs
 
-def kv.flag(kvs: List<&2, Json.Member()>, +k: String, on: Bool) -> List<&2, Json.Member()>:
-  Con{(k, Json.Flag{on}), kvs}
+def kv.flag(kvs: List<&2, Json.Val>, +k: String, on: Bool) -> List<&2, Json.Val>:
+  Con{Json.field(k, Json.Flag{on}), kvs}
 
-def create.kvs(+tag: String, +title: String, +notes: String, +target: String, draft: Bool, pre: Bool) -> List<&2, Json.Member()>:
-  k0 : List<&2, Json.Member()> = Con{("tag_name", Api.utf8(tag)), Nil{}}
+def create.kvs(+tag: String, +title: String, +notes: String, +target: String, draft: Bool, pre: Bool) -> List<&2, Json.Val>:
+  k0 : List<&2, Json.Val> = Con{Json.field("tag_name", Api.utf8(tag)), Nil{}}
   k1 = kv.text(k0, "name", title, Bool.not(String.is_empty(title)))
   k2 = kv.text(k1, "body", notes, Bool.not(String.is_empty(notes)))
   k3 = kv.text(k2, "target_commitish", target, Bool.not(String.is_empty(target)))

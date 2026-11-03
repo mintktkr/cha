@@ -117,12 +117,12 @@ def arg(args: List<&2, String>, n: Nat) -> String:
 # one row as a JSON object of the given flat fields, all values strings, exactly as the
 # forge sent them: the JSON writer escapes a control character as \uXXXX, so --json keeps
 # the data instead of losing what Clean drops from the printed text
-def json.obj(+row: Map<&2, String>, fields: List<&2, String>) -> List<&2, Json.Member()>:
+def json.obj(+row: Map<&2, String>, fields: List<&2, String>) -> List<&2, Json.Val>:
   match fields:
     case Nil{}:
       Nil{}
     case Con{+k, rest}:
-      Con{(k, Json.Str{Api.raw.f(row, k)}), json.obj(row, rest)}
+      Con{Json.field(k, Json.Str{Api.raw.f(row, k)}), json.obj(row, rest)}
 
 # one row as a JSON object of the given flat fields, all values strings
 def json.row(+row: Map<&2, String>, +fields: List<&2, String>) -> String:

@@ -11,14 +11,20 @@ no tree, and the output is exactly what cha's commands already consume: rows of
 ## API (exact)
 
 ```python
-# a value to write. Text is a String (decoded); Num holds its digits as written.
+# a value to write. Text is a String (decoded); Num holds its digits as written. An
+# object's members are values too (Field), so one recursion over a value list writes the
+# whole document.
 type Val is Data:
   Null{}
   Flag{on: Bool}
   Num{text: String}
   Str{text: String}
   Arr{xs: List<&2, Val>}
-  Obj{kvs: List<&2, String & Val>}
+  Obj{fs: List<&2, Val>}
+  Field{key: String, vs: List<&2, Val>}
+
+# one object member: a key and the value written after it
+def field(+k: String, v: Val) -> Val
 
 # compact RFC 8259 text, keys in the order given
 def encode(v: Val) -> String
@@ -68,7 +74,13 @@ These are the rules of `flat` in `src/api.bend`, which this replaces. Read it.
 
 Escape `"` and `\`. Write control characters below 0x20 as `\n \r \t \b \f`, or `\u00XX` for
 the rest. Everything else (non-ASCII included) is written as is, and the caller UTF-8-encodes
-the result.
+the result. Keys keep the order given, and a member is written as its quoted key, a colon,
+and then its values.
+
+The writer is a plain structural recursion over the values of one list, with the text built
+backwards: the tail of a list goes in first, so the head's text ends up in front of it. Every
+recursive call is on a list a pattern match gave, so the termination checker follows it, and
+the writer is not unsafe.
 
 ## Checks
 

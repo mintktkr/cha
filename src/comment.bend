@@ -59,7 +59,7 @@ def path(+repo: Ctx.Repo, +id: String) -> String:
 
 # an edit's body: the comment as it should read now
 def edit.body(+body: String) -> Json.Val:
-  Json.Obj{[("body", Api.utf8(body))]}
+  Json.Obj{[Json.field("body", Api.utf8(body))]}
 
 # the edited comment's url, or the forge's error
 def edit.if(+env: Cli.Env, body: List<&2, U32>, +status: U32, good: Bool) -> IO(Unit):

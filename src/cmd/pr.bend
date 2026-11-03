@@ -680,7 +680,7 @@ def diff(+env: Cli.Env) -> IO(Unit):
 # ------
 
 def create.body(+head: String, +base: String, +title: String, +body: String) -> Json.Val:
-  Json.Obj{[("head", Api.utf8(head)), ("base", Api.utf8(base)), ("title", Api.utf8(title)), ("body", Api.utf8(body))]}
+  Json.Obj{[Json.field("head", Api.utf8(head)), Json.field("base", Api.utf8(base)), Json.field("title", Api.utf8(title)), Json.field("body", Api.utf8(body))]}
 
 def create(+env: Cli.Env) -> IO(Unit):
   match env:
@@ -774,9 +774,9 @@ def merge.pick(squash: Bool, plain: Bool, rebase: Bool) -> String:
 def merge.body(f: Ctx.Forge, +method: String, delete: Bool) -> Json.Val:
   match f:
     case Ctx.Gitea{}:
-      Json.Obj{[("Do", Api.utf8(method)), ("delete_branch_after_merge", Json.Flag{delete})]}
+      Json.Obj{[Json.field("Do", Api.utf8(method)), Json.field("delete_branch_after_merge", Json.Flag{delete})]}
     case Ctx.GitHub{}:
-      Json.Obj{[("merge_method", Api.utf8(method))]}
+      Json.Obj{[Json.field("merge_method", Api.utf8(method))]}
 
 # Gitea answers 405 "Please try again later" when the pull request conflicts or its
 # base moved; that is not a rate limit
@@ -910,14 +910,14 @@ def merge(+env: Cli.Env) -> IO(Unit):
 # edit
 # ----
 
-def edit.pair.if(+k: String, +v: String, rest: List<&2, Json.Member()>, keep: Bool) -> List<&2, Json.Member()>:
+def edit.pair.if(+k: String, +v: String, rest: List<&2, Json.Val>, keep: Bool) -> List<&2, Json.Val>:
   match keep:
     case True{}:
-      Con{(k, Api.utf8(v)), rest}
+      Con{Json.field(k, Api.utf8(v)), rest}
     case False{}:
       rest
 
-def edit.pairs(+title: String, +body: String, has_title: Bool, has_body: Bool) -> List<&2, Json.Member()>:
+def edit.pairs(+title: String, +body: String, has_title: Bool, has_body: Bool) -> List<&2, Json.Val>:
   edit.pair.if("title", title, edit.pair.if("body", body, Nil{}, has_body), has_title)
 
 def edit.check(+env: Cli.Env, neither: Bool) -> IO(Unit):
@@ -979,7 +979,7 @@ def pull.guard.get(+env: Cli.Env, +repo: Ctx.Repo, +tok: String, +n: String) -> 
     pull.guard.reply(env, n, r)
 
 def comment.body(+body: String) -> Json.Val:
-  Json.Obj{[("body", Api.utf8(body))]}
+  Json.Obj{[Json.field("body", Api.utf8(body))]}
 
 def comment(+env: Cli.Env) -> IO(Unit):
   match env:

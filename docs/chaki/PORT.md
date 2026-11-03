@@ -33,9 +33,9 @@ Don't edit it.
 | `Time.Instant.cmp(a, b)` | `U32.cmp(a, b)`, or `U32.is_lt` and friends |
 | `Time.Instant.since(a, b)`, Durations, `Int.I64` | plain U32 seconds: `(a - b : U32)` guarded by `U32.is_ge(a, b)` |
 | `Time.Instant.epoch()` | `0` |
-| `Json.Val` built for a request body | chaki's `Json.Val` (`Str{text: String}`, `Num{text: String}`, `Flag{on}`, `Null{}`, `Arr{xs}`, `Obj{kvs}`) |
-| `(Json.utf8(k), v)` an object member | `(k, v)`, a `Json.Member()` |
-| `List<&1, Bytes.Bytes & Json.Val>` | `List<&2, Json.Member()>` |
+| `Json.Val` built for a request body | chaki's `Json.Val` (`Str{text: String}`, `Num{text: String}`, `Flag{on}`, `Null{}`, `Arr{xs}`, `Obj{fs}`, `Field{key, vs}`) |
+| `(Json.utf8(k), v)` an object member | `Json.field(k, v)`, a member value |
+| `List<&1, Bytes.Bytes & Json.Val>` | `List<&2, Json.Val>` |
 | `List<&1, Json.Val>` | `List<&2, Json.Val>` |
 | `Api.utf8(s)` | still works (it's `Json.Str{s}`) |
 | `Json.Num{Bytes.from_string(s)}` | `Json.Num{s}` |

@@ -302,7 +302,7 @@ def labels(+env: Cli.Env) -> IO(Unit):
 # ------------
 
 def label.body(+name: String, +color: String, +desc: String) -> Json.Val:
-  Json.Obj{[("name", Api.utf8(name)), ("color", Api.utf8(color)), ("description", Api.utf8(desc))]}
+  Json.Obj{[Json.field("name", Api.utf8(name)), Json.field("color", Api.utf8(color)), Json.field("description", Api.utf8(desc))]}
 
 def label.send(+env: Cli.Env, +repo: Ctx.Repo, +tok: String, +name: String, +args: List<&2, String>) -> IO(Unit):
   do IO<Unit>:
@@ -627,7 +627,7 @@ def create.url(+org: String, empty: Bool) -> String:
       "orgs/" ++ org ++ "/repos"
 
 def create.body(+name: String, +desc: String, private: Bool) -> Json.Val:
-  Json.Obj{[("name", Api.utf8(name)), ("description", Api.utf8(desc)), ("private", Json.Flag{private})]}
+  Json.Obj{[Json.field("name", Api.utf8(name)), Json.field("description", Api.utf8(desc)), Json.field("private", Json.Flag{private})]}
 
 # an org is a URL path segment too, so it gets the same letters, digits, . _ - check
 # as a delete's owner and name

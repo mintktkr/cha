@@ -9,27 +9,23 @@
 import Base
 import ./bytes.bend as Bytes
 
-# One member of a written object: a key and its value. A tuple A & B is affine in this
-# Bend (Base's Pair(-A: Type, -B: Type) -> Type), so a member of a Data list has to be a
-# Sigma; callers still write ("k", v), and destructure the same way.
-def Member() -> Data:
-  Sigma<&2, &2, String, _ => Val>
-
 # A value to write. Text is decoded; a number keeps the digits it was written with, so a
-# number read and written back is unchanged.
+# number read and written back is unchanged. An object's members are values too, so one
+# recursion over a list of values writes a whole document: Field is a member, its key and
+# the values written after it (one, in practice; a list so that the writer never has to
+# render a value that isn't in a list).
 type Val is Data:
   Null{}
   Flag{on: Bool}
   Num{text: String}
   Str{text: String}
   Arr{xs: List<&2, Val>}
-  Obj{kvs: List<&2, Member()>}
+  Obj{fs: List<&2, Val>}
+  Field{key: String, vs: List<&2, Val>}
 
-# the writer's work list: a value to expand, punctuation to copy, a string to quote
-type Job is Type:
-  JVal{v: Val}
-  JText{text: String}
-  JStr{text: String}
+# one object member: a key and the one value written after it
+def field(+k: String, v: Val) -> Val:
+  Field{k, Con{v, Nil{}}}
 
 # A byte's class. Bend won't match on a byte value, so every byte is classified once and
 # the reader matches on the class.
@@ -1739,59 +1735,37 @@ def encode.esc(s: String, acc: String) -> String:
 def encode.str(s: String, acc: String) -> String:
   SCon{Chr{34}, encode.esc(s, SCon{Chr{34}, acc})}
 
-# an array's elements with the comma after each but the last, built backwards
-def encode.items.more(xs: List<&2, Val>, acc: List<&1, Job>) -> List<&1, Job>:
-  match xs:
-    case Nil{}: acc
-    case Con{x, t}: encode.items.more(t, Con{JVal{x}, Con{JText{","}, acc}})
-
-def encode.arr.items(xs: List<&2, Val>, acc: List<&1, Job>) -> List<&1, Job>:
-  match xs:
-    case Nil{}: acc
-    case Con{x, t}: encode.items.more(t, Con{JVal{x}, acc})
-
-# an object's members with the comma before each but the first, built backwards
-def encode.obj.more(kvs: List<&2, Member()>, acc: List<&1, Job>) -> List<&1, Job>:
-  match kvs:
-    case Nil{}: acc
-    case (k, v) <> t: encode.obj.more(t, Con{JVal{v}, Con{JText{":"}, Con{JStr{k}, Con{JText{","}, acc}}}})
-
-def encode.obj.items(kvs: List<&2, Member()>, acc: List<&1, Job>) -> List<&1, Job>:
-  match kvs:
-    case Nil{}: acc
-    case (k, v) <> t: encode.obj.more(t, Con{JVal{v}, Con{JText{":"}, Con{JStr{k}, acc}}})
-
-# the jobs of a bracketed body: close it, reverse what was built backwards, then the work
-def encode.body(jobs: List<&1, Job>, close: String, work: List<&1, Job>) -> List<&1, Job>:
-  List.append(&1, Job, List.reverse(&1, Job, jobs), Con{JText{close}, work})
-
-def encode.flag(work: List<&1, Job>, +on: Bool) -> List<&1, Job>:
+def encode.flag(+on: Bool, acc: String) -> String:
   match on:
-    case True{}: Con{JText{"true"}, work}
-    case False{}: Con{JText{"false"}, work}
+    case True{}: str.push("true", acc)
+    case False{}: str.push("false", acc)
 
-# a value's jobs, in front of the work still to do
-def encode.val(v: Val, work: List<&1, Job>) -> List<&1, Job>:
-  match v:
-    case Null{}: Con{JText{"null"}, work}
-    case Flag{on}: encode.flag(work, on)
-    case Num{text}: Con{JText{text}, work}
-    case Str{text}: Con{JStr{text}, work}
-    case Arr{xs}: encode.body(encode.arr.items(xs, Con{JText{"["}, Nil{}}), "]", work)
-    case Obj{kvs}: encode.body(encode.obj.items(kvs, Con{JText{"{"}, Nil{}}), "}", work)
-
-# One job per step, the text built backwards. @unsafe because the loop walks a work list
-# rather than the value: each step writes text or swaps a container for its strictly
-# smaller parts, which is a shape bend can't prove. This is how cha's old json writer did
-# it too.
-@unsafe
-def encode.go(work: List<&1, Job>, acc: String) -> String:
-  match work:
+# the comma between a value and the ones after it, prepended to acc
+def encode.sep(xs: List<&2, Val>, acc: String) -> String:
+  match xs:
     case Nil{}: acc
-    case Con{JText{text}, t}: encode.go(t, str.push(text, acc))
-    case Con{JStr{text}, t}: encode.go(t, encode.str(text, acc))
-    case Con{JVal{v}, t}: encode.go(encode.val(v, t), acc)
+    case Con{y, yt}: SCon{Chr{44}, acc}
+
+# The values of xs, commas between them, each prepended to acc reversed. The tail goes in
+# first, so the head's text ends up in front of it, and a container's own list is written
+# by the same def: every recursive call is on a list a pattern match gave, which is what
+# lets the checker see the write end.
+def encode.list(xs: List<&2, Val>, acc: String) -> String:
+  match xs:
+    case Nil{}: acc
+    case Con{x, +t}:
+      match x:
+        case Null{}: encode.list(t, encode.sep(t, str.push("null", acc)))
+        case Flag{on}: encode.list(t, encode.sep(t, encode.flag(on, acc)))
+        case Num{text}: encode.list(t, encode.sep(t, str.push(text, acc)))
+        case Str{text}: encode.list(t, encode.sep(t, encode.str(text, acc)))
+        case Arr{cs}: encode.list(t, encode.sep(t, SCon{Chr{93}, encode.list(cs, SCon{Chr{91}, acc})}))
+        case Obj{fs}: encode.list(t, encode.sep(t, SCon{Chr{125}, encode.list(fs, SCon{Chr{123}, acc})}))
+        case Field{key, vs}: encode.list(t, encode.sep(t, encode.list(vs, SCon{Chr{58}, encode.str(key, acc)})))
 
 # compact RFC 8259 text, keys in the order given
+#
+# A Field writes its key quoted and then its values, so a document's members are the one
+# place the order of keys is kept.
 def encode(v: Val) -> String:
-  String.reverse(encode.go(Con{JVal{v}, Nil{}}, SNil{}))
+  String.reverse(encode.list(Con{v, Nil{}}, SNil{}))

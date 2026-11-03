@@ -422,7 +422,7 @@ def set.github(+env: Cli.Env) -> IO(Unit):
   Cli.fail(Unit, env, set.github.msg())
 
 def set.body(+value: String) -> Json.Val:
-  Json.Obj{[("data", Api.utf8(value))]}
+  Json.Obj{[Json.field("data", Api.utf8(value))]}
 
 # A failed set says why from the status alone. The forge's error body can repeat the
 # value whole, in part, re-cased or escaped, and a control byte in it would only be dropped
@@ -477,10 +477,10 @@ def set.secret.if(+env: Cli.Env, +repo: Ctx.Repo, +tok: String, +on: Bool, +name
 # on the list, and a 409 from either means "it is there already", so the update follows.
 
 def var.body(+name: String, +value: String) -> Json.Val:
-  Json.Obj{[("name", Api.utf8(name)), ("value", Api.utf8(value))]}
+  Json.Obj{[Json.field("name", Api.utf8(name)), Json.field("value", Api.utf8(value))]}
 
 def var.value.body(+value: String) -> Json.Val:
-  Json.Obj{[("value", Api.utf8(value))]}
+  Json.Obj{[Json.field("value", Api.utf8(value))]}
 
 def var.create(f: Ctx.Forge, +repo: Ctx.Repo, +tok: String, +org: String, +name: String, +value: String) -> IO(Api.Reply):
   match f:

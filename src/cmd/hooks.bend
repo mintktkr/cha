@@ -80,18 +80,18 @@ def kind.value(f: Ctx.Forge) -> String:
     case Ctx.Gitea{}:
       "gitea"
 
-def kv.if(kvs: List<&2, Json.Member()>, +k: String, +v: String, keep: Bool) -> List<&2, Json.Member()>:
+def kv.if(kvs: List<&2, Json.Val>, +k: String, +v: String, keep: Bool) -> List<&2, Json.Val>:
   match keep:
     case True{}:
-      Con{(k, Api.utf8(v)), kvs}
+      Con{Json.field(k, Api.utf8(v)), kvs}
     case False{}:
       kvs
 
 # the hook's config: its target, its payload format, and the secret when --secret-file
 # gave one. Both forges take these three under config.
-def config.kvs(+url: String, +ct: String, +secret: String) -> List<&2, Json.Member()>:
-  k0 : List<&2, Json.Member()> = kv.if(Nil{}, "secret", secret, Bool.not(String.is_empty(secret)))
-  Con{("url", Api.utf8(url)), Con{("content_type", Api.utf8(ct)), k0}}
+def config.kvs(+url: String, +ct: String, +secret: String) -> List<&2, Json.Val>:
+  k0 : List<&2, Json.Val> = kv.if(Nil{}, "secret", secret, Bool.not(String.is_empty(secret)))
+  Con{Json.field("url", Api.utf8(url)), Con{Json.field("content_type", Api.utf8(ct)), k0}}
 
 def event.vals(xs: List<&2, String>) -> List<&2, Json.Val>:
   match xs:
@@ -103,10 +103,10 @@ def event.vals(xs: List<&2, String>) -> List<&2, Json.Val>:
 # the events are passed through as given: GitHub and Gitea name most of them alike
 # (push, pull_request) and cha doesn't try to translate the rest
 def create.body(+f: Ctx.Forge, +url: String, +events: List<&2, String>, +ct: String, +secret: String) -> Json.Val:
-  k0 : List<&2, Json.Member()> = Con{("config", Json.Obj{config.kvs(url, ct, secret)}), Nil{}}
-  k1 : List<&2, Json.Member()> = Con{("events", Json.Arr{event.vals(events)}), k0}
-  k2 : List<&2, Json.Member()> = Con{("active", Json.Flag{True{}}), k1}
-  Json.Obj{Con{(kind.key(f), Api.utf8(kind.value(f))), k2}}
+  k0 : List<&2, Json.Val> = Con{Json.field("config", Json.Obj{config.kvs(url, ct, secret)}), Nil{}}
+  k1 : List<&2, Json.Val> = Con{Json.field("events", Json.Arr{event.vals(events)}), k0}
+  k2 : List<&2, Json.Val> = Con{Json.field("active", Json.Flag{True{}}), k1}
+  Json.Obj{Con{Json.field(kind.key(f), Api.utf8(kind.value(f))), k2}}
 
 # Secret
 # ------

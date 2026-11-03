@@ -48,8 +48,8 @@ hidden state, and has a surface you can read in one sitting.
 
 ## Known edges
 
-- The JSON writer (`Json.encode`) walks a work list the termination checker can't bound, so it
-  is listed among the defs that rely on unsafe code.
+- The JSON writer is one structural recursion, the tail of each list written first, so no
+  def relies on unsafe code.
 - `width.bend` counts code points, not grapheme clusters: an emoji ZWJ sequence measures
   wider than it shows.
 - A response may take 64 MiB, head and body together (`Http1.ROOM`), since a body is held as
