@@ -26,7 +26,7 @@ description: Use cha for Gitea, Forgejo and GitHub work from the terminal - issu
 - `issue view --comments`, `runs view` and `moved` print nested records. They take no field list and exit 1 if given one; bare `--json` still works.
 - Write commands print the URL of what they created or changed on stdout; `release upload` prints one line per file, the asset's download URL. `repo delete` prints nothing on success, only a `✓ deleted OWNER/NAME` line on stderr, because the forge answers 204. `comment-edit` prints the edited comment's URL; `comment-delete` prints nothing, and exit 0 is the receipt.
 - `issue labels` and `issue create --label` resolve the names against the repo's labels before they write, so a typo exits 1 instead of applying a label the repo doesn't have (on GitHub the error also names the labels the repo does have).
-- Errors go to stderr with exit code 1. `pr checks` and `runs watch` also exit 1 when something failed.
+- Errors go to stderr with exit code 1. `pr checks` also exits 1 when a check failed. `runs watch` has three codes, so a script can gate on it: 0 the run succeeded, 1 the run concluded in failure, 2 cha gave up watching. cha gives up only when five polls in a row fail (a timeout, a connect error or a 5xx; a good poll resets the count) and says `gave up after 5 failed polls; the run is still <state>` on stderr.
 - A flag the subcommand doesn't take exits 1 and names the flags it does, for example `unknown flag --bogus for issue list; flags: --state --label ...`. `-h`, `--help` and `-R` are taken everywhere; `-h` or `--help` after a command prints its usage page instead of running it (`cha issue list --help` prints `cha issue`).
 - A flag that takes a value and is given none exits 1 with `--limit needs a value`: at the end of the line, before another flag the command reads, or with nothing after its `=`. A value may start with a dash, or be another command's flag name, so `--body "-1 from me"` and `--title "--limit"` keep their words.
 - Forge text is printed with its control characters and escape sequences removed, on stderr too, so a title, a body, a label, a branch name or a CI log line cannot move the cursor or spoof output. One-line fields (titles, labels, branches, names) also turn a newline or tab into a space, so they can't add rows to a list; bodies, comments and release notes keep their lines. Raw content stays byte-exact when piped: `repo file` and `pr diff` print the bytes unchanged into a redirect, and `--json` keeps the data, escaping control characters as `\uXXXX`.
@@ -67,7 +67,7 @@ cha pr checks N                       # statuses and check runs of the head comm
 cha runs list [--branch B] [--status S] [--workflow FILE|NAME] [--limit N] [--json]
 cha runs view ID                      # run, jobs, runners and step timings
 cha runs logs ID [--job ID|NAME] [--failed] [--step NAME]
-cha runs watch ID                     # polls until done
+cha runs watch ID                     # polls until it ends: exit 0 ok, 1 failed, 2 gave up watching
 cha runs dispatch WORKFLOW_FILE [--ref main] [--input k=v]
 cha runs rerun ID [--failed | --job ID]  /  cha runs cancel ID
 
@@ -126,7 +126,7 @@ cha completions fish
 - When `head_branch` is absent, the branch column falls back to the workflow ref. Tags and pull-request refs retain their `refs/tags/` or `refs/pull/` prefix.
 - Logs accept a job id or case-insensitive exact job name. `--failed` selects failed jobs; it still prints each selected job's full log unless `--step` is also given.
 - On GitHub, unfinished jobs print a watch hint on stderr while completed jobs still print their logs; partial retrieval exits 1. `--step` cuts the job log between the runner's `##[group]Run ...` markers, matching the step by case-insensitive name; a step the runner gave no group (an image pull, a runner step) falls back to its step times. On Gitea it needs step timestamps; its whole-second boundaries can overlap adjacent steps, and missing metadata produces an actionable error.
-- `runs rerun --job` requires a job id belonging to the supplied run. It cannot be combined with `--failed`.
+- `runs rerun --job` requires a job id belonging to the supplied run. It cannot be combined with `--failed`. Gitea reruns a run or its failed jobs from 1.26 on, at the same paths GitHub uses; a single job nests under its run there (`actions/runs/<run>/jobs/<job>/rerun`, where GitHub has `actions/jobs/<job>/rerun`). A 404 from Gitea means the forge is older than 1.26, and cha says so. `runs cancel` needs Gitea 28.
 - `runs dispatch` prints the URL of the run it created. GitHub names that run in its reply (`return_run_details`); Gitea and Forgejo answer 204, so cha notes the instant before the POST and polls the repo's `workflow_dispatch` runs a few times, taking the newest run of that workflow file, on that ref, that appeared at or after it. When no such run has shown up after ~8s, it says the dispatch was accepted and prints the workflow's runs page instead of naming an older run.
 
 ## Search
@@ -161,7 +161,7 @@ cha completions fish
 - Gitea's 405 on merge means a conflict or a moved base. cha says so. `pr merge` reads the pull request first, so an already merged one exits 1 naming the merge commit (when the forge gives it) and a closed unmerged one exits 1 saying it is closed; a merge is never a silent no-op.
 - `pr comment N` checks that N is a pull request first. Both forges share the comment endpoint between issues and pull requests, so a number that is an issue (or none at all) exits 1 with `#N is not a pull request (an issue, or no such number)` instead of commenting on the issue.
 - Label names are checked before any write, because Gitea silently ignores unknown names, or wipes the set on replace.
-- Gitea 1.25 has no API to rerun or cancel an Actions run. `cha runs rerun|cancel` exit 1 with a hint: push a commit, or use the web UI.
+- Gitea 1.25 has no rerun or cancel API. A rerun needs 1.26 or later (its per-job rerun nests under the run), a cancel needs 28. Both answer 404 below that, and `cha runs rerun|cancel` exit 1 saying which version the endpoint needs.
 - A secret's value goes one way. The forges never send one back, and cha prints none: not in a list, not in `--json`, not in an error: a failed `secrets set` says why from the status alone, so a reply body that repeats the value has nowhere to land, and `LAWS.bend` proves it. Pass it with `--value-file` (`-` for stdin) rather than `--value`, which is visible in the process list and the shell's history; a trailing newline from a heredoc or `echo` is dropped. Names are checked before any request: letters, digits and underscores, no leading digit, no `GITHUB_` prefix.
 - `secrets set` on GitHub exits 1 without a request: a GitHub secret has to be sealed with the repo's public key (libsodium's sealed box), which cha can't build yet. `secrets list|delete` and everything under `variables` work there. Variables take `PUT` on Gitea, `POST` then `PATCH` on GitHub.
 - GitHub's issue list includes pull requests. `cha issue list` drops them.

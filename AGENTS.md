@@ -68,7 +68,7 @@ These are the walls every newcomer hits. `src/` has a working example of each.
 - Gitea 1.25 ignores `limit` unless `page` is also sent.
 - Gitea creates issues with label IDs, ignores unknown label names on add, and replaces the whole set on `PUT .../labels`, wiping it for an unknown name. Resolve names before any write.
 - Gitea answers a blocked merge with HTTP 405 "Please try again later". It means a conflict or a moved base, not a rate limit.
-- Gitea 1.25 has no API to rerun or cancel an Actions run.
+- Gitea has no rerun API before 1.26 and no cancel before 28, and answers 404 below that. From 1.26 `POST actions/runs/{run}/rerun`, `.../rerun-failed-jobs` and `.../runs/{run}/jobs/{job_id}/rerun` exist; the per-job path nests under the run, where GitHub has `actions/jobs/{job_id}/rerun`. From 28, `.../runs/{run}/cancel`. cha tries the request and maps the 404 to a message naming the version.
 - Gitea timestamps carry a local offset (`-03:00`), so compare parsed instants, never strings.
 - GitHub lists pull requests among issues (they carry `pull_request.url`) and 404s on a trailing slash after `repos/o/r`.
 - `actions/runs` answers an object (`workflow_runs`), not an array.

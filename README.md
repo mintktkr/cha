@@ -54,7 +54,7 @@ $ cha completions fish > ~/.config/fish/completions/cha.fish
   - `--json` gives stable fields, `--json a,b` only those
   - exit codes mean something
   - an unknown flag is an error that lists the flags the command takes, never silently ignored, and so is a flag left without its value
-- **Gitea Actions included.** List runs, read job logs, dispatch workflows.
+- **Gitea Actions included.** List runs, read job logs, dispatch workflows, and rerun or cancel them where the forge's API has it (Gitea 1.26 for a rerun, 28 for a cancel).
 - **Mirrors too.** `cha mirror` says whether a repo is a pull mirror and what it pushes to, and asks for a sync when you need one.
 - **Nothing to install.** cha speaks HTTPS and JSON itself. Credentials come from git's credential store or an environment variable.
 

@@ -12,6 +12,7 @@ import ./src/api.bend as Api
 import ./src/url.bend as Url
 import ./src/cmd/repo.bend as Repo
 import ./src/cmd/runners.bend as Runners
+import ./src/cmd/runs.bend as Runs
 import ./src/cmd/packages.bend as Packages
 import ./src/cmd/pr.bend as Pr
 import ./src/hooks.bend as Hooks
@@ -302,6 +303,86 @@ law runs_id_path:
 # LAW: ...and neither is an empty id.
 law runs_id_empty:
   {Cli.digits("") == False{} : Bool}
+
+# Watching and rerunning runs
+# ----------------------------
+# A watch follows a run for as long as it takes, so a poll that never reached the forge says
+# nothing about the run: it is retried on the next tick, and only five failed polls in a row
+# end the watch. Giving up exits with a code of its own, so a script that gates on a watch
+# can tell "couldn't see the run" from "the run failed". A rerun builds one endpoint per
+# forge and mode, and a job id reaches it only as digits.
+
+# LAW: a poll that never reached the forge is retried.
+law watch_poll_broke:
+  {Runs.poll.of(None{}) == Runs.Retry{} : Runs.Polled}
+
+# LAW: a 5xx is the forge being unreachable, so it is retried too.
+law watch_poll_5xx:
+  {Runs.poll.of(Some{503}) == Runs.Retry{} : Runs.Polled}
+
+# LAW: a 4xx is the forge answering, so it ends the watch.
+law watch_poll_4xx:
+  {Runs.poll.of(Some{404}) == Runs.Fatal{} : Runs.Polled}
+
+# LAW: a 2xx is the run to read.
+law watch_poll_2xx:
+  {Runs.poll.of(Some{200}) == Runs.Good{} : Runs.Polled}
+
+# LAW: a poll that got an answer resets the count of failed polls.
+law watch_count_reset:
+  {Runs.poll.count(4n, Runs.Good{}) == 0n : Nat}
+
+# LAW: a retried poll adds one to the count.
+law watch_count_retry:
+  {Runs.poll.count(4n, Runs.Retry{}) == 5n : Nat}
+
+# LAW: the watch gives up exactly when five polls in a row have failed.
+law watch_gives_up:
+  {Runs.poll.gave.up(5n) == True{} : Bool}
+
+# LAW: ...and not before.
+law watch_not_yet:
+  {Runs.poll.gave.up(4n) == False{} : Bool}
+
+# LAW: a run that concluded in failure exits 1.
+law watch_exit_failed:
+  {Runs.watch.code(False{}) == 1 : U32}
+
+# LAW: a watch that gave up on the forge exits 2, so the two never read alike.
+law watch_exit_gaveup:
+  {Runs.watch.code(True{}) == 2 : U32}
+
+# LAW: giving up names the count and the last state the watch saw.
+law watch_gave_up_text:
+  {Runs.watch.gave.up.text(5n, "in_progress") == "gave up after 5 failed polls; the run is still in_progress" : String}
+
+# LAW: a Gitea rerun of a run is actions/runs/<run>/rerun.
+law rerun_path_gitea:
+  {Runs.rerun.path(Ctx.Gitea{}, "5056", "", False{}, False{}) == "actions/runs/5056/rerun" : String}
+
+# LAW: ...its failed jobs are at the same path with -failed-jobs.
+law rerun_path_gitea_failed:
+  {Runs.rerun.path(Ctx.Gitea{}, "5056", "", True{}, False{}) == "actions/runs/5056/rerun-failed-jobs" : String}
+
+# LAW: a Gitea job rerun nests under its run.
+law rerun_path_gitea_job:
+  {Runs.rerun.path(Ctx.Gitea{}, "5056", "42", False{}, True{}) == "actions/runs/5056/jobs/42/rerun" : String}
+
+# LAW: a GitHub rerun of a run is the same path.
+law rerun_path_github:
+  {Runs.rerun.path(Ctx.GitHub{}, "5056", "", False{}, False{}) == "actions/runs/5056/rerun" : String}
+
+# LAW: ...and so are its failed jobs.
+law rerun_path_github_failed:
+  {Runs.rerun.path(Ctx.GitHub{}, "5056", "", True{}, False{}) == "actions/runs/5056/rerun-failed-jobs" : String}
+
+# LAW: a GitHub job rerun names the job alone, not its run.
+law rerun_path_github_job:
+  {Runs.rerun.path(Ctx.GitHub{}, "5056", "42", False{}, True{}) == "actions/jobs/42/rerun" : String}
+
+# LAW: a job id that is not digits only never reaches a rerun path.
+law rerun_job_id_digits:
+  {Cli.digits("42/cancel") == False{} : Bool}
 
 # Path segments
 # -------------

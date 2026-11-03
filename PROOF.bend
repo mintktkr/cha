@@ -6,6 +6,7 @@ import ./src/ctx.bend as Ctx
 import ./src/cli.bend as Cli
 import ./src/api.bend as Api
 import ./src/cmd/packages.bend as Packages
+import ./src/cmd/runs.bend as Runs
 import ./src/cmd/pr.bend as Pr
 import ./src/hooks.bend as Hooks
 import ./src/cmd/secrets.bend as Secrets
@@ -272,6 +273,65 @@ def Laws.runs_id_path():
   {==}
 
 def Laws.runs_id_empty():
+  {==}
+
+# Watching and rerunning runs
+# ----------------------------
+# Each law is a closed value: the classifier, the counter, the path builder and the message
+# all read a literal and normalize to one term, so reflexivity is the whole proof.
+
+def Laws.watch_poll_broke():
+  {==}
+
+def Laws.watch_poll_5xx():
+  {==}
+
+def Laws.watch_poll_4xx():
+  {==}
+
+def Laws.watch_poll_2xx():
+  {==}
+
+def Laws.watch_count_reset():
+  {==}
+
+def Laws.watch_count_retry():
+  {==}
+
+def Laws.watch_gives_up():
+  {==}
+
+def Laws.watch_not_yet():
+  {==}
+
+def Laws.watch_exit_failed():
+  {==}
+
+def Laws.watch_exit_gaveup():
+  {==}
+
+def Laws.watch_gave_up_text():
+  {==}
+
+def Laws.rerun_path_gitea():
+  {==}
+
+def Laws.rerun_path_gitea_failed():
+  {==}
+
+def Laws.rerun_path_gitea_job():
+  {==}
+
+def Laws.rerun_path_github():
+  {==}
+
+def Laws.rerun_path_github_failed():
+  {==}
+
+def Laws.rerun_path_github_job():
+  {==}
+
+def Laws.rerun_job_id_digits():
   {==}
 
 # Path segments

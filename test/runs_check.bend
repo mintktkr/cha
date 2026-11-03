@@ -145,6 +145,30 @@ def picked.for(+forge: Ctx.Forge, +src: Map<&2, String>, +wf: String, +ref: Stri
 def picked(+src: Map<&2, String>, +wf: String, +ref: String, +t0: U32) -> String:
   picked.for(Ctx.Gitea{}, src, wf, ref, t0)
 
+# a poll's outcome, named: the check reads the constructor instead of comparing Data
+def polled.name(p: Runs.Polled) -> String:
+  match p:
+    case Runs.Good{}:
+      "Good"
+    case Runs.Retry{}:
+      "Retry"
+    case Runs.Fatal{}:
+      "Fatal"
+
+# a tick, as text, so a failing check says what the watch decided
+def tick.name(t: Runs.Tick) -> String:
+  match t:
+    case Runs.More{+s, f}:
+      "more " ++ s ++ " " ++ Nat.show(f)
+    case Runs.End{+s, +c}:
+      "end " ++ s ++ " " ++ c
+    case Runs.Again{+f}:
+      "again " ++ Nat.show(f)
+    case Runs.Give{+f}:
+      "give " ++ Nat.show(f)
+    case Runs.Stop{+m}:
+      "stop " ++ m
+
 def main() -> IO(Unit):
   do IO<Unit>:
     expect(Runs.runs.url(Ctx.Gitea{}, "main", "failure", "5"), "actions/runs?page=1&limit=5&branch=main&status=failure")
@@ -163,6 +187,26 @@ def main() -> IO(Unit):
     is_true(Runs.failed.labels("failure"))
     is_true(Runs.failed.labels("cancelled"))
     expect(Bool.show(Runs.failed.labels("success")), "False")
+    # a poll that never reached the forge, and a 5xx, are retried; a 2xx is read; any other
+    # status ends the watch
+    expect(polled.name(Runs.poll.of(None{})), "Retry")
+    expect(polled.name(Runs.poll.of(Some{503})), "Retry")
+    expect(polled.name(Runs.poll.of(Some{404})), "Fatal")
+    expect(polled.name(Runs.poll.of(Some{200})), "Good")
+    expect(Nat.show(Runs.poll.count(4n, Runs.Good{})), "0")
+    expect(Nat.show(Runs.poll.count(4n, Runs.Retry{})), "5")
+    expect(Bool.show(Runs.poll.gave.up(4n)), "False")
+    expect(Bool.show(Runs.poll.gave.up(5n)), "True")
+    # five failed polls in a row end the watch with its own exit code
+    expect(tick.name(Runs.tick.next(0n, Api.Broke{"timed out"})), "again 1")
+    expect(tick.name(Runs.tick.next(4n, Api.Broke{"timed out"})), "give 5")
+    expect(tick.name(Runs.tick.next(2n, Api.Reply{503, "", []})), "again 3")
+    expect(tick.name(Runs.tick.next(2n, Api.Reply{404, "", Utf8.encode("{\"message\":\"Not Found\"}")})), "stop HTTP 404: Not Found")
+    expect(tick.name(Runs.tick.next(2n, Api.Reply{200, "", Utf8.encode("{\"status\":\"in_progress\"}")})), "more in_progress 0")
+    expect(U32.show(Runs.watch.code(False{})), "1")
+    expect(U32.show(Runs.watch.code(True{})), "2")
+    expect(Runs.watch.gave.up.text(5n, "in_progress"), "gave up after 5 failed polls; the run is still in_progress")
+    expect(Runs.watch.gave.up.text(5n, ""), "gave up after 5 failed polls; the run is still unknown")
     is_true(Runs.want.job("1", "failure", "", False{}))
     expect(Bool.show(Runs.want.job("1", "success", "", True{})), "False")
     is_true(Runs.want.job("2", "success", "2", False{}))

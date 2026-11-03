@@ -159,6 +159,13 @@ def forge.github(+forge: Ctx.Forge) -> Bool:
     case Ctx.GitHub{}:
       True{}
 
+def forge.gitea(+forge: Ctx.Forge) -> Bool:
+  match forge:
+    case Ctx.Gitea{}:
+      True{}
+    case Ctx.GitHub{}:
+      False{}
+
 def param.q(+pre: String, +v: String) -> String:
   Ctx.or.if(pre ++ Url.encode(v), "", String.is_empty(v))
 
@@ -340,21 +347,6 @@ def fetch.body(+env: Cli.Env, r: Api.Reply) -> IO(List<&2, U32>):
       Cli.fail(List<&2, U32>, env, w)
     case Api.Reply{+status, next, body}:
       ok.body(env, status, body, Api.ok(status))
-
-def check.ok.if(+env: Cli.Env, +status: U32, body: List<&2, U32>, good: Bool) -> IO(Unit):
-  match good:
-    case True{}:
-      IO.pure(Unit, Unit{})
-    case False{}:
-      Cli.fail(Unit, env, Api.message(status, body))
-
-# a reply that carries nothing worth printing: fail on anything but 2xx
-def check.ok(+env: Cli.Env, r: Api.Reply) -> IO(Unit):
-  match r:
-    case Api.Broke{w}:
-      Cli.fail(Unit, env, w)
-    case Api.Reply{+status, next, body}:
-      check.ok.if(env, status, body, Api.ok(status))
 
 # Jobs
 # ----
@@ -858,17 +850,74 @@ def logs(+env: Cli.Env) -> IO(Unit):
 # watch
 # -----
 
-# a poll's outcome: still going, or finished
+# How a poll's reply reads for the watch. A watch follows a run for days, so a poll that
+# never reached the forge says nothing about the run: it is retried on the next tick.
+# Only five failed polls in a row end the watch, and they end it as cha giving up, not as
+# the run failing.
+type Polled is Data:
+  Good{}
+  Retry{}
+  Fatal{}
+
+def poll.server(server: Bool) -> Polled:
+  match server:
+    case True{}:
+      Retry{}
+    case False{}:
+      Fatal{}
+
+def poll.status(good: Bool, server: Bool) -> Polled:
+  match good:
+    case True{}:
+      Good{}
+    case False{}:
+      poll.server(server)
+
+# a poll's reply read the way the watch must act on it. A request that never got a status
+# (timeout, connect, read) and a 5xx say nothing about the run, so both are retried on the
+# next tick; a 2xx is the run to read; any other status is the forge refusing the read.
+def poll.of(+status: Maybe<&2, U32>) -> Polled:
+  match status:
+    case None{}:
+      Retry{}
+    case Some{+s}:
+      poll.status(Api.ok(s), (s >= 500 : U32))
+
+# polls in a row that may fail before the watch gives up
+def poll.tries() -> Nat:
+  5n
+
+# consecutive failed polls, stepped by one poll's outcome: an answered poll resets the
+# count, a retried one adds to it, and a refusal leaves it (the watch stops there anyway)
+def poll.count(+fails: Nat, p: Polled) -> Nat:
+  match p:
+    case Good{}:
+      0n
+    case Retry{}:
+      1n+fails
+    case Fatal{}:
+      fails
+
+# the watch gives up on the forge once this many polls in a row have failed
+def poll.gave.up(+fails: Nat) -> Bool:
+  Nat.is_ge(fails, poll.tries())
+
+# a poll's outcome: still going, finished, another try, cha giving up, or the forge's refusal.
+# fails rides along, so the count of failed polls in a row survives a tick that shows the
+# state again.
 type Tick is Data:
-  More{state: String, conclusion: String}
+  More{state: String, fails: Nat}
   End{state: String, conclusion: String}
+  Again{fails: Nat}
+  Give{fails: Nat}
+  Stop{msg: String}
 
 def tick.at(+state: String, +conclusion: String, done: Bool) -> Tick:
   match done:
     case True{}:
       End{state, conclusion}
     case False{}:
-      More{state, conclusion}
+      More{state, 0n}
 
 # The watch prints the state it reads, so unlike the row builders this reads the source
 # through the clean door.
@@ -922,16 +971,80 @@ def watch.end(+on: Bool, +id: String, +state: String, +shown: String, +spin: U32
     case False{}:
       watch.change(state, shown, Bool.not(String.eq(state, shown)))
 
+# another try, or a give-up once five polls in a row have failed
+def tick.give(+fails: Nat, gaveup: Bool) -> Tick:
+  match gaveup:
+    case True{}:
+      Give{fails}
+    case False{}:
+      Again{fails}
+
+def tick.retry(+fails: Nat, p: Polled) -> Tick:
+  +n = poll.count(fails, p)
+  tick.give(n, poll.gave.up(n))
+
+# what the watch does with the reply to a poll: the run's state, another try, or the
+# forge's own error
+def tick.reply(+fails: Nat, +status: U32, body: List<&2, U32>, p: Polled) -> Tick:
+  match p:
+    case Good{}:
+      tick.of(Api.obj(body))
+    case Retry{}:
+      tick.retry(fails, p)
+    case Fatal{}:
+      Stop{Api.message(status, body)}
+
+def tick.next(+fails: Nat, r: Api.Reply) -> Tick:
+  match r:
+    case Api.Broke{w}:
+      tick.retry(fails, poll.of(None{}))
+    case Api.Reply{+status, next, body}:
+      tick.reply(fails, status, body, poll.of(Some{status}))
+
+# a watch's exit code when it did not finish: 1 when the run concluded in failure, 2 when
+# cha gave up on the forge, so a script can tell "the build failed" from "couldn't look"
+def watch.code(gaveup: Bool) -> U32:
+  match gaveup:
+    case True{}:
+      2
+    case False{}:
+      1
+
 def exit.if(+conclusion: String, bad: Bool) -> IO(Unit):
   match bad:
     case True{}:
-      IO.die(Unit, 1, "")
+      IO.die(Unit, watch.code(False{}), "")
     case False{}:
       IO.pure(Unit, Unit{})
 
 # a run that ended in failure is a failed command
 def watch.exit(+conclusion: String) -> IO(Unit):
   exit.if(conclusion, failed.labels(conclusion))
+
+# the last thing a watch says when it gives up: the count, and the state it last read
+def watch.gave.up.text(+fails: Nat, +shown: String) -> String:
+  "gave up after " ++ Nat.show(fails) ++ " failed polls; the run is still " ++ Ctx.or(shown, "unknown")
+
+# the redraw line has no newline, so clear it before a line of cha's own goes to stderr
+def watch.clear(+on: Bool) -> IO(Unit):
+  match on:
+    case True{}:
+      IO.write("\r\u{1b}[K")
+    case False{}:
+      IO.pure(Unit, Unit{})
+
+# cha gave up watching: five polls in a row never reached the forge
+def watch.gave.up(+env: Cli.Env, +on: Bool, +shown: String, +fails: Nat) -> IO(Unit):
+  do IO<Unit>:
+    watch.clear(on)
+    Ui.error(on, watch.gave.up.text(fails, shown))
+    IO.die(Unit, watch.code(True{}), "")
+
+# the forge answered a poll with a refusal: that is the command failing, as on any other call
+def watch.stop(+env: Cli.Env, +on: Bool, +msg: String) -> IO(Unit):
+  do IO<Unit>:
+    watch.clear(on)
+    Cli.fail(Unit, env, msg)
 
 # one step per poll, so fuel = the number of polls left. 100000 polls at 5 s is ~6 days.
 def watch.go(fuel: Nat, +env: Cli.Env, +on: Bool, +id: String, +shown: String, +spin: U32, t: Tick) -> IO(Unit):
@@ -942,13 +1055,19 @@ def watch.go(fuel: Nat, +env: Cli.Env, +on: Bool, +id: String, +shown: String, +
       do IO<Unit>:
         watch.end(on, id, state, shown, spin)
         watch.exit(conclusion)
-    case 1n+p More{+state, +conclusion}:
+    case 1n+p More{+state, +fails}:
       do IO<Unit>:
         watch.step(on, id, state, shown, spin)
         IO.sleep(5000)
         r : Api.Reply <- watch.get(env, id)
-        body : List<&2, U32> <- fetch.body(env, r)
-        watch.go(p, env, on, id, state, (spin + 1 : U32), tick.of(Api.obj(body)))
+        watch.go(p, env, on, id, state, (spin + 1 : U32), tick.next(fails, r))
+    # the state is the one already shown, so piped nothing prints: just look again
+    case 1n+p Again{+fails}:
+      watch.go(p, env, on, id, shown, (spin + 1 : U32), More{shown, fails})
+    case 1n+p Give{+fails}:
+      watch.gave.up(env, on, shown, fails)
+    case 1n+p Stop{+msg}:
+      watch.stop(env, on, msg)
 
 def watch(+env: Cli.Env) -> IO(Unit):
   match env:
@@ -957,8 +1076,7 @@ def watch(+env: Cli.Env) -> IO(Unit):
         Cli.check(env, "runs watch", args, [])
         +id : String <- require.id(env, 1n)
         r : Api.Reply <- Api.get(repo, tok, Api.path(repo, "actions/runs/" ++ id))
-        body : List<&2, U32> <- fetch.body(env, r)
-        watch.go(100000n, env, on, id, "", 0, tick.of(Api.obj(body)))
+        watch.go(100000n, env, on, id, "", 0, tick.next(0n, r))
 
 # dispatch, rerun, cancel
 # -----------------------
@@ -1202,53 +1320,83 @@ def dispatch(+env: Cli.Env) -> IO(Unit):
         dispatch.print(env, wf, ref, t0, named)
 
 # A selected job uses the job endpoint; --failed uses the run's failed-jobs endpoint.
-def rerun.path(+id: String, +job: String, failed: Bool, specific: Bool) -> String:
+# Both forges put a run's rerun and rerun-failed-jobs at the same path. A single job does
+# not: Gitea nests it under the run (actions/runs/<run>/jobs/<job>/rerun, 1.26 and later),
+# GitHub names the job alone (actions/jobs/<job>/rerun).
+def rerun.run.path(+id: String, +end: String) -> String:
+  "actions/runs/" ++ Url.encode(id) ++ "/" ++ end
+
+def rerun.job.path(+id: String, +job: String, nested: Bool) -> String:
+  match nested:
+    case True{}:
+      "actions/runs/" ++ Url.encode(id) ++ "/jobs/" ++ Url.encode(job) ++ "/rerun"
+    case False{}:
+      "actions/jobs/" ++ Url.encode(job) ++ "/rerun"
+
+def rerun.path(+forge: Ctx.Forge, +id: String, +job: String, failed: Bool, specific: Bool) -> String:
   match failed specific:
     case f True{}:
-      "actions/jobs/" ++ Url.encode(job) ++ "/rerun"
+      rerun.job.path(id, job, forge.gitea(forge))
     case True{} False{}:
-      "actions/runs/" ++ Url.encode(id) ++ "/rerun-failed-jobs"
+      rerun.run.path(id, "rerun-failed-jobs")
     case False{} False{}:
-      "actions/runs/" ++ Url.encode(id) ++ "/rerun"
+      rerun.run.path(id, "rerun")
 
-def rerun.post(+env: Cli.Env, +id: String, +job: String, +failed: Bool) -> IO(Unit):
+# Gitea has a rerun endpoint from 1.26 on, and answers 404 before that
+def rerun.missing.text() -> String:
+  "runs rerun: this forge has no rerun API (HTTP 404, needs Gitea >= 1.26)"
+
+def rerun.bad(+env: Cli.Env, +status: U32, body: List<&2, U32>, missing: Bool) -> IO(Unit):
+  match missing:
+    case True{}:
+      Cli.fail(Unit, env, rerun.missing.text())
+    case False{}:
+      Cli.fail(Unit, env, Api.message(status, body))
+
+def rerun.if(+env: Cli.Env, +status: U32, body: List<&2, U32>, +id: String, +forge: Ctx.Forge, good: Bool) -> IO(Unit):
+  match good:
+    case True{}:
+      done.url(env, "actions/runs/" ++ id)
+    case False{}:
+      rerun.bad(env, status, body, U32.is_eq(status, 404) && forge.gitea(forge))
+
+def rerun.check(+env: Cli.Env, r: Api.Reply, +id: String, +forge: Ctx.Forge) -> IO(Unit):
+  match r:
+    case Api.Broke{w}:
+      Cli.fail(Unit, env, w)
+    case Api.Reply{+status, next, body}:
+      rerun.if(env, status, body, id, forge, Api.ok(status))
+
+def rerun.post(+env: Cli.Env, +forge: Ctx.Forge, +id: String, +job: String, +failed: Bool) -> IO(Unit):
   match env:
     case Cli.Env{+repo, +tok, on, json, a}:
       do IO<Unit>:
-        r : Api.Reply <- Api.send(repo, tok, "POST", Api.path(repo, rerun.path(id, job, failed, Bool.not(String.is_empty(job)))), None{})
-        check.ok(env, r)
-        done.url(env, "actions/runs/" ++ id)
+        r : Api.Reply <- Api.send(repo, tok, "POST", Api.path(repo, rerun.path(forge, id, job, failed, Bool.not(String.is_empty(job)))), None{})
+        rerun.check(env, r, id, forge)
 
-def rerun.job.check(+env: Cli.Env, +id: String, +job: String, same: Bool) -> IO(Unit):
+def rerun.job.check(+env: Cli.Env, +forge: Ctx.Forge, +id: String, +job: String, same: Bool) -> IO(Unit):
   match same:
     case True{}:
-      rerun.post(env, id, job, False{})
+      rerun.post(env, forge, id, job, False{})
     case False{}:
       Cli.fail(Unit, env, "runs rerun: job does not belong to run " ++ id)
 
-def rerun.selected(+env: Cli.Env, +id: String, +job: String, +failed: Bool, specific: Bool) -> IO(Unit):
+def rerun.selected(+env: Cli.Env, +forge: Ctx.Forge, +id: String, +job: String, +failed: Bool, specific: Bool) -> IO(Unit):
   match env specific:
     case Cli.Env{repo, tok, on, json, a} False{}:
-      rerun.post(env, id, job, failed)
+      rerun.post(env, forge, id, job, failed)
     case Cli.Env{+repo, +tok, on, json, a} True{}:
       do IO<Unit>:
         r : Api.Reply <- Api.get(repo, tok, Api.path(repo, "actions/jobs/" ++ Url.encode(job)))
         b : List<&2, U32> <- fetch.body(env, r)
-        rerun.job.check(env, id, job, String.eq(Api.f(Api.obj(b), "run_id"), id))
+        rerun.job.check(env, forge, id, job, String.eq(Api.f(Api.obj(b), "run_id"), id))
 
-def rerun.valid(+env: Cli.Env, +id: String, +job: String, +failed: Bool, conflict: Bool) -> IO(Unit):
+def rerun.valid(+env: Cli.Env, +forge: Ctx.Forge, +id: String, +job: String, +failed: Bool, conflict: Bool) -> IO(Unit):
   match conflict:
     case True{}:
       Cli.fail(Unit, env, "runs rerun: choose either --failed or --job ID")
     case False{}:
-      rerun.selected(env, id, job, failed, Bool.not(String.is_empty(job)))
-
-def rerun.go(+env: Cli.Env, +forge: Ctx.Forge, +id: String, +job: String, +failed: Bool) -> IO(Unit):
-  match forge:
-    case Ctx.Gitea{}:
-      Cli.fail(Unit, env, "runs rerun: this forge has no rerun API; push a commit or rerun from the web UI")
-    case Ctx.GitHub{}:
-      rerun.valid(env, id, job, failed, failed && Bool.not(String.is_empty(job)))
+      rerun.selected(env, forge, id, job, failed, Bool.not(String.is_empty(job)))
 
 # a --job id becomes a path segment too, so it is digits only when it is given
 def rerun.args(+env: Cli.Env, +repo: Ctx.Repo, +id: String, +job: String, +failed: Bool, missing: Bool) -> IO(Unit):
@@ -1258,7 +1406,7 @@ def rerun.args(+env: Cli.Env, +repo: Ctx.Repo, +id: String, +job: String, +faile
     case False{}:
       do IO<Unit>:
         Cli.check.if(env, "runs rerun: a job id is digits only, got '" ++ job ++ "'", Bool.or(String.is_empty(job), Cli.digits(job)))
-        rerun.go(env, forge.of(repo), id, job, failed)
+        rerun.valid(env, forge.of(repo), id, job, failed, failed && Bool.not(String.is_empty(job)))
 
 def rerun(+env: Cli.Env) -> IO(Unit):
   match env:
@@ -1269,10 +1417,14 @@ def rerun(+env: Cli.Env) -> IO(Unit):
         +job : String = Cli.flag(args, "--job", "")
         rerun.args(env, repo, id, job, Cli.has(args, "--failed"), Cli.has(args, "--job") && (String.is_empty(job) || String.starts_with(job, "--")))
 
+# Gitea cancels a run from 28 on
+def cancel.missing.text() -> String:
+  "runs cancel: this forge has no cancel API (HTTP 404, needs Gitea >= 28); cancel it from the web UI"
+
 def cancel.bad(+env: Cli.Env, +status: U32, body: List<&2, U32>, missing: Bool) -> IO(Unit):
   match missing:
     case True{}:
-      Cli.fail(Unit, env, "runs cancel: this forge has no cancel API (HTTP 404); cancel it from the web UI")
+      Cli.fail(Unit, env, cancel.missing.text())
     case False{}:
       Cli.fail(Unit, env, Api.message(status, body))
 
