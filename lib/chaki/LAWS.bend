@@ -614,6 +614,308 @@ law x25519_clamp_bytes:
 
 # tlsmsg, tls [tls]
 # -----------------
+# The TLS 1.3 client core and its wire format. The record layer's length bound and the three
+# ServerHello refusals are known answers, built out of RFC 8448 3's own recording so the
+# checks run on real bytes; the state machine's refusals hold over every state and message,
+# because the client is one pure state machine whose failures are final.
+
+# Reading a state, and implication
+# --------------------------------
+
+# a Boolean implication, so a law can say "whenever this, then that" without carrying a
+# hypothesis: false implies anything, true implies b only if b
+def tls_implies(a: Bool, b: Bool) -> Bool:
+  Bool.or(Bool.not(a), b)
+
+# whether a phase is the failed one
+def tls_dead(p: Tls.Phase) -> Bool:
+  match p:
+    case Tls.Phase.dead{why}:
+      True{}
+    case _:
+      False{}
+
+# the state an answer carries: hs.input and hs.send hand back a state beside their records
+# and events
+def tls_state(p: Tls.Hs & List<&2, U32> & List<&2, Tls.Reply>) -> Tls.Hs:
+  match p:
+    case (st, rest):
+      st
+
+# the records an answer hands back
+def tls_records(p: Tls.Hs & List<&2, U32>) -> List<&2, U32>:
+  match p:
+    case (st, out):
+      out
+
+# the events a state has gathered
+def tls_events(st: Tls.Hs) -> List<&2, Tls.Reply>:
+  Tls.Hs{phase, tx, keys, priv, proof, buf, msgs, out, evs} = st
+  evs
+
+# those events with one more after them
+def tls_events.plus(st: Tls.Hs, e: Tls.Reply) -> List<&2, Tls.Reply>:
+  List.append(&2, Tls.Reply, tls_events(st), [e])
+
+# a traffic key's record sequence number
+def tls_traffic_n(t: Tls.Traffic) -> U32:
+  Tls.Traffic{secret, k, iv, n} = t
+  n
+
+# the transcript: the raw handshake messages as they came in (RFC 8446 4.4.1)
+def tls_tx(st: Tls.Hs) -> List<&2, U32>:
+  Tls.Hs{phase, tx, keys, priv, proof, buf, msgs, out, evs} = st
+  tx
+
+# the type of each handshake message at the front of a buffer, in order
+def tls_tags.go(ms: List<&2, Tlsmsg.Msg>, +acc: List<&2, U32>) -> List<&2, U32>:
+  match ms:
+    case Nil{}:
+      List.reverse(&2, U32, acc)
+    case m <> t:
+      Tlsmsg.Msg{htype, body, raw} = m
+      tls_tags.go(t, htype <> acc)
+
+def tls_tags(p: List<&2, Tlsmsg.Msg> & List<&2, U32>) -> List<&2, U32>:
+  match p:
+    case (ms, rest):
+      tls_tags.go(ms, Nil{})
+
+# the messages glued back together, with the bytes after them
+def tls_glue.raws(ms: List<&2, Tlsmsg.Msg>, +acc: List<&2, U32>) -> List<&2, U32>:
+  match ms:
+    case Nil{}:
+      acc
+    case m <> t:
+      Tlsmsg.Msg{htype, body, raw} = m
+      tls_glue.raws(t, Bytes.cat(acc, raw))
+
+def tls_glue(p: List<&2, Tlsmsg.Msg> & List<&2, U32>) -> List<&2, U32>:
+  match p:
+    case (ms, rest):
+      Bytes.cat(tls_glue.raws(ms, Nil{}), rest)
+
+# the same bytes with their last one gone
+def tls_cut(+xs: List<&2, U32>) -> List<&2, U32>:
+  Bytes.take(xs, Nat.sub(U32.to_nat(Bytes.len(xs)), 1n))
+
+# whether a ServerHello was accepted
+def tls_takes(r: Result<&1, &1, String, Tlsmsg.Hello>) -> Bool:
+  match r:
+    case Fail{e}:
+      False{}
+    case Done{v}:
+      True{}
+
+# Records
+# -------
+
+# LAW: a record header may claim the largest ciphertext RFC 8446 5.2 allows, 2^14 + 256
+# bytes, and a record that long is accepted.
+law tlsmsg_record_max:
+  {Tlsmsg.record.hdr.ok(23, 771, 16640) == True{} : Bool}
+
+# LAW: one ciphertext byte past that bound is refused (RFC 8446 5.2), so a record can never
+# be longer than 2^14 + 256 bytes.
+law tlsmsg_record_overflow:
+  {Tlsmsg.record.hdr.ok(23, 771, 16641) == False{} : Bool}
+
+# LAW: the record layer drops a record whose header claims one byte past the bound, refusing
+# the whole buffer rather than reading the record (RFC 8446 5.2).
+law tlsmsg_record_overflow_refused:
+  {Tlsmsg.records(Bytes.of_hex("1703034101")) == None{} : Maybe<&2, Tlsmsg.Split()>}
+
+# The RFC 8448 3 recording
+# ------------------------
+
+# the ClientHello of RFC 8448 3, handshake header and all
+def tls_c8448.hello() -> List<&2, U32>:
+  Bytes.of_hex("010000c00303cb34ecb1e78163ba1c38c6dacb196a6dffa21a8d9912ec18a2ef6283024dece7000006130113031302010000910000000b0009000006736572766572ff01000100000a00140012001d0017001800190100010101020103010400230000003300260024001d002099381de560e4bd43d23d8e435a7dbafeb3c06e51c13cae4d5413691e529aaf2c002b0003020304000d0020001e040305030603020308040805080604010501060102010402050206020202002d00020101001c00024001")
+
+# the ServerHello's random (RFC 8448 3) and its key share
+def tls_c8448.random() -> List<&2, U32>:
+  Bytes.of_hex("a6af06a4121860dc5e6e60249cd34c95930c8ac5cb1434dac155772ed3e26928")
+
+def tls_c8448.share() -> List<&2, U32>:
+  Bytes.of_hex("c9828876112095fe66762bdbf7c672e156d6cc253b833df1dd69b1b04e751f0f")
+
+# a ServerHello body: legacy_version, the random, an empty session id echo, the suite, null
+# compression, and the key_share and supported_versions extensions (RFC 8446 4.1.3, 4.2.7)
+def tls_sh(+random: List<&2, U32>, +suite: List<&2, U32>, +group: List<&2, U32>, +share: List<&2, U32>) -> List<&2, U32>:
+  +keyshare = Tlsmsg.ext.pair(51, Bytes.cat(group, Bytes.cat(Bytes.be16(32), share)))
+  +versions = Tlsmsg.ext.pair(43, [3, 4])
+  +exts = Bytes.cat(keyshare, versions)
+  Bytes.cat(Bytes.of_hex("0303"), Bytes.cat(random, Bytes.cat([0], Bytes.cat(suite, Bytes.cat([1], Bytes.cat(Bytes.be16(Bytes.len(exts)), exts))))))
+
+# the recorded ServerHello: TLS_AES_128_GCM_SHA256 over the x25519 group
+def tls_sh.recorded() -> List<&2, U32>:
+  tls_sh(tls_c8448.random(), Bytes.be16(4865), Bytes.be16(29), tls_c8448.share())
+
+# the recorded ServerHello, one cipher suite over: TLS_AES_256_GCM_SHA384 (4866), which the
+# ClientHello never offers
+def tls_sh.suite() -> List<&2, U32>:
+  tls_sh(tls_c8448.random(), Bytes.be16(4866), Bytes.be16(29), tls_c8448.share())
+
+# the recorded ServerHello over secp256r1 (24) instead of the only group offered
+def tls_sh.group() -> List<&2, U32>:
+  tls_sh(tls_c8448.random(), Bytes.be16(4865), Bytes.be16(24), tls_c8448.share())
+
+# the recorded ServerHello with the TLS 1.2 downgrade sentinel in the last 8 bytes of its
+# random (RFC 8446 4.1.3)
+def tls_sh.downgrade() -> List<&2, U32>:
+  +random = Bytes.cat(Bytes.of_hex("a6af06a4121860dc5e6e60249cd34c95930c8ac5cb1434dac"), Bytes.of_hex("444f574e47524401"))
+  tls_sh(random, Bytes.be16(4865), Bytes.be16(29), tls_c8448.share())
+
+# LAW: the recorded ServerHello of RFC 8448 3 is accepted: TLS_AES_128_GCM_SHA256, the one
+# suite offered that it picks, over an x25519 key share.
+law tlsmsg_serverhello_taken:
+  {tls_takes(Tlsmsg.server_hello(tls_sh.recorded())) == True{} : Bool}
+
+# LAW: a ServerHello that picks a cipher suite the ClientHello didn't offer is refused.
+law tlsmsg_serverhello_suite:
+  {tls_takes(Tlsmsg.server_hello(tls_sh.suite())) == False{} : Bool}
+
+# LAW: a ServerHello whose key share isn't the x25519 group the ClientHello offered is
+# refused.
+law tlsmsg_serverhello_group:
+  {tls_takes(Tlsmsg.server_hello(tls_sh.group())) == False{} : Bool}
+
+# LAW: a ServerHello whose random carries the TLS 1.2 downgrade sentinel is refused, whatever
+# else it says (RFC 8446 4.1.3).
+law tlsmsg_serverhello_downgrade:
+  {tls_takes(Tlsmsg.server_hello(tls_sh.downgrade())) == False{} : Bool}
+
+# Handshake messages
+# ------------------
+
+# LAW: the recorded ClientHello of RFC 8448 3 splits into handshake messages that, glued
+# back together with the bytes after them, are the recording itself, byte for byte.
+law tlsmsg_clienthello_roundtrip:
+  {tls_glue(Tlsmsg.messages(tls_c8448.hello())) == tls_c8448.hello() : List<&2, U32>}
+
+# LAW: the recorded ClientHello is exactly one handshake message, a ClientHello (type 1).
+law tlsmsg_clienthello_one:
+  {tls_tags(Tlsmsg.messages(tls_c8448.hello())) == [1] : List<&2, U32>}
+
+# LAW: a handshake length that runs past the bytes present is no message: the recorded
+# ClientHello cut one byte short holds none.
+law tlsmsg_clienthello_short:
+  {tls_tags(Tlsmsg.messages(tls_cut(tls_c8448.hello()))) == Nil{} : List<&2, U32>}
+
+# The client's state machine
+# --------------------------
+
+# LAW: application data that arrives before the handshake is done ends the connection, so no
+# byte of it ever reaches the shell.
+law tls_app_needs_ready:
+  for +p: Tls.Phase
+  for +k: Tls.Keys
+  for +st: Tls.Hs
+  for body: List<&2, U32>
+  {tls_implies(Bool.not(Tls.ready.of(p)), tls_dead(Tls.phase.of(Tls.hs.app(p, k, st, body)))) == True{} : Bool}
+
+# LAW: once the handshake is done, application data reaches the shell unchanged, as one more
+# data event.
+law tls_app_when_ready:
+  for +k: Tls.Keys
+  for +st: Tls.Hs
+  for body: List<&2, U32>
+  {tls_events(Tls.hs.app(Tls.Phase.ready{}, k, st, body)) == tls_events.plus(st, Tls.Reply.data{body}) : List<&2, Tls.Reply>}
+
+# LAW: a server Finished whose verify_data doesn't check ends the connection.
+law tls_finished_refused:
+  for +st: Tls.Hs
+  for +m: Tlsmsg.Msg
+  {Tls.phase.of(Tls.hs.fin.by(False{}, st, m)) == Tls.Phase.dead{"the server's Finished doesn't check"} : Tls.Phase}
+
+# LAW: a server Finished whose verify_data checks moves the handshake on to the shell's
+# verdict, and asks for it.
+law tls_finished_asks:
+  for +st: Tls.Hs
+  for +m: Tlsmsg.Msg
+  {Tls.phase.of(Tls.hs.fin.by(True{}, st, m)) == Tls.Phase.asked{} : Tls.Phase}
+
+# LAW: a certificate the shell rejects ends the connection.
+law tls_trusted_refused:
+  for +st: Tls.Hs
+  {Tls.phase.of(tls_state(Tls.hs.trusted.at(True{}, st, False{}))) == Tls.Phase.dead{"the server's certificate was rejected"} : Tls.Phase}
+
+# LAW: the shell's verdict before the server's flight is in is refused rather than believed.
+law tls_trusted_early:
+  for +st: Tls.Hs
+  for ok: Bool
+  {Tls.phase.of(tls_state(Tls.hs.trusted.at(False{}, st, ok))) == Tls.Phase.dead{"hs.trusted before the server's flight is in"} : Tls.Phase}
+
+# a ServerHello that is really a HelloRetryRequest: SHA-256("HelloRetryRequest") as its
+# random, and a key_share that names x25519 with no key in it (RFC 8446 4.1.3, 4.1.4)
+def tls_hrr() -> Tlsmsg.Msg:
+  +keyshare = Tlsmsg.ext.pair(51, Bytes.be16(29))
+  +versions = Tlsmsg.ext.pair(43, [3, 4])
+  +exts = Bytes.cat(keyshare, versions)
+  +body = Bytes.cat(Bytes.of_hex("0303"), Bytes.cat(Tlsmsg.hrr.random(), Bytes.cat([0], Bytes.cat(Bytes.be16(4865), Bytes.cat([1], Bytes.cat(Bytes.be16(Bytes.len(exts)), exts))))))
+  Tlsmsg.Msg{2, body, Tlsmsg.handshake(2, body)}
+
+# LAW: a HelloRetryRequest that comes off the wire is refused, so a second one can never be
+# answered either: x25519 is the only group the ClientHello offers.
+law tls_retry_refused:
+  for +st: Tls.Hs
+  for +m: Tlsmsg.Msg
+  for suite: U32
+  for share: List<&2, U32>
+  {Tls.phase.of(Tls.hs.server.retry(True{}, suite, share, st, m)) == Tls.Phase.dead{"the server sent a HelloRetryRequest, and x25519 is all we offer"} : Tls.Phase}
+
+# LAW: the HelloRetryRequest of RFC 8446 4.1.3, read through the wire format, ends the
+# connection the same way.
+law tls_retry_wire_refused:
+  for +st: Tls.Hs
+  {Tls.phase.of(Tls.hs.server(st, tls_hrr())) == Tls.Phase.dead{"the server sent a HelloRetryRequest, and x25519 is all we offer"} : Tls.Phase}
+
+# LAW: an encrypted record that doesn't authenticate ends the connection, so a modified
+# record never reaches the handshake or the shell.
+law tls_record_refused:
+  for +st: Tls.Hs
+  for k: Tls.Keys
+  {Tls.phase.of(Tls.hs.opened.at(None{}, k, st)) == Tls.Phase.dead{"a record that didn't authenticate"} : Tls.Phase}
+
+# LAW: a legacy ChangeCipherSpec is only ignored during the handshake: after it, one ends the
+# connection (RFC 8446 D.4).
+law tls_ccs_after_ready:
+  for +st: Tls.Hs
+  for one: Bool
+  {Tls.phase.of(Tls.hs.ccs.at(False{}, one, st)) == Tls.Phase.dead{"a legacy ChangeCipherSpec after the handshake"} : Tls.Phase}
+
+# LAW: every record's sequence number is one more than the record before it, so a record's
+# nonce is never used twice.
+law tls_traffic_next:
+  for +t: Tls.Traffic
+  {tls_traffic_n(Tls.traffic.next(t)) == (tls_traffic_n(t) + 1 : U32) : U32}
+
+# LAW: nothing is sent before the handshake is done: application data waits in the shell.
+law tls_send_needs_ready:
+  for +st: Tls.Hs
+  for +data: List<&2, U32>
+  {tls_records(Tls.hs.send.at(False{}, st, data)) == Nil{} : List<&2, U32>}
+
+# LAW: no close_notify is sent before the handshake is done.
+law tls_close_needs_ready:
+  for +st: Tls.Hs
+  {Tls.hs.close.at(False{}, st) == Nil{} : List<&2, U32>}
+
+# LAW: moving the handshake on appends the message's raw bytes to the transcript, which is
+# what the CertificateVerify and the Finished are checked against.
+law tls_transcript_grows:
+  for +st: Tls.Hs
+  for +m: Tlsmsg.Msg
+  for +p: Tls.Phase
+  {tls_tx(Tls.hs.next(st, m, p)) == Bytes.cat(tls_tx(st), Tls.msg.raw(m)) : List<&2, U32>}
+
+# LAW: failure is final: once a connection has failed, every further byte from the server
+# leaves it failed, so one bad message cannot be walked back.
+law tls_dead_absorbs:
+  for +st: Tls.Hs
+  for +why: String
+  for +bytes: List<&2, U32>
+  {tls_dead(Tls.phase.of(tls_state(Tls.hs.input(Tls.hs.die(st, why), bytes)))) == True{} : Bool}
 
 # end tls
 

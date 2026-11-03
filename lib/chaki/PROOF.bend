@@ -459,6 +459,194 @@ def Laws.x25519_clamp_bytes(b0, mid, last):
 
 # tlsmsg, tls [tls]
 # -----------------
+# Everything here is closed or decided by the shape of the state, so reflexivity does the
+# work: the checker runs the parse and the gate itself when it checks the law. The state
+# machine's laws are about a field of the state, so their proofs take the state apart with a
+# match and the goal then reduces on its own.
+
+# tlsmsg_record_max, tlsmsg_record_overflow, tlsmsg_record_overflow_refused
+# The length bound of RFC 8446 5.2, at the bound and one byte past it.
+def Laws.tlsmsg_record_max():
+  {==}
+
+def Laws.tlsmsg_record_overflow():
+  {==}
+
+def Laws.tlsmsg_record_overflow_refused():
+  {==}
+
+# tlsmsg_serverhello_taken, tlsmsg_serverhello_suite, tlsmsg_serverhello_group,
+# tlsmsg_serverhello_downgrade
+# The recorded ServerHello of RFC 8448 3, then the same body with its cipher suite, its group
+# and its random changed.
+def Laws.tlsmsg_serverhello_taken():
+  {==}
+
+def Laws.tlsmsg_serverhello_suite():
+  {==}
+
+def Laws.tlsmsg_serverhello_group():
+  {==}
+
+def Laws.tlsmsg_serverhello_downgrade():
+  {==}
+
+# tlsmsg_clienthello_roundtrip, tlsmsg_clienthello_one, tlsmsg_clienthello_short
+# Splitting the recorded ClientHello, glueing it back, and the same recording cut short.
+def Laws.tlsmsg_clienthello_roundtrip():
+  {==}
+
+def Laws.tlsmsg_clienthello_one():
+  {==}
+
+def Laws.tlsmsg_clienthello_short():
+  {==}
+
+# tls_app_needs_ready
+# hs.app dies with keys(st, k) in hand, so the state is taken apart first: the phase field
+# of a state built by hs.die is the dead one whatever the state was.
+def tls_app_die(st: Tls.Hs, k: Tls.Keys) ->
+  {Tls.Phase.dead{"application data before the handshake ended"} == Tls.phase.of(Tls.hs.die(Tls.hs.keys(st, k), "application data before the handshake ended")) : Tls.Phase}:
+  match st:
+    case Tls.Hs{phase, tx, keys, priv, proof, buf, msgs, out, evs}:
+      {==}
+
+# The phase is the scrutinee: hs.app reads nothing else, so its cases are the whole law.
+def Laws.tls_app_needs_ready(p, k, st, body):
+  match p:
+    case Tls.Phase.hello{}:
+      %tls_app_die(st, k) : {Laws.tls_dead(_) == True{} : Bool}
+      {==}
+    case Tls.Phase.ee{}:
+      %tls_app_die(st, k) : {Laws.tls_dead(_) == True{} : Bool}
+      {==}
+    case Tls.Phase.cert{}:
+      %tls_app_die(st, k) : {Laws.tls_dead(_) == True{} : Bool}
+      {==}
+    case Tls.Phase.verify{}:
+      %tls_app_die(st, k) : {Laws.tls_dead(_) == True{} : Bool}
+      {==}
+    case Tls.Phase.fin{}:
+      %tls_app_die(st, k) : {Laws.tls_dead(_) == True{} : Bool}
+      {==}
+    case Tls.Phase.asked{}:
+      %tls_app_die(st, k) : {Laws.tls_dead(_) == True{} : Bool}
+      {==}
+    case Tls.Phase.closed{}:
+      %tls_app_die(st, k) : {Laws.tls_dead(_) == True{} : Bool}
+      {==}
+    case Tls.Phase.dead{why}:
+      %tls_app_die(st, k) : {Laws.tls_dead(_) == True{} : Bool}
+      {==}
+    case Tls.Phase.ready{}:
+      {==}
+
+# tls_app_when_ready
+# The events are a field of the state, so the state is taken apart to read them.
+def Laws.tls_app_when_ready(k, st, body):
+  match st:
+    case Tls.Hs{phase, tx, keys, priv, proof, buf, msgs, out, evs}:
+      {==}
+
+# tls_finished_refused, tls_finished_asks
+def Laws.tls_finished_refused(st, m):
+  match st:
+    case Tls.Hs{phase, tx, keys, priv, proof, buf, msgs, out, evs}:
+      {==}
+
+def Laws.tls_finished_asks(st, m):
+  match st:
+    case Tls.Hs{phase, tx, Tls.Keys{+aead, +master, +rd, +wr, +ard, +awr}, priv, Tls.Proof{+certs, +scheme, +signed, +sig}, buf, msgs, out, evs}:
+      {==}
+
+# tls_trusted_refused, tls_trusted_early
+def Laws.tls_trusted_refused(st):
+  match st:
+    case Tls.Hs{phase, tx, keys, priv, proof, buf, msgs, out, evs}:
+      {==}
+
+def Laws.tls_trusted_early(st, ok):
+  match st:
+    case Tls.Hs{phase, tx, keys, priv, proof, buf, msgs, out, evs}:
+      {==}
+
+# tls_retry_refused, tls_retry_wire_refused, tls_record_refused, tls_ccs_after_ready
+# The HelloRetryRequest's random is the one RFC 8446 4.1.3 names, so the parser recognizes it
+# and the retry check refuses it.
+def Laws.tls_retry_refused(st, m, suite, share):
+  match st:
+    case Tls.Hs{phase, tx, keys, priv, proof, buf, msgs, out, evs}:
+      {==}
+
+def Laws.tls_retry_wire_refused(st):
+  match st:
+    case Tls.Hs{phase, tx, keys, priv, proof, buf, msgs, out, evs}:
+      {==}
+
+def Laws.tls_record_refused(st, k):
+  match st:
+    case Tls.Hs{phase, tx, keys, priv, proof, buf, msgs, out, evs}:
+      {==}
+
+def Laws.tls_ccs_after_ready(st, one):
+  match st:
+    case Tls.Hs{phase, tx, keys, priv, proof, buf, msgs, out, evs}:
+      {==}
+
+# tls_traffic_next
+# One traffic key: the sequence number is its own plus one.
+def Laws.tls_traffic_next(t):
+  match t:
+    case Tls.Traffic{+secret, +k, +iv, +n}:
+      {==}
+
+# tls_send_needs_ready, tls_close_needs_ready
+def Laws.tls_send_needs_ready(st, data):
+  {==}
+
+def Laws.tls_close_needs_ready(st):
+  {==}
+
+# tls_transcript_grows
+# The transcript is a field of the state, so the state is taken apart to read it.
+def Laws.tls_transcript_grows(st, m, p):
+  match st:
+    case Tls.Hs{phase, tx, keys, priv, proof, buf, msgs, out, evs}:
+      {==}
+
+# tls_dead_absorbs
+# The walk is a loop over the buffer with the buffer's length as fuel, and a failed connection
+# refuses every record it reads: the state it hands on is the same state with the record's
+# bytes parked, still failed. The lemma carries the fields one by one, because the walk hands
+# each step a state built from them.
+def tls_dead_walk(fuel: Nat, +why: String, +tx: List<&2, U32>, +keys: Tls.Keys, +priv: List<&2, U32>, +proof: Tls.Proof, +bufs: List<&2, U32>, +msgs: List<&2, U32>, +out: List<&2, U32>, +evs: List<&2, Tls.Reply>, +buf: List<&2, U32>, h: Tls.Head) ->
+  {Laws.tls_dead(Tls.phase.of(Tls.hs.walk(fuel, Tls.Hs{Tls.Phase.dead{why}, tx, keys, priv, proof, bufs, msgs, out, evs}, buf, h))) == True{} : Bool}:
+  match fuel h:
+    case 0n head:
+      {==}
+    case 1n+p Tls.Head.short{}:
+      {==}
+    case 1n+p Tls.Head.bad{}:
+      {==}
+    case 1n+p Tls.Head.one{r, +raw, +rest}:
+      tls_dead_walk(p, why, tx, keys, priv, proof, Bytes.cat(bufs, raw), msgs, out, evs, rest, Tls.head.of(rest))
+
+# The phase of the state an answer carries is the phase of the state it answers: both are
+# read off the same field. The state is taken apart to read it.
+def tls_answer_phase(st: Tls.Hs) ->
+  {Tls.phase.of(st) == Tls.phase.of(Laws.tls_state(Tls.hs.answer(st))) : Tls.Phase}:
+  match st:
+    case Tls.Hs{phase, tx, keys, priv, proof, buf, msgs, out, evs}:
+      {==}
+
+# A state that has died is a state whose phase is the dead one, and hs.input empties its
+# buffer and walks the bytes it was handed: the lemma covers that walk.
+def Laws.tls_dead_absorbs(st, why, bytes):
+  match st:
+    case Tls.Hs{phase, tx, keys, priv, proof, buf, msgs, out, evs}:
+      +w = Tls.hs.walk(U32.to_nat(Bytes.len(Bytes.cat(buf, bytes))), Tls.Hs{Tls.Phase.dead{why}, tx, keys, priv, proof, Nil{}, msgs, out, List.append(&2, Tls.Reply, evs, [Tls.Reply.failed{why}])}, Bytes.cat(buf, bytes), Tls.head.of(Bytes.cat(buf, bytes)))
+      %tls_answer_phase(w) : {Laws.tls_dead(_) == True{} : Bool}
+      tls_dead_walk(U32.to_nat(Bytes.len(Bytes.cat(buf, bytes))), why, tx, keys, priv, proof, Nil{}, msgs, out, List.append(&2, Tls.Reply, evs, [Tls.Reply.failed{why}]), Bytes.cat(buf, bytes), Tls.head.of(Bytes.cat(buf, bytes)))
 
 # end tls
 
