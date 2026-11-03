@@ -421,6 +421,29 @@ def Laws.width_text_concat():
 
 # aes, x25519 [block]
 # -------------------
+# Each claim is closed on both sides or reduces to the same term with the law's variables
+# left in place, so reflexivity is the whole proof and the checker computes the vectors.
+
+def Laws.aes_encrypt_fips_197_c1():
+  {==}
+
+def Laws.aes_encrypt_fips_197_c3():
+  {==}
+
+def Laws.aes_encrypt_refuses_short_key():
+  {==}
+
+def Laws.aes_open_refuses_short_message():
+  {==}
+
+def Laws.aes_open_refuses_short_nonce():
+  {==}
+
+# clamp only reads the ends of the scalar and masks them, so both sides reduce to the same
+# list with the bytes the law names still standing as themselves
+
+def Laws.x25519_clamp_bytes(b0, mid, last):
+  {==}
 
 # end block
 

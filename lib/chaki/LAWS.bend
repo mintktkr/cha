@@ -558,6 +558,47 @@ law width_text_concat:
 
 # aes, x25519 [block]
 # -------------------
+# The block cipher, GCM around it, and the field arithmetic X25519 is built from. A law
+# over every input is out of reach for a cipher, so these are the vectors of the documents
+# that define the algorithms and the refusals that decide before a byte is encrypted.
+# What GCM itself promises (McGrew and Viega's test cases with their tags, a sealed message
+# opening back to its plaintext, a forged tag refused) is not here: every one of those needs
+# GHASH, which the BendTT kernel runs out of fuel on, so they stay as lines in
+# test/chaki_aes_check.bend. X25519's RFC 7748 vectors are left out for the same reason: one
+# X25519 costs the checker more than a minute and its memory, so only the clamping it does
+# to the scalar can be stated.
+
+# LAW: the AES-128 key and block of FIPS-197 Appendix C.1 encrypt to the ciphertext the
+# standard prints.
+law aes_encrypt_fips_197_c1:
+  {Aes.encrypt(Bytes.of_hex("000102030405060708090a0b0c0d0e0f"), Bytes.of_hex("00112233445566778899aabbccddeeff")) == Bytes.of_hex("69c4e0d86a7b0430d8cdb78070b4c55a") : List<&2, U32>}
+
+# LAW: the AES-256 key and block of FIPS-197 Appendix C.3 encrypt to the ciphertext the
+# standard prints.
+law aes_encrypt_fips_197_c3:
+  {Aes.encrypt(Bytes.of_hex("000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"), Bytes.of_hex("00112233445566778899aabbccddeeff")) == Bytes.of_hex("8ea2b7ca516745bfeafc49904b496089") : List<&2, U32>}
+
+# LAW: a key of a length this module does not take encrypts nothing, rather than something
+# wrong.
+law aes_encrypt_refuses_short_key:
+  {Aes.encrypt(Bytes.of_hex("00010203"), Bytes.of_hex("00112233445566778899aabbccddeeff")) == Nil{} : List<&2, U32>}
+
+# LAW: a message shorter than a tag opens to nothing, before any key is scheduled.
+law aes_open_refuses_short_message:
+  {Aes.open(Bytes.of_hex("feffe9928665731c6d6a8f9467308308"), Bytes.of_hex("cafebabefacedbaddecaf888"), Nil{}, Bytes.of_hex("00112233445566778899aabbccddee")) == None{} : Maybe<&2, List<&2, U32>>}
+
+# LAW: a nonce that is not 12 bytes opens to nothing, whatever the message holds.
+law aes_open_refuses_short_nonce:
+  {Aes.open(Bytes.of_hex("feffe9928665731c6d6a8f9467308308"), Bytes.of_hex("cafebabefacedbaddecaf88"), Nil{}, Bytes.of_hex("0388dace60b6a392f328c2b971b2fe78ab6e47d42cec13bdf53a67b21257bddf")) == None{} : Maybe<&2, List<&2, U32>>}
+
+# LAW: clamping a 32-byte scalar changes only its two ends, for every value of the bytes it
+# touches: the first byte loses its low three bits, the last byte loses bit 255 and gains
+# bit 254, and the bytes in between pass through untouched (RFC 7748 section 5).
+law x25519_clamp_bytes:
+  for +b0: U32
+  for +mid: U32
+  for +last: U32
+  {X25519.clamp(Bytes.cat(Bytes.cat([b0], Bytes.zeros(29n)), [mid, last])) == Bytes.cat(Bytes.cat([U32.and(b0, 248)], Bytes.zeros(29n)), [mid, U32.or(U32.and(last, 127), 64)]) : List<&2, U32>}
 
 # end block
 
