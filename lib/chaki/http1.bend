@@ -27,7 +27,8 @@ type Step is Data:
   Got{r: Resp}
   Bad{why: String}
 
-# one header line as it will be sent, and whether its name or its value held CR, LF or NUL
+# one header line as it will be sent, and whether it can't be sent: a name that isn't a
+# token, or a name or value holding CR, LF or NUL
 type Sent is Data:
   Sent{line: List<&2, U32>, bad: Bool}
 
@@ -302,7 +303,21 @@ def req.bytes.m(r: List<&2, U32> & Bool) -> Maybe<&2, List<&2, U32>>:
 def req.bytes(s: String) -> Maybe<&2, List<&2, U32>>:
   req.bytes.m(req.bytes.go(s, Nil{}, False{}))
 
-# one header's "name: value\r\n", with whether the name or the value held CR, LF or NUL
+# the bytes of a header name, and whether it is anything but an RFC 9110 token: an empty
+# name, or one holding CR, a space or a colon, would make the line mean a header nobody
+# asked for, and a peer is free to read it as two
+def req.name.go(s: String, seen: Bool, ok: Bool, acc: List<&2, U32>) -> List<&2, U32> & Bool:
+  match s:
+    case SNil{}:
+      (Bytes.rev(acc), Bool.or(Bool.not(seen), Bool.not(ok)))
+    case SCon{Chr{+c}, t}:
+      req.name.go(t, True{}, Bool.and(ok, is.tchar(c)), U32.and(c, 255) <> acc)
+
+def req.name(s: String) -> List<&2, U32> & Bool:
+  req.name.go(s, False{}, True{}, Nil{})
+
+# one header's "name: value\r\n", with whether the name isn't a token or the value holds CR,
+# LF or NUL
 def req.field.go(r: List<&2, U32> & Bool, nb: List<&2, U32>, nbad: Bool) -> Sent:
   (vb, vbad) = r
   Sent{Bytes.cat(Bytes.cat(Bytes.cat(nb, Bytes.of_ascii(": ")), vb), Bytes.of_ascii("\r\n")), Bool.or(nbad, vbad)}
@@ -312,7 +327,7 @@ def req.field.m(r: List<&2, U32> & Bool, v: String) -> Sent:
   req.field.go(req.bytes.go(v, Nil{}, False{}), nb, nbad)
 
 def req.field(n: String, v: String) -> Sent:
-  req.field.m(req.bytes.go(n, Nil{}, False{}), v)
+  req.field.m(req.name(n), v)
 
 def req.sent.bytes(r: Sent) -> List<&2, U32>:
   match r:
@@ -384,8 +399,8 @@ def req.pack(+m: List<&2, U32>, h: List<&2, U32>, t: List<&2, U32>, hs: List<&2,
 
 # the request's bytes: "METHOD target HTTP/1.1", the host, the given headers in order,
 # content-length (whenever the body isn't empty, and always for POST, PUT and PATCH),
-# "connection: close", a blank line, and the body. None when the method isn't a token, or
-# when the target, the host, a header name or a header value holds CR, LF or NUL.
+# "connection: close", a blank line, and the body. None when the method or a header name
+# isn't a token, or when the target, the host or a header value holds CR, LF or NUL.
 def request(method: String, host: String, target: String, headers: List<&2, Field()>, body: List<&2, U32>) -> Maybe<&2, List<&2, U32>>:
   do Maybe<&2, List<&2, U32>>:
     m : List<&2, U32> <- req.token(method)
@@ -583,21 +598,54 @@ def head.framed.cl(+head: Head, rest: List<&2, U32>) -> Mv:
     case Head{status, +headers}:
       head.framed.cl.go(Head{status, headers}, rest, hdr.val.val(headers, "content-length"))
 
-def head.framed.te.go(head: Head, rest: List<&2, U32>, chunked: Bool) -> Mv:
+# the coding's decision, when no content-length arrived beside it: chunked when its last
+# coding is chunked, and otherwise the content-length, or everything to eof
+def head.framed.te.none(+head: Head, rest: List<&2, U32>, chunked: Bool) -> Mv:
   match chunked:
     case True{}:
       Cont{StChunkSize{65536n, Nil{}, head, Nil{}}, rest}
     case False{}:
       head.framed.cl(head, rest)
 
+# RFC 9112 6.3: a transfer-encoding beside a content-length is an error, never a tie to
+# break. The two readings of where the body ends are what a response is smuggled in.
+def head.framed.te.cl(seen: Bool, +head: Head, rest: List<&2, U32>, chunked: Bool) -> Mv:
+  match seen:
+    case True{}:
+      End{StBad{"both transfer-encoding and content-length"}}
+    case False{}:
+      head.framed.te.none(head, rest, chunked)
+
+def head.framed.te.cl.go(+head: Head, rest: List<&2, U32>, chunked: Bool, cl: Val) -> Mv:
+  match cl:
+    case Val{seen, text}:
+      head.framed.te.cl(seen, head, rest, chunked)
+
+def head.framed.te.cl.at(+head: Head, rest: List<&2, U32>, chunked: Bool) -> Mv:
+  match head:
+    case Head{status, +headers}:
+      head.framed.te.cl.go(Head{status, headers}, rest, chunked, hdr.val.val(headers, "content-length"))
+
+def head.framed.te.seen(seen: Bool, chunked: Bool, +head: Head, rest: List<&2, U32>) -> Mv:
+  match seen:
+    case False{}:
+      head.framed.cl(head, rest)
+    case True{}:
+      head.framed.te.cl.at(head, rest, chunked)
+
+def head.framed.te.go(te: Val, +head: Head, rest: List<&2, U32>) -> Mv:
+  match te:
+    case Val{seen, text}:
+      head.framed.te.seen(seen, body.chunked(text), head, rest)
+
 def head.framed.te(+head: Head, rest: List<&2, U32>) -> Mv:
   match head:
     case Head{status, +headers}:
-      head.framed.te.go(Head{status, headers}, rest, body.chunked(val.text(hdr.val.val(headers, "transfer-encoding"))))
+      head.framed.te.go(hdr.val.val(headers, "transfer-encoding"), Head{status, headers}, rest)
 
 # the body's framing, in RFC 9112 6.3 order: an interim 1xx is skipped and the response
-# after it is parsed, then no body for HEAD, 204 and 304, then transfer-encoding whose last
-# coding is chunked, then content-length, then everything to eof
+# after it is parsed, then no body for HEAD, 204 and 304, then transfer-encoding, which a
+# content-length must not accompany, then content-length, then everything to eof
 def head.framed.none(none: Bool, head: Head, rest: List<&2, U32>) -> Mv:
   match none:
     case True{}:

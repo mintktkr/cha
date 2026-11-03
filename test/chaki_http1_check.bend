@@ -266,6 +266,10 @@ def main() -> IO(Unit):
     IO.print(T.eq("request method that isn't a token", req.show(H.request("GE T", "example.com", "/x", Nil{}, Nil{})), "none"))
     IO.print(T.eq("request target with LF", req.show(H.request("GET", "example.com", "/x\nHost: evil", Nil{}, Nil{})), "none"))
     IO.print(T.eq("request host with a CR", req.show(H.request("GET", "exa\rmple", "/x", Nil{}, Nil{})), "none"))
+    IO.print(T.eq("request header name with a space", req.show(H.request("GET", "example.com", "/x", [("X Foo", "v")], Nil{})), "none"))
+    IO.print(T.eq("request header name with a colon", req.show(H.request("GET", "example.com", "/x", [("X: Y", "v")], Nil{})), "none"))
+    IO.print(T.eq("request header name with a paren", req.show(H.request("GET", "example.com", "/x", [("X(", "v")], Nil{})), "none"))
+    IO.print(T.eq("request header name that is empty", req.show(H.request("GET", "example.com", "/x", [("", "v")], Nil{})), "none"))
 
     # content-length
     IO.print(T.eq("200 with content-length, whole", whole(False{}, resp.len()), "status 200 | content-length=5 | body 68656c6c6f"))
@@ -337,6 +341,8 @@ def main() -> IO(Unit):
     IO.print(T.eq("content-length -1", whole(False{}, "HTTP/1.1 200 OK\r\nContent-Length: -1\r\n\r\n"), "bad bad content-length"))
     IO.print(T.eq("content-length 5x", whole(False{}, "HTTP/1.1 200 OK\r\nContent-Length: 5x\r\n\r\n"), "bad bad content-length"))
     IO.print(T.eq("two content-lengths that differ", whole(False{}, "HTTP/1.1 200 OK\r\nContent-Length: 5\r\nContent-Length: 6\r\n\r\n"), "bad content-length headers differ"))
+    IO.print(T.eq("transfer-encoding chunked beside a content-length", whole(False{}, "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nContent-Length: 6\r\n\r\n6\r\nhello!\r\n0\r\n\r\n"), "bad both transfer-encoding and content-length"))
+    IO.print(T.eq("transfer-encoding that isn't chunked beside a content-length", whole(False{}, "HTTP/1.1 200 OK\r\nTransfer-Encoding: gzip\r\nContent-Length: 6\r\n\r\nzipped"), "bad both transfer-encoding and content-length"))
     IO.print(T.eq("two content-lengths that agree", whole(False{}, "HTTP/1.1 200 OK\r\nContent-Length: 5\r\nContent-Length: 5\r\n\r\nhello"), "status 200 | content-length=5 | content-length=5 | body 68656c6c6f"))
     IO.print(T.eq("a head over 64 KiB", whole(False{}, resp.big.head()), "bad head over 64 KiB"))
     IO.print(T.eq("a chunk-size that isn't hex", whole(False{}, resp.bad.chunk()), "bad bad chunk size"))
