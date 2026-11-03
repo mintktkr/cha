@@ -207,6 +207,12 @@ law b64_decode_newline:
   for +s: String
   {B64.decode(String.append(s, "\n")) == B64.decode(s) : Maybe<&2, List<&2, U32>>}
 
+# LAW: a newline in front of the text doesn't change what base64 text decodes to either, so
+# whitespace at either end of a payload is ignored.
+law b64_decode_leading_newline:
+  for +s: String
+  {B64.decode(String.append("\n", s)) == B64.decode(s) : Maybe<&2, List<&2, U32>>}
+
 # LAW: a well-formed PEM block's body is found and decoded, whatever sits around it.
 law b64_pem_block:
   {B64.pem("junk\n-----BEGIN CERTIFICATE-----\nZm9v\nYmFy\n-----END CERTIFICATE-----\njunk\n", "CERTIFICATE") == [Bytes.of_ascii("foobar")] : List<&2, List<&2, U32>>}

@@ -251,6 +251,22 @@ def enc.newline_go(s: String, +st: B64.B64.State) -> {B64.decode.go(String.appen
 def Laws.b64_decode_wrapped():
   {==}
 
+# a skip is the identity on the state, so a newline before the text leaves the walk where it
+# was and the rest of the string is read from the same state
+
+def enc.feed_skip(st: B64.B64.State) -> {B64.feed(st, B64.B64.Skip{}) == st : B64.B64.State}:
+  match st:
+    case B64.B64.State{v, n, pad, out, ok}:
+      {==}
+
+def enc.newline_front(s: String, +st: B64.B64.State) -> {B64.decode.go(String.append("\n", s), st) == B64.decode.go(s, st) : B64.B64.State}:
+  Equal.cong(B64.B64.State, B64.B64.State, x => B64.decode.go(s, x), B64.feed(st, B64.B64.Skip{}), st, enc.feed_skip(st))
+
+def Laws.b64_decode_leading_newline(s):
+  +r = enc.newline_front(s, B64.B64.State{0, 0n, 0n, Nil{}, True{}})
+  %r : {B64.decode.end(B64.decode.go(String.append("\n", s), B64.B64.State{0, 0n, 0n, Nil{}, True{}})) == B64.decode.end(_) : Maybe<&2, List<&2, U32>>}
+  {==}
+
 def Laws.b64_decode_newline(s):
   +r = enc.newline_go(s, B64.B64.State{0, 0n, 0n, Nil{}, True{}})
   %r : {B64.decode.end(B64.decode.go(String.append(s, "\n"), B64.B64.State{0, 0n, 0n, Nil{}, True{}})) == B64.decode.end(_) : Maybe<&2, List<&2, U32>>}
