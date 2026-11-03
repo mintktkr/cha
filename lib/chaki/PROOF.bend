@@ -405,6 +405,12 @@ def http1.target(p: String, c: U32, q: String, e: {True{} == Http1.ctl.ch(c) : B
   %Equal.sym(Maybe<&2, List<&2, U32>>, Http1.req.bytes.m(Http1.req.bytes.go(String.append(p, SCon{Chr{c}, q}), Nil{}, False{})), None{}, http1.refuse(p, c, q, e)) : {Maybe.bind(&2, List<&2, U32>, List<&2, U32>, _, t => Some{Http1.req.pack(Bytes.of_ascii("GET"), Bytes.of_ascii("example.com"), t, Nil{}, (Nil{}, 0n))}) == None{} : Maybe<&2, List<&2, U32>>}
   {==}
 
+# the host is a bind of the request's do block too, and the writer's own Host line comes
+# from it: refused, like the target, as soon as it holds a control byte
+def http1.host(p: String, c: U32, q: String, e: {True{} == Http1.ctl.ch(c) : Bool}) -> {Http1.request("GET", String.append(p, SCon{Chr{c}, q}), "/x", Nil{}, Nil{}) == None{} : Maybe<&2, List<&2, U32>>}:
+  %Equal.sym(Maybe<&2, List<&2, U32>>, Http1.req.bytes.m(Http1.req.bytes.go(String.append(p, SCon{Chr{c}, q}), Nil{}, False{})), None{}, http1.refuse(p, c, q, e)) : {Maybe.bind(&2, List<&2, U32>, List<&2, U32>, _, h => Some{Http1.req.pack(Bytes.of_ascii("GET"), h, Bytes.of_ascii("/x"), Nil{}, (Nil{}, 0n))}) == None{} : Maybe<&2, List<&2, U32>>}
+  {==}
+
 # a bad flag that is already True never clears, as the flag of the (bytes, bad) pair
 def http1.pair.sticky(s: String, acc: List<&2, U32>) -> {Http1.req.bytes.go(s, acc, True{}) == (http1.fst(Http1.req.bytes.go(s, acc, True{})), True{}) : List<&2, U32> & Bool}:
   match s:
@@ -510,11 +516,23 @@ def Laws.http1_method_not_token():
 def Laws.http1_target_ctl(p, q):
   (http1.target(p, 13, q, {==}), http1.target(p, 10, q, {==}))
 
+def Laws.http1_host_ctl(p, q):
+  (http1.host(p, 13, q, {==}), http1.host(p, 10, q, {==}))
+
 def Laws.http1_value_ctl(p, q):
   (http1.value.cr(p, q), http1.value.lf(p, q))
 
 def Laws.http1_name_not_token(p, q):
   (http1.name(p, 32, q, {==}), http1.name(p, 13, q, {==}))
+
+def Laws.http1_bad_header_name():
+  {==}
+
+def Laws.http1_value_nul():
+  {==}
+
+def Laws.http1_trailing_bytes():
+  {==}
 
 def Laws.http1_status_not_http():
   ({==}, {==}, {==})
@@ -523,6 +541,12 @@ def Laws.http1_te_and_cl():
   {==}
 
 def Laws.http1_cl_differs():
+  {==}
+
+def Laws.http1_cl_agree():
+  {==}
+
+def Laws.http1_folded_header():
   {==}
 
 def Laws.http1_cl_not_digits():
