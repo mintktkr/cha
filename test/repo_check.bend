@@ -1,7 +1,8 @@
 # offline checks for cha repo and cha release: the forge-specific field names, label
 # colours and release flags, on synthetic rows. Run: bend test/repo_check.bend
 import Base
-import 0x584fc27920487ceab242392391418d7f/json.bend as Json
+import ../lib/chaki/utf8.bend as Utf8
+import ../lib/chaki/json.bend as Json
 import ../src/ctx.bend as Ctx
 import ../src/api.bend as Api
 import ../src/cli.bend as Cli
@@ -9,7 +10,6 @@ import ../src/ui.bend as Ui
 import ../src/url.bend as Url
 import ../src/cmd/repo.bend as Repo
 import ../src/cmd/release.bend as Rel
-import 0x49814d83de8f70993a43e1002be29ecd/bytes.bend as Bytes
 
 def row.put(m: Map<&2, String>, p: String & String) -> Map<&2, String>:
   (k, v) = p
@@ -92,7 +92,7 @@ def named() -> Ctx.Repo:
   named.if(Repo.target.of(checkout(), "OWNER/cha-sandbox"))
 
 def json.text(v: Json.Val) -> String:
-  Api.raw.text(Json.encode.bytes(v))
+  Json.encode(v)
 
 # Branches and protection
 # -----------------------
@@ -135,13 +135,13 @@ def gitea.off.body() -> String:
   "{\"id\":2,\"branch_name\":\"release/*\",\"enable_push\":true,\"enable_status_check\":false,\"status_check_contexts\":[\"stale\"],\"required_approvals\":0}"
 
 def gh.row.of(+b: String) -> Map<&2, String>:
-  Repo.gh.row(Api.obj(Bytes.from_string(b)), "main")
+  Repo.gh.row(Api.obj(Utf8.encode(b)), "main")
 
 def gitea.rows() -> List<&2, Map<&2, String>>:
-  Api.rows(Bytes.from_string("[" ++ gitea.rule.body() ++ "," ++ gitea.off.body() ++ "]"))
+  Api.rows(Utf8.encode("[" ++ gitea.rule.body() ++ "," ++ gitea.off.body() ++ "]"))
 
 def rule.row.of(+b: String) -> Map<&2, String>:
-  Repo.gitea.row(Api.obj(Bytes.from_string(b)))
+  Repo.gitea.row(Api.obj(Utf8.encode(b)))
 
 def picked(+w: String, empty: Bool) -> String:
   Nat.show(List.length(&2, Map<&2, String>, Repo.gitea.rows(gitea.rows(), w, empty)))

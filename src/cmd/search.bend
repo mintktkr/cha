@@ -1,6 +1,5 @@
 # cha search: issues, pull requests, repos and code, over one repo, one owner or a forge.
 import Base
-import 0x49814d83de8f70993a43e1002be29ecd/bytes.bend as Bytes
 import ../ctx.bend as Ctx
 import ../api.bend as Api
 import ../ui.bend as Ui
@@ -362,7 +361,7 @@ def gitea.next.url(+base: String, +page: U32, +got: Nat, +limit: Nat, short: Boo
   Ctx.or.if(at.page(base, (page + 1 : U32)), "", short || Nat.is_ge(got, limit))
 
 # the hits one search page holds, under the field its forge wraps them in
-def page.rows(+k: Nat, body: Bytes.Bytes, +f: Ctx.Forge, github: Bool) -> List<&2, Map<&2, String>>:
+def page.rows(+k: Nat, body: List<&2, U32>, +f: Ctx.Forge, github: Bool) -> List<&2, Map<&2, String>>:
   match github:
     case True{}:
       rows.of(k, Api.obj(body), "items", f)
@@ -396,7 +395,7 @@ def pages.done(st: Pages) -> Result<&1, &1, String, List<&2, Map<&2, String>>>:
     case NextPage{l, got, n}:
       Done{got}
 
-def page.step.ok(+status: U32, +next: String, +k: Nat, +f: Ctx.Forge, +limit: Nat, +base: String, +page: U32, body: Bytes.Bytes, +acc: List<&2, Map<&2, String>>, +github: Bool, good: Bool) -> Result<&1, &1, String, List<&2, Map<&2, String>> & String>:
+def page.step.ok(+status: U32, +next: String, +k: Nat, +f: Ctx.Forge, +limit: Nat, +base: String, +page: U32, body: List<&2, U32>, +acc: List<&2, Map<&2, String>>, +github: Bool, good: Bool) -> Result<&1, &1, String, List<&2, Map<&2, String>> & String>:
   match good:
     case True{}:
       +rows = page.rows(k, body, f, github)
@@ -508,7 +507,7 @@ def uid.id.if(+i: String, +owner: String, empty: Bool) -> Result<&1, &1, String,
     case False{}:
       Done{i}
 
-def uid.reply(+status: U32, body: Bytes.Bytes, +owner: String, good: Bool) -> Result<&1, &1, String, String>:
+def uid.reply(+status: U32, body: List<&2, U32>, +owner: String, good: Bool) -> Result<&1, &1, String, String>:
   match good:
     case True{}:
       +i = Api.f(Api.obj(body), "id")

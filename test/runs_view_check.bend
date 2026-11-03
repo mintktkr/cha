@@ -3,8 +3,7 @@ import ../src/api.bend as Api
 import ../src/cmd/runs.bend as Runs
 import ../src/ui.bend as Ui
 import ../src/runlogs.bend as Runlogs
-import 0x584fc27920487ceab242392391418d7f/json.bend as Json
-import 0x49814d83de8f70993a43e1002be29ecd/bytes.bend as Bytes
+import ../lib/chaki/utf8.bend as Utf8
 
 def expect.if(+got: String, +want: String, same: Bool) -> IO(Unit):
   match same:
@@ -42,31 +41,10 @@ def fake.first(attempt: String) -> Map<&2, String>:
   m = Map.set(&2, String, m, "workflow", "ci")
   Map.set(&2, String, m, "attempt", attempt)
 
-# Decode JSON structurally: every record must be an object of string values.
-def flat.values(xs: List<&1, Bytes.Bytes & Json.Val>) -> Bool:
-  match xs:
-    case Nil{}:
-      True{}
-    case Con{(key, Json.Str{value}), rest}:
-      flat.values(rest)
-    case _:
-      False{}
-
-def flat.rows(xs: List<&1, Json.Val>) -> Bool:
-  match xs:
-    case Nil{}:
-      True{}
-    case Con{Json.Obj{fields}, rest}:
-      flat.values(fields) && flat.rows(rest)
-    case _:
-      False{}
-
-def flat.json(m: Maybe<&1, Json.Val>) -> Bool:
-  match m:
-    case Some{Json.Arr{rows}}:
-      flat.rows(rows)
-    case _:
-      False{}
+# View JSON must stay a flat array of string-valued objects: it parses back to one
+# row per record through Api.rows, and check.rows below reads every field of each.
+def flat.count(+json: String, +want: String) -> IO(Unit):
+  expect(Nat.show(List.length(&2, Map<&2, String>, Api.rows(Utf8.encode(json)))), want)
 
 def check.rows(xs: List<&2, Map<&2, String>>) -> IO(Unit):
   match xs:
@@ -107,7 +85,7 @@ def jobs.next(page: Runs.JobPages) -> IO(Unit):
     case Runs.NextJobs{False{}, +next, +rows}:
       do IO<Unit>:
         expect(next, "page-2")
-        jobs.last(Runs.jobs.page("", "", Bytes.from_string("{\"jobs\":[{\"id\":103,\"name\":\"late job\"}]}"), rows))
+        jobs.last(Runs.jobs.page("", "", Utf8.encode("{\"jobs\":[{\"id\":103,\"name\":\"late job\"}]}"), rows))
     case _:
       IO.die(Unit, 1, "job pages must follow the next link")
 
@@ -165,17 +143,17 @@ def main() -> IO(Unit):
     expect(Runs.job.duration("", "2026-01-02T13:00:00Z"), "")
     expect(Runs.job.duration("invalid", "2026-01-02T13:00:00Z"), "")
     expect(Runs.job.duration("2026-01-02T13:00:00Z", ""), "")
-    +src : Map<&2, String> = Api.obj(Bytes.from_string(jobs.body()))
+    +src : Map<&2, String> = Api.obj(Utf8.encode(jobs.body()))
     +jobs : List<&2, Map<&2, String>> = Runs.jrows.of(src)
-    jobs.next(Runs.jobs.page("page-2", "", Bytes.from_string(jobs.body()), Nil{}))
-    gitea.jobs(Runs.jobs.page("", "fallback-2", Bytes.from_string("{\"total_count\":3,\"jobs\":[{\"id\":1},{\"id\":2}]}"), Nil{}))
-    gitea.jobs.done(Runs.jobs.page("", "fallback-2", Bytes.from_string("{\"total_count\":2,\"jobs\":[{\"id\":1},{\"id\":2}]}"), Nil{}))
-    gitea.jobs.done(Runs.jobs.page("", "fallback-2", Bytes.from_string("{\"total_count\":9,\"jobs\":[]}"), Nil{}))
+    jobs.next(Runs.jobs.page("page-2", "", Utf8.encode(jobs.body()), Nil{}))
+    gitea.jobs(Runs.jobs.page("", "fallback-2", Utf8.encode("{\"total_count\":3,\"jobs\":[{\"id\":1},{\"id\":2}]}"), Nil{}))
+    gitea.jobs.done(Runs.jobs.page("", "fallback-2", Utf8.encode("{\"total_count\":2,\"jobs\":[{\"id\":1},{\"id\":2}]}"), Nil{}))
+    gitea.jobs.done(Runs.jobs.page("", "fallback-2", Utf8.encode("{\"total_count\":9,\"jobs\":[]}"), Nil{}))
     expect(Nat.show(List.length(&2, Runlogs.Step, Runlogs.steps.of(Runs.job.row(src, "jobs.0"), "steps", "UPLOAD"))), "1")
     +json : String = Runs.view.json.text(fake.run(), jobs)
-    yes(flat.json(Json.parse.bytes(Bytes.from_string(json))))
-    check.rows(Api.rows(Bytes.from_string(json)))
-    expect(Nat.show(List.length(&2, Map<&2, String>, Api.rows(Bytes.from_string(Runs.view.json.text(fake.run(), Nil{}))))), "1")
+    flat.count(json, "3")
+    check.rows(Api.rows(Utf8.encode(json)))
+    expect(Nat.show(List.length(&2, Map<&2, String>, Api.rows(Utf8.encode(Runs.view.json.text(fake.run(), Nil{}))))), "1")
     +text : String = Runs.view.text(False{}, fake.run(), jobs)
     yes(String.contains(text, "#7  failure  ci  attempt 2\n"))
     yes(String.contains(text, "  build  success  #101  runner-a  90s\n"))
@@ -183,8 +161,8 @@ def main() -> IO(Unit):
     yes(String.contains(text, "    skipped  Upload  \n"))
     expect(Bool.show(String.contains(text, "\u{1b}[")), "False")
     expect(Runs.step.text(True{}, "skipped", "Upload", "", True{}), Ui.dim(True{}, "    skipped  Upload  "))
-    fj.check.jobs(Runs.jrows.of(Api.obj(Bytes.from_string(fj.jobs.body()))))
+    fj.check.jobs(Runs.jrows.of(Api.obj(Utf8.encode(fj.jobs.body()))))
     expect(Bool.show(String.contains(Runs.view.text(False{}, fake.first("1"), Nil{}), "attempt")), "False")
     expect(Bool.show(String.contains(Runs.view.text(False{}, fake.first(""), Nil{}), "attempt")), "False")
     yes(String.contains(Runs.view.text(False{}, fake.first("3"), Nil{}), "#7  success  ci  attempt 3\n"))
-    fj.check.page(Runs.jobs.page("", "fallback-2", Bytes.from_string(fj.jobs.body()), Nil{}))
+    fj.check.page(Runs.jobs.page("", "fallback-2", Utf8.encode(fj.jobs.body()), Nil{}))

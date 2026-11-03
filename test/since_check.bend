@@ -1,11 +1,11 @@
 # offline checks for the shared --since parser: moved and issue list both read it here
 import Base
-import 0x3bfb4ae4d3b87b90f01bfcd298211455/time.bend as Time
+import ../lib/chaki/sys.bend as Sys
 import ../src/since.bend as Since
 
 # 2026-09-30T12:00:00Z, so every window below is fixed text
-def NOW() -> Time.Instant:
-  Time.Instant{Time.i64(1790769600), 0}
+def NOW() -> U32:
+  1790769600
 
 def report.if(good: Bool, +name: String, +got: String, +want: String) -> String:
   match good:
@@ -26,28 +26,20 @@ def yes(b: Bool) -> String:
       "no"
 
 # the window below as text, or none when it doesn't parse
-def window.of(m: Maybe<&2, Time.Instant>, +none: String) -> String:
+def window.of(m: Maybe<&2, U32>, +none: String) -> String:
   match m:
-    case Some{i}:
-      Since.rfc(i)
+    case Some{t}:
+      Since.rfc(t)
     case None{}:
       none
 
 def window(+arg: String) -> String:
   window.of(Since.of(NOW(), arg), "none")
 
-# whether a is earlier than b
-def before.if(c: Cmp) -> Bool:
-  match c:
-    case LT{}:
-      True{}
-    case x:
-      False{}
-
-def earlier.if(m: Maybe<&2, Time.Instant>, +now: Time.Instant) -> Bool:
+def earlier.if(m: Maybe<&2, U32>, +now: U32) -> Bool:
   match m:
-    case Some{i}:
-      before.if(Time.Instant.cmp(i, now))
+    case Some{t}:
+      U32.is_lt(t, now)
     case None{}:
       False{}
 
@@ -61,5 +53,7 @@ def main() -> IO(Unit):
     IO.print(check("5x is none", window("5x"), "none"))
     IO.print(check("1y is none", window("1y"), "none"))
     IO.print(check("an empty window is none", window(""), "none"))
-    +now : Time.Instant <- Time.now()
+    IO.print(check("a span past the epoch holds at it", window("30000d"), "1970-01-01T00:00:00Z"))
+    IO.print(check("a span too big for a U32 is none", window("99999999d"), "none"))
+    +now : U32 <- Sys.now()
     IO.print(check("a span lands before now", yes(earlier.if(Since.of(now, "6h"), now)), "yes"))

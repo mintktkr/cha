@@ -1,8 +1,8 @@
 # cha issue: list, view, create, comment, comment-edit, comment-delete, edit, close, reopen,
 # labels.
 import Base
-import 0x49814d83de8f70993a43e1002be29ecd/bytes.bend as Bytes
-import 0x584fc27920487ceab242392391418d7f/json.bend as Json
+import ../../lib/chaki/json.bend as Json
+import ../../lib/chaki/sys.bend as Sys
 import ../ctx.bend as Ctx
 import ../api.bend as Api
 import ../ui.bend as Ui
@@ -10,7 +10,6 @@ import ../cli.bend as Cli
 import ../comment.bend as Comment
 import ../url.bend as Url
 import ../since.bend as Since
-import 0x3bfb4ae4d3b87b90f01bfcd298211455/time.bend as Time
 
 # list
 # ----
@@ -99,7 +98,7 @@ def query(f: Ctx.Forge, +size: Nat, +state: String, +label: String, +assignee: S
       "issues?per_page=" ++ Nat.show(size) ++ "&state=" ++ Url.encode(state) ++ param.q("&labels=", label) ++ param.q("&assignee=", assignee) ++ param.q("&since=", since)
 
 # --since as the RFC 3339 text a forge query takes, "" when the flag wasn't given
-def since.text(+env: Cli.Env, m: Maybe<&2, Time.Instant>) -> IO(String):
+def since.text(+env: Cli.Env, m: Maybe<&2, U32>) -> IO(String):
   match m:
     case Some{i}:
       IO.pure(String, Since.rfc(i))
@@ -112,7 +111,7 @@ def since.empty.if(+env: Cli.Env, +arg: String, empty: Bool) -> IO(String):
       IO.pure(String, "")
     case False{}:
       do IO<String>:
-        now : Time.Instant <- Time.now()
+        now : U32 <- Sys.now()
         v : String <- since.text(env, Since.of(now, arg))
         return v
 
@@ -199,7 +198,7 @@ def list(+env: Cli.Env) -> IO(Unit):
 # replies
 # -------
 
-def obj.if(+status: U32, body: Bytes.Bytes, good: Bool) -> Result<&1, &1, String, Map<&2, String>>:
+def obj.if(+status: U32, body: List<&2, U32>, good: Bool) -> Result<&1, &1, String, Map<&2, String>>:
   match good:
     case True{}:
       Done{Api.obj(body)}
@@ -334,49 +333,39 @@ def text.stdin.if(+p: String, dash: Bool) -> String:
 def text.path(+p: String) -> String:
   text.stdin.if(p, String.eq(p, "-"))
 
-def text.got(r: Result<&1, &1, U32 & String, String>) -> Maybe<&2, String>:
-  match r:
-    case Done{s}:
-      Some{s}
-    case Fail{e}:
-      None{}
-
-def text.done(r: File & Result<&1, &1, U32 & String, String>) -> IO(Maybe<&2, String>):
-  (f, got) = r
-  do IO<Maybe<&2, String>>:
-    File.close(f)
-    return text.got(got)
-
-def text.open(r: Result<&1, &1, U32 & String, File>) -> IO(Maybe<&2, String>):
-  match r:
-    case Done{f}:
-      do IO<Maybe<&2, String>>:
-        got : File & Result<&1, &1, U32 & String, String> <- File.read(f, 1048576)
-        text.done(got)
-    case Fail{e}:
+# a source read as the body: none when it can't be read, and the command failing when it
+# is over 1 MiB rather than sending it cut short
+def text.got(+env: Cli.Env, +cmd: String, t: Cli.Text) -> IO(Maybe<&2, String>):
+  match t:
+    case Cli.TextOf{+s}:
+      IO.pure(Maybe<&2, String>, Some{s})
+    case Cli.TextNone{}:
       IO.pure(Maybe<&2, String>, None{})
+    case Cli.TextOver{}:
+      Cli.fail(Maybe<&2, String>, env, cmd ++ ": the body file is over 1 MiB")
 
-# a whole file's text; none when it can't be read
-def text.read(path: String) -> IO(Maybe<&2, String>):
+def text.read(+env: Cli.Env, +cmd: String, path: String) -> IO(Maybe<&2, String>):
   do IO<Maybe<&2, String>>:
-    r : Result<&1, &1, U32 & String, File> <- File.open(path, "r")
-    text.open(r)
+    t : Cli.Text <- Cli.file.text(path)
+    text.got(env, cmd, t)
 
-def text.pick.if(+body: String, +file: String, none: Bool) -> IO(Maybe<&2, String>):
+def text.pick.if(+env: Cli.Env, +cmd: String, +body: String, +file: String, none: Bool) -> IO(Maybe<&2, String>):
   match none:
     case True{}:
       IO.pure(Maybe<&2, String>, Some{body})
     case False{}:
-      text.read(text.path(file))
+      text.read(env, cmd, text.path(file))
 
-def text.pick(+body: String, +file: String) -> IO(Maybe<&2, String>):
-  text.pick.if(body, file, String.is_empty(file))
+def text.pick(+env: Cli.Env, +cmd: String, +body: String, +file: String) -> IO(Maybe<&2, String>):
+  text.pick.if(env, cmd, body, file, String.is_empty(file))
 
-def text.args(+args: List<&2, String>) -> IO(Maybe<&2, String>):
-  text.pick(Cli.flag(args, "--body", ""), Cli.flag(args, "--body-file", ""))
+def text.args(+env: Cli.Env, +cmd: String, +args: List<&2, String>) -> IO(Maybe<&2, String>):
+  text.pick(env, cmd, Cli.flag(args, "--body", ""), Cli.flag(args, "--body-file", ""))
 
 def num.need(+env: Cli.Env, +n: String, +sub: String) -> IO(Unit):
-  need(env, String.is_empty(n), "issue " ++ sub ++ ": give an issue number")
+  do IO<Unit>:
+    need(env, String.is_empty(n), "issue " ++ sub ++ ": give an issue number")
+    need(env, Bool.not(Cli.digits(n)), "issue " ++ sub ++ ": expected an issue number, got '" ++ n ++ "'")
 
 # labels
 # ------
@@ -494,17 +483,14 @@ def label.check.names(+env: Cli.Env, +repo: Ctx.Repo, +tok: String, +names: List
 # json
 # ----
 
-def field(+k: String, v: Json.Val) -> Bytes.Bytes & Json.Val:
-  (Json.utf8(k), v)
-
-def kv.if(+k: String, +v: String, give: Bool, rest: List<&1, Bytes.Bytes & Json.Val>) -> List<&1, Bytes.Bytes & Json.Val>:
+def kv.if(+k: String, +v: String, give: Bool, rest: List<&2, Json.Val>) -> List<&2, Json.Val>:
   match give:
     case True{}:
-      Con{field(k, Api.utf8(v)), rest}
+      Con{Json.field(k, Api.utf8(v)), rest}
     case False{}:
       rest
 
-def strs.go(ss: List<&2, String>) -> List<&1, Json.Val>:
+def strs.go(ss: List<&2, String>) -> List<&2, Json.Val>:
   match ss:
     case Nil{}:
       Nil{}
@@ -514,12 +500,12 @@ def strs.go(ss: List<&2, String>) -> List<&1, Json.Val>:
 def strs.items(ss: List<&2, String>) -> Json.Val:
   Json.Arr{strs.go(ss)}
 
-def nums.go(ss: List<&2, String>) -> List<&1, Json.Val>:
+def nums.go(ss: List<&2, String>) -> List<&2, Json.Val>:
   match ss:
     case Nil{}:
       Nil{}
     case Con{+s, rest}:
-      Json.Num{Bytes.from_string(s)} <> nums.go(rest)
+      Json.Num{s} <> nums.go(rest)
 
 def nums.items(ss: List<&2, String>) -> Json.Val:
   Json.Arr{nums.go(ss)}
@@ -535,7 +521,7 @@ def one.of(+s: String) -> List<&2, String>:
   one.of.if(s, String.is_empty(s))
 
 def obj.of(+k: String, v: Json.Val) -> Json.Val:
-  Json.Obj{Con{field(k, v), Nil{}}}
+  Json.Obj{Con{Json.field(k, v), Nil{}}}
 
 def state.obj(+s: String) -> Json.Val:
   obj.of("state", Api.utf8(s))
@@ -544,7 +530,7 @@ def comment.obj(+body: String) -> Json.Val:
   obj.of("body", Api.utf8(body))
 
 def create.obj(+title: String, +body: String, labels: Json.Val, +assignee: String) -> Json.Val:
-  Json.Obj{Con{field("title", Api.utf8(title)), Con{field("body", Api.utf8(body)), Con{field("labels", labels), Con{field("assignees", strs.items(one.of(assignee))), Nil{}}}}}}
+  Json.Obj{Con{Json.field("title", Api.utf8(title)), Con{Json.field("body", Api.utf8(body)), Con{Json.field("labels", labels), Con{Json.field("assignees", strs.items(one.of(assignee))), Nil{}}}}}}
 
 def edit.obj(+title: String, +body: String, title_on: Bool, body_on: Bool) -> Json.Val:
   Json.Obj{kv.if("title", title, title_on, kv.if("body", body, body_on, Nil{}))}
@@ -681,7 +667,7 @@ def create(+env: Cli.Env) -> IO(Unit):
         Cli.check(env, "issue create", args, ["--title", "--body", "--body-file", "--label", "--assignee"])
         +title : String = Cli.flag(args, "--title", "")
         need(env, String.is_empty(title), "issue create: --title is required")
-        got : Maybe<&2, String> <- text.args(args)
+        got : Maybe<&2, String> <- text.args(env, "issue create", args)
         +body : String <- need.maybe(env, got, "issue create: can't read the body file")
         +names : List<&2, String> = split.names(Cli.flag(args, "--label", ""))
         +assignee : String = Cli.flag(args, "--assignee", "")
@@ -707,7 +693,7 @@ def comment(+env: Cli.Env) -> IO(Unit):
         Cli.check(env, "issue comment", args, ["--body", "--body-file"])
         +n : String = Cli.arg(args, 1n)
         num.need(env, n, "comment")
-        got : Maybe<&2, String> <- text.args(args)
+        got : Maybe<&2, String> <- text.args(env, "issue comment", args)
         +body : String <- need.maybe(env, got, "issue comment: can't read the body file")
         need(env, String.is_empty(body), "issue comment: --body or --body-file is required")
         comment.send(env, repo, tok, n, body)
@@ -727,7 +713,7 @@ def comment.edit(+env: Cli.Env) -> IO(Unit):
       do IO<Unit>:
         Cli.check(env, "issue comment-edit", args, comment.edit.flags())
         +id : String <- Comment.id.need(env, Cli.arg(args, 1n), "issue comment-edit")
-        got : Maybe<&2, String> <- text.args(args)
+        got : Maybe<&2, String> <- text.args(env, "issue comment-edit", args)
         +body : String <- need.maybe(env, got, "issue comment-edit: can't read the body file")
         need(env, String.is_empty(body), "issue comment-edit: --body or --body-file is required")
         Comment.edit(env, repo, tok, id, body)
@@ -758,7 +744,7 @@ def edit(+env: Cli.Env) -> IO(Unit):
         +body_on : Bool = Cli.has(args, "--body") || Cli.has(args, "--body-file")
         need(env, Bool.not(title_on || body_on), "issue edit: give --title, --body or --body-file")
         +title : String = Cli.flag(args, "--title", "")
-        got : Maybe<&2, String> <- text.args(args)
+        got : Maybe<&2, String> <- text.args(env, "issue edit", args)
         +body : String <- need.maybe(env, got, "issue edit: can't read the body file")
         r : Api.Reply <- Api.send(repo, tok, "PATCH", Api.path(repo, "issues/" ++ n), Some{edit.obj(title, body, title_on, body_on)})
         write.done(env, r, "issue edit")

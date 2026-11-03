@@ -29,7 +29,7 @@ Every bend run takes 2-3 GB of memory. Run one at a time.
 - Runtime dependencies. cha never shells out to `gh`, `tea`, `git`, `curl` or `jq`.
 - Anything that can put a token in output, errors, `--json` or debug dumps.
 - Colour or escape codes when the stream isn't a terminal, and prompts when stdin isn't one.
-- A floating hub or toolchain version. Bumps are deliberate and get their own commit.
+- A floating toolchain version (bumps are deliberate and get their own commit), or a hub import: cha's library is in-tree, at `lib/chaki/`.
 
 ## Agents
 

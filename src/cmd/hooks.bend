@@ -1,7 +1,6 @@
 # cha hooks: a repo's or an org's webhooks: list, create, delete, test.
 import Base
-import 0x584fc27920487ceab242392391418d7f/json.bend as Json
-import 0x49814d83de8f70993a43e1002be29ecd/bytes.bend as Bytes
+import ../../lib/chaki/json.bend as Json
 import ../ctx.bend as Ctx
 import ../api.bend as Api
 import ../ui.bend as Ui
@@ -46,18 +45,18 @@ def hook.url(+repo: Ctx.Repo, +org: String, +id: String) -> String:
 # Requests
 # --------
 
-def body.of(+env: Cli.Env, +status: U32, body: Bytes.Bytes, good: Bool) -> IO(Bytes.Bytes):
+def body.of(+env: Cli.Env, +status: U32, body: List<&2, U32>, good: Bool) -> IO(List<&2, U32>):
   match good:
     case True{}:
-      IO.pure(Bytes.Bytes, body)
+      IO.pure(List<&2, U32>, body)
     case False{}:
-      Cli.fail(Bytes.Bytes, env, Api.message(status, body))
+      Cli.fail(List<&2, U32>, env, Api.message(status, body))
 
 # a reply's body, or the command fails with the forge's error
-def body.reply(+env: Cli.Env, r: Api.Reply) -> IO(Bytes.Bytes):
+def body.reply(+env: Cli.Env, r: Api.Reply) -> IO(List<&2, U32>):
   match r:
     case Api.Broke{why}:
-      Cli.fail(Bytes.Bytes, env, why)
+      Cli.fail(List<&2, U32>, env, why)
     case Api.Reply{+status, +next, body}:
       body.of(env, status, body, Api.ok(status))
 
@@ -81,20 +80,20 @@ def kind.value(f: Ctx.Forge) -> String:
     case Ctx.Gitea{}:
       "gitea"
 
-def kv.if(kvs: List<&1, Bytes.Bytes & Json.Val>, +k: String, +v: String, keep: Bool) -> List<&1, Bytes.Bytes & Json.Val>:
+def kv.if(kvs: List<&2, Json.Val>, +k: String, +v: String, keep: Bool) -> List<&2, Json.Val>:
   match keep:
     case True{}:
-      Con{(Json.utf8(k), Api.utf8(v)), kvs}
+      Con{Json.field(k, Api.utf8(v)), kvs}
     case False{}:
       kvs
 
 # the hook's config: its target, its payload format, and the secret when --secret-file
 # gave one. Both forges take these three under config.
-def config.kvs(+url: String, +ct: String, +secret: String) -> List<&1, Bytes.Bytes & Json.Val>:
-  k0 : List<&1, Bytes.Bytes & Json.Val> = kv.if(Nil{}, "secret", secret, Bool.not(String.is_empty(secret)))
-  Con{(Json.utf8("url"), Api.utf8(url)), Con{(Json.utf8("content_type"), Api.utf8(ct)), k0}}
+def config.kvs(+url: String, +ct: String, +secret: String) -> List<&2, Json.Val>:
+  k0 : List<&2, Json.Val> = kv.if(Nil{}, "secret", secret, Bool.not(String.is_empty(secret)))
+  Con{Json.field("url", Api.utf8(url)), Con{Json.field("content_type", Api.utf8(ct)), k0}}
 
-def event.vals(xs: List<&2, String>) -> List<&1, Json.Val>:
+def event.vals(xs: List<&2, String>) -> List<&2, Json.Val>:
   match xs:
     case Nil{}:
       Nil{}
@@ -104,37 +103,26 @@ def event.vals(xs: List<&2, String>) -> List<&1, Json.Val>:
 # the events are passed through as given: GitHub and Gitea name most of them alike
 # (push, pull_request) and cha doesn't try to translate the rest
 def create.body(+f: Ctx.Forge, +url: String, +events: List<&2, String>, +ct: String, +secret: String) -> Json.Val:
-  k0 : List<&1, Bytes.Bytes & Json.Val> = Con{(Json.utf8("config"), Json.Obj{config.kvs(url, ct, secret)}), Nil{}}
-  k1 : List<&1, Bytes.Bytes & Json.Val> = Con{(Json.utf8("events"), Json.Arr{event.vals(events)}), k0}
-  k2 : List<&1, Bytes.Bytes & Json.Val> = Con{(Json.utf8("active"), Json.Flag{True{}}), k1}
-  Json.Obj{Con{(Json.utf8(kind.key(f)), Api.utf8(kind.value(f))), k2}}
+  k0 : List<&2, Json.Val> = Con{Json.field("config", Json.Obj{config.kvs(url, ct, secret)}), Nil{}}
+  k1 : List<&2, Json.Val> = Con{Json.field("events", Json.Arr{event.vals(events)}), k0}
+  k2 : List<&2, Json.Val> = Con{Json.field("active", Json.Flag{True{}}), k1}
+  Json.Obj{Con{Json.field(kind.key(f), Api.utf8(kind.value(f))), k2}}
 
 # Secret
 # ------
 # A hook's secret signs its deliveries. It is read from a file, never from a flag value,
 # and it only ever goes into the request body: it never reaches a row, a message or --json.
 
-def secret.text(+env: Cli.Env, +path: String, r: Result<&1, &1, U32 & String, String>) -> IO(String):
-  match r:
-    case Done{s}:
+# the secret a source held, its surrounding whitespace dropped, or the command failing
+# when it can't be read or is over 1 MiB
+def secret.at(+env: Cli.Env, +path: String, t: Cli.Text) -> IO(String):
+  match t:
+    case Cli.TextOf{+s}:
       IO.pure(String, String.trim(s))
-    case Fail{e}:
+    case Cli.TextNone{}:
       Cli.fail(String, env, "hooks create: can't read " ++ path)
-
-def secret.got(+env: Cli.Env, +path: String, r: File & Result<&1, &1, U32 & String, String>) -> IO(String):
-  (f, got) = r
-  do IO<String>:
-    File.close(f)
-    secret.text(env, path, got)
-
-def secret.open(+env: Cli.Env, +path: String, r: Result<&1, &1, U32 & String, File>) -> IO(String):
-  match r:
-    case Done{f}:
-      do IO<String>:
-        got : File & Result<&1, &1, U32 & String, String> <- File.read(f, 1048576)
-        secret.got(env, path, got)
-    case Fail{e}:
-      Cli.fail(String, env, "hooks create: can't read " ++ path)
+    case Cli.TextOver{}:
+      Cli.fail(String, env, "hooks create: the secret file is over 1 MiB")
 
 def secret.if(+env: Cli.Env, +path: String, empty: Bool) -> IO(String):
   match empty:
@@ -143,8 +131,8 @@ def secret.if(+env: Cli.Env, +path: String, empty: Bool) -> IO(String):
     case False{}:
       do IO<String>:
         +p : String = Ctx.or.if(path, "/dev/stdin", String.eq(path, "-"))
-        r : Result<&1, &1, U32 & String, File> <- File.open(p, "r")
-        secret.open(env, path, r)
+        t : Cli.Text <- Cli.file.text(p)
+        secret.at(env, p, t)
 
 # the secret from --secret-file PATH ("-" is stdin), or "" when the flag is absent.
 # A file's trailing whitespace comes from the editor or the echo, not from the secret.
@@ -295,7 +283,7 @@ def created(+env: Cli.Env, +id: String, +url: String) -> IO(Unit):
 def create.send(+env: Cli.Env, +repo: Ctx.Repo, +tok: String, +org: String, +target: String, +events: List<&2, String>, +ct: String, +secret: String) -> IO(Unit):
   do IO<Unit>:
     r : Api.Reply <- Api.send(repo, tok, "POST", url.of(repo, org), Some{create.body(forge.of(repo), target, events, ct, secret)})
-    b : Bytes.Bytes <- body.reply(env, r)
+    b : List<&2, U32> <- body.reply(env, r)
     +x : Map<&2, String> = hook.row(Api.obj(b))
     created(env, Api.f(x, "id"), Api.f(x, "url"))
 
@@ -328,7 +316,7 @@ def yes.need.if(+env: Cli.Env, +id: String, yes: Bool) -> IO(Unit):
     case False{}:
       Cli.fail(Unit, env, yes.msg(id))
 
-def delete.if(+env: Cli.Env, +id: String, +status: U32, body: Bytes.Bytes, good: Bool) -> IO(Unit):
+def delete.if(+env: Cli.Env, +id: String, +status: U32, body: List<&2, U32>, good: Bool) -> IO(Unit):
   match env good:
     case Cli.Env{r, t, +on, j, a} True{}:
       Ui.done(on, "deleted hook #" ++ id)
@@ -357,7 +345,7 @@ def delete(+env: Cli.Env) -> IO(Unit):
 # ----
 
 # a test delivery: both forges answer 204 with no body, so exit 0 is the receipt
-def test.if(+env: Cli.Env, +id: String, +status: U32, body: Bytes.Bytes, good: Bool) -> IO(Unit):
+def test.if(+env: Cli.Env, +id: String, +status: U32, body: List<&2, U32>, good: Bool) -> IO(Unit):
   match env good:
     case Cli.Env{r, t, +on, j, a} True{}:
       Ui.done(on, "sent a test delivery to hook #" ++ id)

@@ -1,8 +1,8 @@
 # cli: what every command gets (Env), argument helpers and --json output.
 import Base
-import 0x584fc27920487ceab242392391418d7f/json.bend as Json
-import 0xcfc8be7b076f41f95c8e118383892d55/encoding.bend as Enc
-import 0x49814d83de8f70993a43e1002be29ecd/bytes.bend as Bytes
+import ../lib/chaki/json.bend as Json
+import ../lib/chaki/bytes.bend as Bytes
+import ../lib/chaki/utf8.bend as Utf8
 import ./ctx.bend as Ctx
 import ./api.bend as Api
 import ./ui.bend as Ui
@@ -117,16 +117,16 @@ def arg(args: List<&2, String>, n: Nat) -> String:
 # one row as a JSON object of the given flat fields, all values strings, exactly as the
 # forge sent them: the JSON writer escapes a control character as \uXXXX, so --json keeps
 # the data instead of losing what Clean drops from the printed text
-def json.obj(+row: Map<&2, String>, fields: List<&2, String>) -> List<&1, Bytes.Bytes & Json.Val>:
+def json.obj(+row: Map<&2, String>, fields: List<&2, String>) -> List<&2, Json.Val>:
   match fields:
     case Nil{}:
       Nil{}
     case Con{+k, rest}:
-      Con{(Json.utf8(k), Api.utf8(Api.raw.f(row, k))), json.obj(row, rest)}
+      Con{Json.field(k, Json.Str{Api.raw.f(row, k)}), json.obj(row, rest)}
 
 # one row as a JSON object of the given flat fields, all values strings
 def json.row(+row: Map<&2, String>, +fields: List<&2, String>) -> String:
-  Enc.utf8.decode(Json.encode.bytes(Json.Obj{json.obj(row, fields)}))
+  Json.encode(Json.Obj{json.obj(row, fields)})
 
 def json.rows.go(xs: List<&2, Map<&2, String>>, +fields: List<&2, String>) -> List<&2, String>:
   match xs:
@@ -483,3 +483,123 @@ def check(+env: Env, +cmd: String, +args: List<&2, String>, +known: List<&2, Str
     check.if(env, unknown.msg(cmd, bad, known), String.is_empty(bad))
     +gone : String = missing(known, args)
     check.if(env, missing.msg(gone), String.is_empty(gone))
+
+# Ids
+# ---
+# A forge id becomes a URL path segment, so it may be digits and nothing else: U32.read
+# alone takes some punctuation as a zero, which would leave a ".." in the path.
+
+def digits.go(cs: List<&2, Char>) -> Bool:
+  match cs:
+    case Nil{}:
+      True{}
+    case Con{c, rest}:
+      Bool.and(Char.is_digit(c), digits.go(rest))
+
+# digits and nothing else, at least one
+def digits(+s: String) -> Bool:
+  Bool.and(Bool.not(String.is_empty(s)), digits.go(String.to_list(s)))
+
+# Files
+# -----
+# A file or a pipe is read in octets. A pipe answers at most 64 KiB per read, so one
+# File.read is not the whole of it, and a read boundary can fall inside a multi-byte
+# character: a decoded read would turn that character into U+FFFD on both sides. Reading
+# octets and decoding once at the end keeps every character whole, and makes the cap a
+# byte count rather than a count of code points.
+
+# what a source gave: its text, nothing when it could not be opened or read, or the fact
+# that it went past the cap (the text is not kept: it is not a whole source)
+type Text is Data:
+  TextOf{s: String}
+  TextNone{}
+  TextOver{}
+
+# how much of a source is read. One byte past the cap is read, so a source of exactly the
+# cap still fits whole and one byte more is refused rather than sent cut short.
+def file.cap() -> U32:
+  1048576
+
+# how many octets one read asks for: a read's octets are walked one at a time, and that
+# walk has to stay inside the JS lane's stack
+def file.chunk() -> U32:
+  8192
+
+def chunk.size(+xs: List<&2, U32>) -> U32:
+  U32.from_nat(List.length(&2, U32, xs))
+
+# whether the octets read so far are past the cap
+def text.over(+n: U32, +cap: U32) -> Bool:
+  U32.is_gt(n, cap)
+
+# where the loop goes after a chunk: on for another read, or out over the cap. StageGot is
+# the start and the state right after a read.
+type Stage is Data:
+  StageMore{}
+  StageGot{}
+  StageOver{}
+
+def stage.of(+n: U32, +cap: U32) -> Stage:
+  Bool.pick(Stage, text.over(n, cap), StageOver{}, StageMore{})
+
+def text.close(f: File, t: Text) -> IO(Text):
+  do IO<Text>:
+    File.close(f)
+    return t
+
+# The read loop. A read has to hand the handle back before the next read, and Bend has no
+# mutual recursion, so the loop is one def with a Stage saying what the handle and the last
+# read are for. fuel bounds the steps: a read returns at least one octet until it returns
+# none, so a source is read in at most cap steps.
+# acc holds the octets read so far, last first, so a read costs its own length and the
+# whole is turned around once at the end
+def text.read(fuel: Nat, +cap: U32, +n: U32, acc: List<&2, U32>, m: File & Result<&1, &1, U32 & String, List<&2, U32>>, st: Stage) -> IO(Text):
+  match fuel:
+    case 0n:
+      match m:
+        case (f, g):
+          text.close(f, TextOver{})
+    case 1n+p:
+      match m:
+        case (f, Fail{e}):
+          text.close(f, TextNone{})
+        case (f, Done{xs}):
+          match xs:
+            case Nil{}:
+              match st:
+                case StageMore{}:
+                  do IO<Text>:
+                    +room : U32 = U32.min(U32.sub(U32.add(cap, 1), n), file.chunk())
+                    m2 : File & Result<&1, &1, U32 & String, List<&2, U32>> <- File.read_bytes(f, room)
+                    text.read(p, cap, n, acc, m2, StageGot{})
+                case StageOver{}:
+                  text.close(f, TextOver{})
+                case y:
+                  text.close(f, TextOf{Utf8.decode(Bytes.rev(acc))})
+            case Con{v, t}:
+              do IO<Text>:
+                +xs2 : List<&2, U32> = Con{v, t}
+                +n2 : U32 = (n + chunk.size(xs2) : U32)
+                next : List<&2, U32> = Bytes.rev.onto(xs2, acc)
+                text.read(p, cap, n2, next, (f, Done{Nil{}}), stage.of(n2, cap))
+
+# the steps the loop may take: two per read, and a source of the cap has cap+1 reads left
+# when each one answers a single octet
+def fuel.of(+cap: U32) -> Nat:
+  (U32.to_nat(cap) * 2n + 4n : Nat)
+
+def text.first(+cap: U32, r: Result<&1, &1, U32 & String, File>) -> IO(Text):
+  match r:
+    case Fail{e}:
+      IO.pure(Text, TextNone{})
+    case Done{f}:
+      do IO<Text>:
+        m : File & Result<&1, &1, U32 & String, List<&2, U32>> <- File.read_bytes(f, U32.min(U32.add(cap, 1), file.chunk()))
+        text.read(fuel.of(cap), cap, 0, [], m, StageGot{})
+
+# a file's or stdin's text, whole or past the cap. "-" is not special here: a command
+# opens /dev/stdin for it.
+def file.text(+path: String) -> IO(Text):
+  do IO<Text>:
+    r : Result<&1, &1, U32 & String, File> <- File.open(path, "r")
+    text.first(file.cap(), r)

@@ -5,7 +5,6 @@
 # can both carry a token (https://user:pass@host/...), so they reach a row, the terminal
 # or --json only through Ctx.no_credentials.
 import Base
-import 0x49814d83de8f70993a43e1002be29ecd/bytes.bend as Bytes
 import ../ctx.bend as Ctx
 import ../api.bend as Api
 import ../ui.bend as Ui
@@ -51,22 +50,22 @@ def github.check(+env: Cli.Env, f: Ctx.Forge) -> IO(Unit):
 # -------
 
 # the reply's body when the status was ok, failing the command otherwise
-def body.of(+env: Cli.Env, +status: U32, body: Bytes.Bytes, good: Bool) -> IO(Bytes.Bytes):
+def body.of(+env: Cli.Env, +status: U32, body: List<&2, U32>, good: Bool) -> IO(List<&2, U32>):
   match good:
     case True{}:
-      IO.pure(Bytes.Bytes, body)
+      IO.pure(List<&2, U32>, body)
     case False{}:
-      Cli.fail(Bytes.Bytes, env, Api.message(status, body))
+      Cli.fail(List<&2, U32>, env, Api.message(status, body))
 
-def body.reply(+env: Cli.Env, r: Api.Reply) -> IO(Bytes.Bytes):
+def body.reply(+env: Cli.Env, r: Api.Reply) -> IO(List<&2, U32>):
   match r:
     case Api.Broke{why}:
-      Cli.fail(Bytes.Bytes, env, why)
+      Cli.fail(List<&2, U32>, env, why)
     case Api.Reply{+status, +next, body}:
       body.of(env, status, body, Api.ok(status))
 
 # a reply that carries nothing worth printing: fail on anything but 2xx
-def check.ok.if(+env: Cli.Env, +status: U32, body: Bytes.Bytes, good: Bool) -> IO(Unit):
+def check.ok.if(+env: Cli.Env, +status: U32, body: List<&2, U32>, good: Bool) -> IO(Unit):
   match good:
     case True{}:
       IO.pure(Unit, Unit{})
@@ -251,14 +250,14 @@ def denied.list(+on: Bool) -> IO(List<&2, Map<&2, String>>):
     Ui.info(on, denied.msg())
     IO.pure(List<&2, Map<&2, String>>, Nil{})
 
-def push.read.bad(+env: Cli.Env, +on: Bool, +status: U32, body: Bytes.Bytes, refused: Bool) -> IO(List<&2, Map<&2, String>>):
+def push.read.bad(+env: Cli.Env, +on: Bool, +status: U32, body: List<&2, U32>, refused: Bool) -> IO(List<&2, Map<&2, String>>):
   match refused:
     case True{}:
       denied.list(on)
     case False{}:
       Cli.fail(List<&2, Map<&2, String>>, env, Api.message(status, body))
 
-def push.read.if(+env: Cli.Env, +on: Bool, +status: U32, body: Bytes.Bytes, good: Bool) -> IO(List<&2, Map<&2, String>>):
+def push.read.if(+env: Cli.Env, +on: Bool, +status: U32, body: List<&2, U32>, good: Bool) -> IO(List<&2, Map<&2, String>>):
   match good:
     case True{}:
       IO.pure(List<&2, Map<&2, String>>, push.rows(Api.rows(body)))
@@ -281,7 +280,7 @@ def status(+env: Cli.Env) -> IO(Unit):
         Cli.check(env, "mirror status", args, ["--json"])
         github.check(env, forge.of(repo))
         r1 : Api.Reply <- Api.get(repo, tok, pull.url(repo))
-        b1 : Bytes.Bytes <- body.reply(env, r1)
+        b1 : List<&2, U32> <- body.reply(env, r1)
         r2 : Api.Reply <- Api.get(repo, tok, push.url(repo))
         +pushs : List<&2, Map<&2, String>> <- push.read(env, on, r2)
         +x : Map<&2, String> = Api.obj(b1)
@@ -312,7 +311,7 @@ def sync.read(+env: Cli.Env, r: Api.Reply, +repo: Ctx.Repo) -> IO(Unit):
       Cli.fail(Unit, env, why)
     case Api.Reply{+status, +next, body}:
       do IO<Unit>:
-        b : Bytes.Bytes <- body.of(env, status, body, Api.ok(status))
+        b : List<&2, U32> <- body.of(env, status, body, Api.ok(status))
         sync.if(env, repo, mirrored(Api.obj(b)))
 
 def sync(+env: Cli.Env) -> IO(Unit):

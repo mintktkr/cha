@@ -3,7 +3,7 @@ import ../src/ctx.bend as Ctx
 import ../src/cli.bend as Cli
 import ../src/cmd/runners.bend as Runners
 import ../src/api.bend as Api
-import 0x49814d83de8f70993a43e1002be29ecd/bytes.bend as Bytes
+import ../lib/chaki/utf8.bend as Utf8
 
 def expect.if(+got: String, +want: String, same: Bool) -> IO(Unit):
   match same:
@@ -37,10 +37,10 @@ def gitea.page() -> String:
   "{\"total_count\":1,\"runners\":[{\"id\":7,\"name\":\"local\",\"status\":\"online\",\"busy\":false,\"ephemeral\":false,\"labels\":[{\"id\":0,\"name\":\"ubuntu-latest\",\"type\":\"custom\"}]}]}"
 
 def gh.rows() -> List<&2, Map<&2, String>>:
-  Runners.rows.of(Api.obj(Bytes.from_string(gh.page())))
+  Runners.rows.of(Api.obj(Utf8.encode(gh.page())))
 
 def gitea.row() -> Map<&2, String>:
-  Runners.runner.row(Api.obj(Bytes.from_string(gitea.page())), "runners.0")
+  Runners.runner.row(Api.obj(Utf8.encode(gitea.page())), "runners.0")
 
 def gh.check(xs: List<&2, Map<&2, String>>) -> IO(Unit):
   match xs:
@@ -139,9 +139,9 @@ def digits.check() -> IO(Unit):
 # an admin-scoped 403 is a token without site admin
 def error.check() -> IO(Unit):
   do IO<Unit>:
-    expect(Runners.error.of(Runners.Admin{}, 403, Bytes.from_string("{\"message\":\"nope\"}")), "HTTP 403: admin runners need a site-admin token")
-    expect(Runners.error.of(Runners.Admin{}, 404, Bytes.from_string("{\"message\":\"gone\"}")), "HTTP 404: gone")
-    expect(Runners.error.of(Runners.Repo{}, 403, Bytes.from_string("{\"message\":\"nope\"}")), "HTTP 403: nope")
+    expect(Runners.error.of(Runners.Admin{}, 403, Utf8.encode("{\"message\":\"nope\"}")), "HTTP 403: admin runners need a site-admin token")
+    expect(Runners.error.of(Runners.Admin{}, 404, Utf8.encode("{\"message\":\"gone\"}")), "HTTP 404: gone")
+    expect(Runners.error.of(Runners.Repo{}, 403, Utf8.encode("{\"message\":\"nope\"}")), "HTTP 403: nope")
 
 def main() -> IO(Unit):
   do IO<Unit>:

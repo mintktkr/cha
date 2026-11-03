@@ -1,8 +1,7 @@
 # offline checks for the terminal sanitizer: escape sequences and control bytes in forge
 # text never reach a terminal. Run: bend test/clean_check.bend
 import Base
-import 0xcfc8be7b076f41f95c8e118383892d55/encoding.bend as Enc
-import 0x3bfb4ae4d3b87b90f01bfcd298211455/time.bend as Time
+import ../lib/chaki/utf8.bend as Utf8
 import ../src/clean.bend as Clean
 import ../src/api.bend as Api
 import ../src/cli.bend as Cli
@@ -35,7 +34,7 @@ def src(+k: String, +v: String) -> Map<&2, String>:
 
 # a row a command built itself, not one the forge sent
 def built.run(+name: String) -> Map<&2, String>:
-  Runs.run.row(src("name", name), "", Ctx.GitHub{}, Time.Instant.epoch())
+  Runs.run.row(src("name", name), "", Ctx.GitHub{}, 0)
 
 def built.runner(+name: String) -> Map<&2, String>:
   Runners.runner.row(src("name", name), "")
@@ -74,13 +73,13 @@ def main() -> IO(Unit):
     IO.print("boundaries")
     expect("a row field is clean for a terminal", Api.f(row("a\u{1b}[31mred"), "title"), "ared")
     expect("--json keeps the field as the forge sent it, escaped", Cli.json.row(row("a\u{1b}[31mred"), ["title"]), "{\"title\":\"a\\u001b[31mred\"}")
-    expect("a reply body is clean for a terminal", Api.text(Enc.utf8.encode("a\u{1b}[2Jb")), "ab")
-    expect("raw.text keeps the body byte-exact", Api.raw.text(Enc.utf8.encode("a\u{1b}[2Jb")), "a\u{1b}[2Jb")
+    expect("a reply body is clean for a terminal", Api.text(Utf8.encode("a\u{1b}[2Jb")), "ab")
+    expect("raw.text keeps the body byte-exact", Api.raw.text(Utf8.encode("a\u{1b}[2Jb")), "a\u{1b}[2Jb")
     IO.print("raw content")
-    expect("a file printed to a terminal is cleaned", Repo.file.text(Enc.utf8.encode("a\u{1b}[2Jb"), True{}), "ab")
-    expect("a file redirected keeps its bytes", Repo.file.text(Enc.utf8.encode("a\u{1b}[2Jb"), False{}), "a\u{1b}[2Jb")
-    expect("a diff printed to a terminal is cleaned", Diff.diff.text(Enc.utf8.encode("+\u{1b}[32mgreen"), True{}), "+green")
-    expect("a diff redirected keeps its bytes", Diff.diff.text(Enc.utf8.encode("+\u{1b}[32mgreen"), False{}), "+\u{1b}[32mgreen")
+    expect("a file printed to a terminal is cleaned", Repo.file.text(Utf8.encode("a\u{1b}[2Jb"), True{}), "ab")
+    expect("a file redirected keeps its bytes", Repo.file.text(Utf8.encode("a\u{1b}[2Jb"), False{}), "a\u{1b}[2Jb")
+    expect("a diff printed to a terminal is cleaned", Diff.diff.text(Utf8.encode("+\u{1b}[32mgreen"), True{}), "+green")
+    expect("a diff redirected keeps its bytes", Diff.diff.text(Utf8.encode("+\u{1b}[32mgreen"), False{}), "+\u{1b}[32mgreen")
     IO.print("built rows")
     expect("a built run row holds the forge's bytes", Cli.json.row(built.run("a\u{1b}[2Jb"), ["name"]), "{\"name\":\"a\\u001b[2Jb\"}")
     expect("a built run row prints clean", Api.f(built.run("a\u{1b}[2Jb"), "name"), "ab")

@@ -36,6 +36,13 @@ if [ -f PROOF.bend ]; then
     echo "$out" | head -20; echo "✗ PROOF.bend"; exit 1
   fi
 fi
+# chaki's laws sit on pure modules only, so its gate takes no foreign list: exit 0 and
+# ALL PROOFS CHECK, or red. CHAKI_VERDICT=1 rechecks them with the BendTT kernel (needs Lean).
+if out=$("$bend" lib/chaki/PROOF.bend ${CHAKI_VERDICT:+--verdict} 2>&1) && grep -qx 'ALL PROOFS CHECK' <<<"$out"; then
+  echo "✓ lib/chaki/PROOF.bend ($(grep -c '^law ' lib/chaki/LAWS.bend) laws${CHAKI_VERDICT:+, kernel-checked})"
+else
+  echo "$out" | head -20; echo "✗ lib/chaki/PROOF.bend"; exit 1
+fi
 # *_check.bend run offline and must exit 0; *_live.bend talk to real forges, run them by hand
 for t in test/*_check.bend; do
   out=$("$bend" "$t" 2>&1) || { echo "$out" | tail -20; echo "✗ ran $t"; exit 1; }

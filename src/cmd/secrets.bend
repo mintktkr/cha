@@ -4,8 +4,7 @@
 # forge returns one. A failed reply's body can echo it, so the message for a failed
 # `secrets set` is built from the status alone (LAWS.bend, Failed secrets set).
 import Base
-import 0x584fc27920487ceab242392391418d7f/json.bend as Json
-import 0x49814d83de8f70993a43e1002be29ecd/bytes.bend as Bytes
+import ../../lib/chaki/json.bend as Json
 import ../ctx.bend as Ctx
 import ../api.bend as Api
 import ../ui.bend as Ui
@@ -188,11 +187,11 @@ def items.array(xs: List<&2, Map<&2, String>>) -> List<&2, Slot>:
       Con{Slot{x, ""}, items.array(rest)}
 
 # github's wrapper names the total in total_count; gitea's array names no total at all
-def items.gh.page(+kind: String, body: Bytes.Bytes) -> Sheet:
+def items.gh.page(+kind: String, body: List<&2, U32>) -> Sheet:
   +src = Api.obj(body)
   Sheet{items.gh(Api.count(src, kind), 0, kind, src), Api.f(src, "total_count")}
 
-def items.of(f: Ctx.Forge, +kind: String, body: Bytes.Bytes) -> Sheet:
+def items.of(f: Ctx.Forge, +kind: String, body: List<&2, U32>) -> Sheet:
   match f:
     case Ctx.Gitea{}:
       Sheet{items.array(Api.rows(body)), ""}
@@ -274,12 +273,12 @@ def emit(+on: Bool, json: Cli.Json, +kind: String, xs: List<&2, Map<&2, String>>
 # -------
 
 # a reply's body, or the command fails with the forge's error
-def body.ok(+env: Cli.Env, +status: U32, body: Bytes.Bytes, good: Bool) -> IO(Bytes.Bytes):
+def body.ok(+env: Cli.Env, +status: U32, body: List<&2, U32>, good: Bool) -> IO(List<&2, U32>):
   match good:
     case True{}:
-      IO.pure(Bytes.Bytes, body)
+      IO.pure(List<&2, U32>, body)
     case False{}:
-      Cli.fail(Bytes.Bytes, env, Api.message(status, body))
+      Cli.fail(List<&2, U32>, env, Api.message(status, body))
 
 # Pagination
 # ----------
@@ -302,7 +301,7 @@ def page.items(+repo: Ctx.Repo, +org: String, +kind: String, +page: U32, +next: 
       +url : String = page.next(next, list.url(repo, org, kind, (page + 1 : U32)), count, total, Nat.is_eq(got, 0n))
       NextPage{String.is_empty(url), url, count, List.append(&2, Slot, acc, ps)}
 
-def page.of(+f: Ctx.Forge, +repo: Ctx.Repo, +org: String, +kind: String, +page: U32, +next: String, +seen: Nat, body: Bytes.Bytes, acc: List<&2, Slot>) -> Pages:
+def page.of(+f: Ctx.Forge, +repo: Ctx.Repo, +org: String, +kind: String, +page: U32, +next: String, +seen: Nat, body: List<&2, U32>, acc: List<&2, Slot>) -> Pages:
   page.items(repo, org, kind, page, next, seen, items.of(f, kind, body), acc)
 
 def walk(fuel: Nat, +env: Cli.Env, +repo: Ctx.Repo, +tok: String, +org: String, +kind: String, +page: U32, +seen: Nat, st: Pages) -> IO(List<&2, Slot>):
@@ -317,7 +316,7 @@ def walk(fuel: Nat, +env: Cli.Env, +repo: Ctx.Repo, +tok: String, +org: String, 
       Cli.fail(List<&2, Slot>, env, w)
     case 1n+p ReadPage{Api.Reply{+status, +next, body}, acc}:
       do IO<List<&2, Slot>>:
-        b : Bytes.Bytes <- body.ok(env, status, body, Api.ok(status))
+        b : List<&2, U32> <- body.ok(env, status, body, Api.ok(status))
         walk(p, env, repo, tok, org, kind, page, seen, page.of(forge.of(repo), repo, org, kind, page, next, seen, b, acc))
     case 1n+p NextPage{True{}, url, n, acc}:
       IO.pure(List<&2, Slot>, acc)
@@ -346,48 +345,12 @@ def value.need(+env: Cli.Env, +msg: String, given: Bool) -> IO(Unit):
     case False{}:
       Cli.fail(Unit, env, msg)
 
-# a value file over the cap is refused rather than sent cut short, so one byte past the
-# cap is read: a file of exactly the cap still reads whole
-def value.cap() -> U32:
-  1048576
-
-def read.max() -> U32:
-  (value.cap() + 1 : U32)
-
 def stdin.path(+path: String, dash: Bool) -> String:
   match dash:
     case True{}:
       "/dev/stdin"
     case False{}:
       path
-
-def read.text(+env: Cli.Env, +path: String, r: Result<&1, &1, U32 & String, String>) -> IO(String):
-  match r:
-    case Done{s}:
-      IO.pure(String, s)
-    case Fail{e}:
-      Cli.fail(String, env, "can't read " ++ path)
-
-def read.got(+env: Cli.Env, +path: String, r: File & Result<&1, &1, U32 & String, String>) -> IO(String):
-  (f, got) = r
-  do IO<String>:
-    File.close(f)
-    read.text(env, path, got)
-
-def read.open(+env: Cli.Env, +path: String, r: Result<&1, &1, U32 & String, File>) -> IO(String):
-  match r:
-    case Done{f}:
-      do IO<String>:
-        got : File & Result<&1, &1, U32 & String, String> <- File.read(f, read.max())
-        read.got(env, path, got)
-    case Fail{e}:
-      Cli.fail(String, env, "can't read " ++ path)
-
-def read.file(+env: Cli.Env, +path: String, dash: Bool) -> IO(String):
-  do IO<String>:
-    +p : String = stdin.path(path, dash)
-    r : Result<&1, &1, U32 & String, File> <- File.open(p, "r")
-    read.open(env, p, r)
 
 def newline(+c: Char) -> Bool:
   Bool.or(Char.is_eq(c, '\n'), Char.is_eq(c, '\r'))
@@ -413,26 +376,28 @@ def chomp.lead(s: String) -> String:
 def chomp(s: String) -> String:
   String.reverse(chomp.lead(String.reverse(s)))
 
-# whether the text a source read is over the cap: a read String carries one octet per Char,
-# so this counts the bytes the source sent
-def read.over(+s: String) -> Bool:
-  U32.is_gt(Bytes.count(s, 0), value.cap())
-
-# the text a value file held, a trailing newline dropped, or the command failing when the
-# file is over the cap
-def read.checked(+env: Cli.Env, +cmd: String, +s: String, over: Bool) -> IO(String):
-  match over:
-    case True{}:
-      Cli.fail(String, env, cmd ++ ": the value file is over 1 MiB")
-    case False{}:
+# the value a value file held, the trailing newline dropped, or the command failing when
+# it can't be read or is over 1 MiB (the read loop counts octets, so the cap is a byte
+# count and never a count of characters)
+def read.checked(+env: Cli.Env, +cmd: String, +path: String, t: Cli.Text) -> IO(String):
+  match t:
+    case Cli.TextOf{+s}:
       IO.pure(String, chomp(s))
+    case Cli.TextNone{}:
+      Cli.fail(String, env, "can't read " ++ path)
+    case Cli.TextOver{}:
+      Cli.fail(String, env, cmd ++ ": the value file is over 1 MiB")
+
+def read.file(+env: Cli.Env, +cmd: String, +path: String, dash: Bool) -> IO(String):
+  do IO<String>:
+    +p : String = stdin.path(path, dash)
+    t : Cli.Text <- Cli.file.text(p)
+    read.checked(env, cmd, p, t)
 
 def value.of(+env: Cli.Env, +cmd: String, +inline: String, +path: String, from_file: Bool) -> IO(String):
   match from_file:
     case True{}:
-      do IO<String>:
-        +s : String <- read.file(env, path, String.eq(path, "-"))
-        read.checked(env, cmd, s, read.over(s))
+      read.file(env, cmd, path, String.eq(path, "-"))
     case False{}:
       IO.pure(String, inline)
 
@@ -457,7 +422,7 @@ def set.github(+env: Cli.Env) -> IO(Unit):
   Cli.fail(Unit, env, set.github.msg())
 
 def set.body(+value: String) -> Json.Val:
-  Json.Obj{[(Json.utf8("data"), Api.utf8(value))]}
+  Json.Obj{[Json.field("data", Api.utf8(value))]}
 
 # A failed set says why from the status alone. The forge's error body can repeat the
 # value whole, in part, re-cased or escaped, and a control byte in it would only be dropped
@@ -512,10 +477,10 @@ def set.secret.if(+env: Cli.Env, +repo: Ctx.Repo, +tok: String, +on: Bool, +name
 # on the list, and a 409 from either means "it is there already", so the update follows.
 
 def var.body(+name: String, +value: String) -> Json.Val:
-  Json.Obj{[(Json.utf8("name"), Api.utf8(name)), (Json.utf8("value"), Api.utf8(value))]}
+  Json.Obj{[Json.field("name", Api.utf8(name)), Json.field("value", Api.utf8(value))]}
 
 def var.value.body(+value: String) -> Json.Val:
-  Json.Obj{[(Json.utf8("value"), Api.utf8(value))]}
+  Json.Obj{[Json.field("value", Api.utf8(value))]}
 
 def var.create(f: Ctx.Forge, +repo: Ctx.Repo, +tok: String, +org: String, +name: String, +value: String) -> IO(Api.Reply):
   match f:
@@ -534,10 +499,10 @@ def var.update(f: Ctx.Forge, +repo: Ctx.Repo, +tok: String, +org: String, +name:
 def var.done(+on: Bool, +name: String) -> IO(Unit):
   Ui.done(on, "set variable " ++ name)
 
-def var.fail(+env: Cli.Env, +status: U32, body: Bytes.Bytes) -> IO(Unit):
+def var.fail(+env: Cli.Env, +status: U32, body: List<&2, U32>) -> IO(Unit):
   Cli.fail(Unit, env, Api.message(status, body))
 
-def var.again(+env: Cli.Env, +on: Bool, +name: String, +status: U32, body: Bytes.Bytes, good: Bool) -> IO(Unit):
+def var.again(+env: Cli.Env, +on: Bool, +name: String, +status: U32, body: List<&2, U32>, good: Bool) -> IO(Unit):
   match good:
     case True{}:
       var.done(on, name)
@@ -557,7 +522,7 @@ def var.retry(+env: Cli.Env, +repo: Ctx.Repo, +tok: String, +org: String, +on: B
     var.retried(env, r, on, name)
 
 # what the forging attempt came back with: set, taken already, or an error
-def var.taken.if(+env: Cli.Env, +repo: Ctx.Repo, +tok: String, +org: String, +on: Bool, +name: String, +value: String, +status: U32, body: Bytes.Bytes, taken: Bool) -> IO(Unit):
+def var.taken.if(+env: Cli.Env, +repo: Ctx.Repo, +tok: String, +org: String, +on: Bool, +name: String, +value: String, +status: U32, body: List<&2, U32>, taken: Bool) -> IO(Unit):
   match taken:
     case True{}:
       var.retry(env, repo, tok, org, on, name, value)
@@ -565,14 +530,14 @@ def var.taken.if(+env: Cli.Env, +repo: Ctx.Repo, +tok: String, +org: String, +on
       var.fail(env, status, body)
 
 # what a first attempt came back with: set, taken already, or an error
-def var.out.match(+env: Cli.Env, +repo: Ctx.Repo, +tok: String, +org: String, +on: Bool, +name: String, +value: String, +status: U32, body: Bytes.Bytes, taken: Bool, good: Bool) -> IO(Unit):
+def var.out.match(+env: Cli.Env, +repo: Ctx.Repo, +tok: String, +org: String, +on: Bool, +name: String, +value: String, +status: U32, body: List<&2, U32>, taken: Bool, good: Bool) -> IO(Unit):
   match good:
     case True{}:
       var.done(on, name)
     case False{}:
       var.taken.if(env, repo, tok, org, on, name, value, status, body, taken)
 
-def var.result(+env: Cli.Env, +repo: Ctx.Repo, +tok: String, +org: String, +on: Bool, +name: String, +value: String, +status: U32, body: Bytes.Bytes) -> IO(Unit):
+def var.result(+env: Cli.Env, +repo: Ctx.Repo, +tok: String, +org: String, +on: Bool, +name: String, +value: String, +status: U32, body: List<&2, U32>) -> IO(Unit):
   var.out.match(env, repo, tok, org, on, name, value, status, body, U32.is_eq(status, 409), Api.ok(status))
 
 def var.check(+env: Cli.Env, r: Api.Reply, +repo: Ctx.Repo, +tok: String, +org: String, +on: Bool, +name: String, +value: String) -> IO(Unit):
@@ -627,7 +592,7 @@ def guard(+env: Cli.Env, +cmd: String, +what: String, +name: String, yes: Bool) 
 def deleted(+on: Bool, +what: String, +name: String) -> IO(Unit):
   Ui.done(on, "deleted " ++ what ++ " " ++ name)
 
-def delete.result(+env: Cli.Env, +on: Bool, +what: String, +name: String, +status: U32, body: Bytes.Bytes, good: Bool) -> IO(Unit):
+def delete.result(+env: Cli.Env, +on: Bool, +what: String, +name: String, +status: U32, body: List<&2, U32>, good: Bool) -> IO(Unit):
   match good:
     case True{}:
       deleted(on, what, name)

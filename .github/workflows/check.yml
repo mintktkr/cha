@@ -28,11 +28,6 @@ jobs:
           echo "$BEND_SHA256  /tmp/$name" | sha256sum -c -
           tar -xzf "/tmp/$name" -C "$HOME"
           echo "BEND=$HOME/bend/bin/bend" >> "$GITHUB_ENV"
-      - uses: actions/cache@v4
-        with:
-          path: ~/.bend/lib
-          key: bend-hub-${{ hashFiles('**/*.bend') }}
-          restore-keys: bend-hub-
       - run: scripts/check.sh
 
   # the native lane has limits the JS lane doesn't (a def wider than 247 words fails
@@ -55,11 +50,6 @@ jobs:
             "https://github.com/bendlang/bend/releases/download/v$BEND_VERSION/$name"
           echo "$BEND_SHA256  /tmp/$name" | sha256sum -c -
           tar -xzf "/tmp/$name" -C "$HOME"
-      - uses: actions/cache@v4
-        with:
-          path: ~/.bend/lib
-          key: bend-hub-${{ hashFiles('**/*.bend') }}
-          restore-keys: bend-hub-
       - name: build
         run: |
           mkdir -p out

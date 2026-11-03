@@ -2,8 +2,8 @@
 # secret and its URL out of every row, the id check and the --yes wording. No network.
 # Run: bend test/hooks_check.bend
 import Base
-import 0x584fc27920487ceab242392391418d7f/json.bend as Json
-import 0x49814d83de8f70993a43e1002be29ecd/bytes.bend as Bytes
+import ../lib/chaki/utf8.bend as Utf8
+import ../lib/chaki/json.bend as Json
 import ../src/ctx.bend as Ctx
 import ../src/cli.bend as Cli
 import ../src/api.bend as Api
@@ -46,13 +46,13 @@ def leaky.hook() -> String:
   "{\"id\":3,\"active\":true,\"events\":[\"push\"],\"config\":{\"content_type\":\"json\",\"url\":\"https://x.example/hook\",\"secret\":\"s3cr3t\"},\"metadata\":{\"token\":\"t0ken\"}}"
 
 def body.text(v: Json.Val) -> String:
-  Api.raw.text(Json.encode.bytes(v))
+  (Json.encode(v))
 
 def gh.row() -> Map<&2, String>:
-  Hook.hook.row(Api.obj(Bytes.from_string(gh.hook())))
+  Hook.hook.row(Api.obj(Utf8.encode(gh.hook())))
 
 def gitea.row() -> Map<&2, String>:
-  Hook.hook.row(Api.obj(Bytes.from_string(gitea.hook())))
+  Hook.hook.row(Api.obj(Utf8.encode(gitea.hook())))
 
 def row.check(+row: Map<&2, String>) -> IO(Unit):
   do IO<Unit>:
@@ -81,19 +81,19 @@ def url.check() -> IO(Unit):
 # the recursive row mapping shows every hook redacted, not just the first
 def rows.check() -> IO(Unit):
   do IO<Unit>:
-    +xs : List<&2, Map<&2, String>> = [Api.obj(Bytes.from_string(gh.hook())), Api.obj(Bytes.from_string(leaky.hook()))]
+    +xs : List<&2, Map<&2, String>> = [Api.obj(Utf8.encode(gh.hook())), Api.obj(Utf8.encode(leaky.hook()))]
     expect(Hook.lines(False{}, Hook.rows.of(xs)), "#12  https://hooks.example/…  push,pull_request  active  json\n#3  https://x.example/…  push  active  json\n")
 
 # the secret is gone from the flattened reply, and the fields next to it stay
 def redact.check() -> IO(Unit):
   do IO<Unit>:
-    +leak : Map<&2, String> = Api.obj(Bytes.from_string(leaky.hook()))
+    +leak : Map<&2, String> = Api.obj(Utf8.encode(leaky.hook()))
     +red : Map<&2, String> = Hooks.row.redact(leak)
     expect(Api.raw.f(red, "config.secret"), "")
     expect(Api.raw.f(red, "metadata.token"), "")
     expect(Api.raw.f(red, "config.url"), "https://x.example/hook")
     expect(Api.raw.f(red, "config.content_type"), "json")
-    +gh : Map<&2, String> = Api.obj(Bytes.from_string(gh.hook()))
+    +gh : Map<&2, String> = Api.obj(Utf8.encode(gh.hook()))
     +masked : Map<&2, String> = Hooks.row.redact(gh)
     expect(Api.raw.f(masked, "config.secret"), "")
 

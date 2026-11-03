@@ -19,7 +19,6 @@ sha256sums_aarch64=('71b43e1bb9313dd14ac2b0553b854e41c39d65ecaa47040796ebff4a46f
 
 build() {
   cd cha
-  # bend fetches the hub packages main.bend imports, checked against their hashes
   "$srcdir/bend/bin/bend" main.bend -o cha
 }
 

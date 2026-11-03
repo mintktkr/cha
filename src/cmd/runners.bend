@@ -1,6 +1,5 @@
 # cha runners: self-hosted runners at the repo, org, user or site scope, and deleting one.
 import Base
-import 0x49814d83de8f70993a43e1002be29ecd/bytes.bend as Bytes
 import ../ctx.bend as Ctx
 import ../api.bend as Api
 import ../ui.bend as Ui
@@ -239,7 +238,7 @@ def page.next(+next: String, +fallback: String, +seen: Nat, +total: String, empt
   Ctx.or(next, Ctx.or.if(fallback, "", empty || Bool.not(Nat.is_gt(Api.count.of(U32.read(total)), seen))))
 
 # a failed admin-scoped request is usually a token that isn't a site admin
-def error.admin(+status: U32, body: Bytes.Bytes, forbidden: Bool) -> String:
+def error.admin(+status: U32, body: List<&2, U32>, forbidden: Bool) -> String:
   match forbidden:
     case True{}:
       "HTTP 403: admin runners need a site-admin token"
@@ -247,7 +246,7 @@ def error.admin(+status: U32, body: Bytes.Bytes, forbidden: Bool) -> String:
       Api.message(status, body)
 
 # the message a failed request prints
-def error.of(scope: Scope, +status: U32, body: Bytes.Bytes) -> String:
+def error.of(scope: Scope, +status: U32, body: List<&2, U32>) -> String:
   match scope:
     case Admin{}:
       error.admin(status, body, U32.is_eq(status, 403))
@@ -255,19 +254,19 @@ def error.of(scope: Scope, +status: U32, body: Bytes.Bytes) -> String:
       Api.message(status, body)
 
 # a reply's body, or the command fails with the forge's error
-def ok.body(+env: Cli.Env, scope: Scope, +status: U32, body: Bytes.Bytes, good: Bool) -> IO(Bytes.Bytes):
+def ok.body(+env: Cli.Env, scope: Scope, +status: U32, body: List<&2, U32>, good: Bool) -> IO(List<&2, U32>):
   match good:
     case True{}:
-      IO.pure(Bytes.Bytes, body)
+      IO.pure(List<&2, U32>, body)
     case False{}:
-      Cli.fail(Bytes.Bytes, env, error.of(scope, status, body))
+      Cli.fail(List<&2, U32>, env, error.of(scope, status, body))
 
 type Pages is Type:
   FetchRunners{url: String, acc: List<&2, Map<&2, String>>}
   ReadRunners{reply: Api.Reply, acc: List<&2, Map<&2, String>>}
   NextRunners{done: Bool, url: String, seen: Nat, acc: List<&2, Map<&2, String>>}
 
-def page.of(+repo: Ctx.Repo, scope: Scope, +page: U32, +next: String, +seen: Nat, body: Bytes.Bytes, acc: List<&2, Map<&2, String>>) -> Pages:
+def page.of(+repo: Ctx.Repo, scope: Scope, +page: U32, +next: String, +seen: Nat, body: List<&2, U32>, acc: List<&2, Map<&2, String>>) -> Pages:
   +src = Api.obj(body)
   +rows = rows.of(src)
   +count = Nat.add(seen, List.length(&2, Map<&2, String>, rows))
@@ -286,7 +285,7 @@ def walk(fuel: Nat, +env: Cli.Env, +repo: Ctx.Repo, +tok: String, +scope: Scope,
       Cli.fail(List<&2, Map<&2, String>>, env, w)
     case 1n+p ReadRunners{Api.Reply{+status, +next, body}, acc}:
       do IO<List<&2, Map<&2, String>>>:
-        b : Bytes.Bytes <- ok.body(env, scope, status, body, Api.ok(status))
+        b : List<&2, U32> <- ok.body(env, scope, status, body, Api.ok(status))
         walk(p, env, repo, tok, scope, page, seen, page.of(repo, scope, page, next, seen, b, acc))
     case 1n+p NextRunners{True{}, url, n, acc}:
       IO.pure(List<&2, Map<&2, String>>, acc)
@@ -324,7 +323,7 @@ def id.need(+env: Cli.Env, +id: String) -> IO(Unit):
     Cli.check.if(env, "runners delete: a runner ID is required", Bool.not(String.is_empty(id)))
     Cli.check.if(env, "runners delete: a runner ID is digits only, got '" ++ id ++ "'", digits(id))
 
-def delete.reply.at(+env: Cli.Env, +on: Bool, scope: Scope, +id: String, +status: U32, body: Bytes.Bytes, good: Bool) -> IO(Unit):
+def delete.reply.at(+env: Cli.Env, +on: Bool, scope: Scope, +id: String, +status: U32, body: List<&2, U32>, good: Bool) -> IO(Unit):
   match good:
     case True{}:
       Ui.done(on, "deleted runner " ++ id)

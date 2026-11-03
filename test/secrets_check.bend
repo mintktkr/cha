@@ -1,10 +1,22 @@
 import Base
-import 0x584fc27920487ceab242392391418d7f/json.bend as Json
-import 0x49814d83de8f70993a43e1002be29ecd/bytes.bend as Bytes
+import ../lib/chaki/utf8.bend as Utf8
+import ../lib/chaki/json.bend as Json
 import ../src/ctx.bend as Ctx
 import ../src/cli.bend as Cli
 import ../src/api.bend as Api
 import ../src/cmd/secrets.bend as Secrets
+
+
+# a string of n characters, for the size cap
+def fill.go(n: Nat, acc: String) -> String:
+  match n:
+    case 0n:
+      acc
+    case 1n+k:
+      fill.go(k, SCon{Chr{97}, acc})
+
+def fill(n: Nat) -> String:
+  fill.go(n, SNil{})
 
 def expect.if(+got: String, +want: String, same: Bool) -> IO(Unit):
   match same:
@@ -47,10 +59,10 @@ def gitea_repo() -> Ctx.Repo:
 
 # A Gitea page is an array of items, one map each; a GitHub page is a wrapper with the
 # list inside it. Both go through the same row builder.
-def page_gitea(+repo: Ctx.Repo, +kind: String, body: Bytes.Bytes) -> List<&2, Map<&2, String>>:
+def page_gitea(+repo: Ctx.Repo, +kind: String, body: List<&2, U32>) -> List<&2, Map<&2, String>>:
   Secrets.rows.of(Secrets.forge.of(repo), kind, Secrets.items.array(Api.rows(body)))
 
-def page_gh(+repo: Ctx.Repo, +kind: String, body: Bytes.Bytes) -> List<&2, Map<&2, String>>:
+def page_gh(+repo: Ctx.Repo, +kind: String, body: List<&2, U32>) -> List<&2, Map<&2, String>>:
   +src : Map<&2, String> = Api.obj(body)
   Secrets.rows.of(Secrets.forge.of(repo), kind, Secrets.items.gh(Api.count(src, kind), 0, kind, src))
 
@@ -117,7 +129,7 @@ def check_names() -> IO(Unit):
 
 # the body as the request sends it, byte for byte
 def body.text(v: Json.Val) -> String:
-  Bytes.to_string(Json.encode.bytes(v))
+  (Json.encode(v))
 
 def check_bodies() -> IO(Unit):
   do IO<Unit>:
@@ -153,10 +165,10 @@ def check_value() -> IO(Unit):
     +blank : String = Cli.flag(["--value", ""], "--value", "")
     expect(yes_no(Secrets.value.given(blank, "")), "no")
     expect(Secrets.value.msg("secrets set"), "secrets set: a value is required, from --value or --value-file")
-    expect(yes_no(Secrets.read.over("s3cret")), "no")
+    expect(yes_no(Cli.text.over(6, Cli.file.cap())), "no")
+    expect(yes_no(Cli.text.over(1048576, Cli.file.cap())), "no")
+    expect(yes_no(Cli.text.over(1048577, Cli.file.cap())), "yes")
     # a value file of exactly the cap fits; one byte more is refused, not sent cut short
-    expect(yes_no(Secrets.read.over(Bytes.to_string(Bytes.new(1048576)))), "no")
-    expect(yes_no(Secrets.read.over(Bytes.to_string(Bytes.new(1048577)))), "yes")
 
 
 def check_guard() -> IO(Unit):
@@ -192,10 +204,10 @@ def main() -> IO(Unit):
     expect(Nat.show(Secrets.index(Secrets.names(), "set", 0n)), "1")
     expect(Nat.show(Secrets.index(Secrets.names(), "delete", 0n)), "2")
     expect(Nat.show(Secrets.index(Secrets.names(), "nope", 0n)), "3")
-    check_secrets_gh(page_gh(gh_repo(), "secrets", Bytes.from_string(gh_secrets())))
-    check_secrets_gitea(page_gitea(gitea_repo(), "secrets", Bytes.from_string(gitea_secrets())))
-    check_variables_gh(page_gh(gh_repo(), "variables", Bytes.from_string(gh_variables())))
-    check_variables_gitea(page_gitea(gitea_repo(), "variables", Bytes.from_string(gitea_variables())))
+    check_secrets_gh(page_gh(gh_repo(), "secrets", Utf8.encode(gh_secrets())))
+    check_secrets_gitea(page_gitea(gitea_repo(), "secrets", Utf8.encode(gitea_secrets())))
+    check_variables_gh(page_gh(gh_repo(), "variables", Utf8.encode(gh_variables())))
+    check_variables_gitea(page_gitea(gitea_repo(), "variables", Utf8.encode(gitea_variables())))
     check_names()
     check_bodies()
     check_set_why()

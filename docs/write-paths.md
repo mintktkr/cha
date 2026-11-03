@@ -73,7 +73,7 @@ On GitHub, an issue and a pull request share one number sequence: the first PR i
 **2026-10-03, github.com, cha main at 20fe816 + b372bf9, native build.** Everything in the table passed except:
 
 - #17: `runs dispatch` names the wrong run (the dispatch itself works).
-- #18: `release upload` fails with `HTTP 400: Bad Content-Length`. bend-kit's HTTP/2 client sends no `content-length`, so this needs an upstream fix.
+- #18: `release upload` fails with `HTTP 400: Bad Content-Length`. bend-kit's HTTP/2 client sends no `content-length`, so this needs an upstream fix. (2026-11-03: chaki's HTTP/1.1 writer always sends it, so #24 removes the cause; the row needs a re-run.)
 - #19: `issue labels add` creates an unknown label.
 - #20: `pr comment` accepts an issue number; merging a merged PR says nothing.
 - #21: `runs view` doesn't show the attempt, so a rerun has to be checked through the API.

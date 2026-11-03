@@ -2,7 +2,7 @@
 # mirror URL can carry, and the sentences the command prints instead of the forge's bare
 # 400. Run: bend test/mirror_check.bend
 import Base
-import 0x49814d83de8f70993a43e1002be29ecd/bytes.bend as Bytes
+import ../lib/chaki/utf8.bend as Utf8
 import ../src/ctx.bend as Ctx
 import ../src/api.bend as Api
 import ../src/cli.bend as Cli
@@ -51,10 +51,10 @@ def push.json() -> String:
   "[{\"remote_address\":\"https://x:SECRET@other.example/sample/repo.git\",\"interval\":\"8h0m0s\",\"last_update\":\"2026-01-02T03:04:05Z\",\"last_error\":\"\"},{\"remote_address\":\"https://third.example/sample/repo.git\",\"interval\":\"24h0m0s\",\"last_update\":\"\",\"last_error\":\"dial tcp: connection refused\"}]"
 
 def pulls(+s: String) -> List<&2, Map<&2, String>>:
-  Mirror.pull.rows(Api.obj(Bytes.from_string(s)))
+  Mirror.pull.rows(Api.obj(Utf8.encode(s)))
 
 def pushes(+s: String) -> List<&2, Map<&2, String>>:
-  Mirror.push.rows(Api.rows(Bytes.from_string(s)))
+  Mirror.push.rows(Api.rows(Utf8.encode(s)))
 
 def all.pulls() -> List<&2, Map<&2, String>>:
   pulls(pull.json())
@@ -131,7 +131,7 @@ def denied.check() -> IO(Unit):
     expect(Bool.pick(String, Mirror.denied(401), "denied", "other"), "denied")
     expect(Bool.pick(String, Mirror.denied(403), "denied", "other"), "denied")
     expect(Bool.pick(String, Mirror.denied(500), "denied", "other"), "other")
-    +no : List<&2, Map<&2, String>> <- Mirror.push.read.if(env(), False{}, 403, Bytes.from_string(""), False{})
+    +no : List<&2, Map<&2, String>> <- Mirror.push.read.if(env(), False{}, 403, Utf8.encode(""), False{})
     expect(Nat.show(List.length(&2, Map<&2, String>, no)), "0")
     expect(Mirror.status.text(False{}, True{}, all.pulls()), "pull mirror  https://upstream.example/sample/repo.git  every 8h0m0s  updated 2026-01-02T03:04:05Z\n")
     expect(Mirror.status.text(False{}, False{}, Nil{}), "not a pull mirror\n")

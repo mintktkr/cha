@@ -1,6 +1,5 @@
 # cha packages: a forge's packages and their versions, and deleting one version.
 import Base
-import 0x49814d83de8f70993a43e1002be29ecd/bytes.bend as Bytes
 import ../ctx.bend as Ctx
 import ../api.bend as Api
 import ../ui.bend as Ui
@@ -246,7 +245,7 @@ def hint(+f: Ctx.Forge, +status: U32) -> String:
     case Ctx.GitHub{}:
       Bool.pick(String, Bool.or(U32.is_eq(status, 401), U32.is_eq(status, 403)), "; GitHub packages need a token with read:packages", "")
 
-def message.of(+q: Query, +status: U32, body: Bytes.Bytes) -> String:
+def message.of(+q: Query, +status: U32, body: List<&2, U32>) -> String:
   match q:
     case Query{f, s, o, k, w}:
       Api.message(status, body) ++ hint(f, status)
@@ -260,7 +259,7 @@ def message.of(+q: Query, +status: U32, body: Bytes.Bytes) -> String:
 def scope.kind(+kind: String) -> String:
   Bool.pick(String, String.eq(kind, "Organization"), "orgs/", "users/")
 
-def scope.if(+status: U32, body: Bytes.Bytes, good: Bool) -> String:
+def scope.if(+status: U32, body: List<&2, U32>, good: Bool) -> String:
   match good:
     case True{}:
       scope.kind(Api.f(Api.obj(body), "type"))
@@ -300,7 +299,7 @@ def read.rows(+q: Query, +page: U32, acc: List<&2, Map<&2, String>>, +next: Stri
   +url : String = next.url(next, full.page(q, got), url.of(q, (page + 1 : U32)))
   read.done(List.append(&2, Map<&2, String>, acc, got), url, String.is_empty(url))
 
-def read.state(+q: Query, +page: U32, acc: List<&2, Map<&2, String>>, +status: U32, +next: String, body: Bytes.Bytes, good: Bool) -> Pg:
+def read.state(+q: Query, +page: U32, acc: List<&2, Map<&2, String>>, +status: U32, +next: String, body: List<&2, U32>, good: Bool) -> Pg:
   match good:
     case True{}:
       read.rows(q, page, acc, next, Api.rows(body))
@@ -398,7 +397,7 @@ def json.check(+env: Cli.Env, j: Cli.Json) -> IO(Unit):
     case x:
       IO.pure(Unit, Unit{})
 
-def remove.status(+env: Cli.Env, +name: String, +version: String, +status: U32, body: Bytes.Bytes, good: Bool) -> IO(Unit):
+def remove.status(+env: Cli.Env, +name: String, +version: String, +status: U32, body: List<&2, U32>, good: Bool) -> IO(Unit):
   match good:
     case True{}:
       deleted(env, name, version)

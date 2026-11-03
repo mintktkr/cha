@@ -1,6 +1,6 @@
 # offline checks for the packages command's pure pieces: URLs, rows and the delete guard.
 import Base
-import 0x49814d83de8f70993a43e1002be29ecd/bytes.bend as Bytes
+import ../lib/chaki/utf8.bend as Utf8
 import ../src/ctx.bend as Ctx
 import ../src/cli.bend as Cli
 import ../src/api.bend as Api
@@ -54,7 +54,7 @@ def q.github.versions() -> Packages.Query:
   Packages.Query{Ctx.GitHub{}, "orgs/", "sample", "container", Packages.Versions{"cha"}}
 
 def rows.of(+src: String, +q: Packages.Query) -> List<&2, Map<&2, String>>:
-  Packages.rows.of(Api.rows(Bytes.from_string(src)), q)
+  Packages.rows.of(Api.rows(Utf8.encode(src)), q)
 
 def one(xs: List<&2, Map<&2, String>>) -> Map<&2, String>:
   match xs:
@@ -154,10 +154,10 @@ def unauthorized() -> String:
 
 def error.check() -> IO(Unit):
   do IO<Unit>:
-    expect(Packages.message.of(q.github.list(), 401, Bytes.from_string(unauthorized())), "HTTP 401: Bad credentials; GitHub packages need a token with read:packages")
-    expect(Packages.message.of(q.github.list(), 403, Bytes.from_string(unauthorized())), "HTTP 403: Bad credentials; GitHub packages need a token with read:packages")
-    expect(Packages.message.of(q.gitea.list(), 401, Bytes.from_string(unauthorized())), "HTTP 401: Bad credentials")
-    expect(Packages.message.of(q.github.list(), 404, Bytes.from_string(unauthorized())), "HTTP 404: Bad credentials")
+    expect(Packages.message.of(q.github.list(), 401, Utf8.encode(unauthorized())), "HTTP 401: Bad credentials; GitHub packages need a token with read:packages")
+    expect(Packages.message.of(q.github.list(), 403, Utf8.encode(unauthorized())), "HTTP 403: Bad credentials; GitHub packages need a token with read:packages")
+    expect(Packages.message.of(q.gitea.list(), 401, Utf8.encode(unauthorized())), "HTTP 401: Bad credentials")
+    expect(Packages.message.of(q.github.list(), 404, Utf8.encode(unauthorized())), "HTTP 404: Bad credentials")
 
 def main() -> IO(Unit):
   do IO<Unit>:

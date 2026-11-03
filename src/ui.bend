@@ -1,7 +1,7 @@
 # ui: the palette, the colour decision and styled text. Every style takes `on`, the colour
 # decision, so piped output stays plain and tests need no terminal.
 import Base
-import 0xd60fd658d4bdabf892f8041a7a731848/tty.bend as Tty
+import ../lib/chaki/sys.bend as Sys
 import ./ctx.bend as Ctx
 import ./clean.bend as Clean
 
@@ -23,17 +23,26 @@ def mint() -> Rgb:
 def lavender() -> Rgb:
   Rgb{214, 127, 232}
 
-# colour when stdout is a terminal, NO_COLOR is unset and TERM isn't dumb
-def color() -> IO(Bool):
-  do IO<Bool>:
-    tty : Bool <- Tty.color_enabled()
-    term : String <- Ctx.env("TERM")
-    return tty && Bool.not(String.eq(term, "dumb"))
-
 # stdout is a terminal, whatever colour is doing. A decision about style takes the colour
 # flag; a decision about safety (whether raw bytes may reach a terminal) takes this one.
 def tty() -> IO(Bool):
-  Tty.stdout_tty()
+  Sys.isatty(1)
+
+# whether NO_COLOR is set at all: set and empty still turns colour off
+def no_color.of(r: Result<&1, &1, U32 & String, String>) -> Bool:
+  match r:
+    case Done{s}:
+      True{}
+    case Fail{e}:
+      False{}
+
+# colour when stdout is a terminal, NO_COLOR is unset and TERM isn't dumb
+def color() -> IO(Bool):
+  do IO<Bool>:
+    tty : Bool <- tty()
+    no : Result<&1, &1, U32 & String, String> <- IO.get_env("NO_COLOR")
+    term : String <- Ctx.env("TERM")
+    return tty && Bool.not(no_color.of(no)) && Bool.not(String.eq(term, "dumb"))
 
 def esc(code: String) -> String:
   "\u{1b}[" ++ code ++ "m"

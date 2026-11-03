@@ -1,10 +1,10 @@
 # cha release: list, view, latest, create, upload.
 import Base
-import 0x584fc27920487ceab242392391418d7f/json.bend as Json
-import 0x49814d83de8f70993a43e1002be29ecd/bytes.bend as Bytes
-import 0xcfc8be7b076f41f95c8e118383892d55/encoding.bend as Enc
-import 0x3bfb4ae4d3b87b90f01bfcd298211455/time.bend as Time
-import 0x4eed9d7ac6ece61523d747a9d804e4f0/int.bend as Int
+import ../../lib/chaki/json.bend as Json
+import ../../lib/chaki/bytes.bend as Bytes
+import ../../lib/chaki/utf8.bend as Utf8
+import ../../lib/chaki/sys.bend as Sys
+import ../../lib/chaki/http1.bend as Http1
 import ../ctx.bend as Ctx
 import ../api.bend as Api
 import ../ui.bend as Ui
@@ -15,17 +15,17 @@ import ../url.bend as Url
 # -------
 
 # the reply's body when the status was ok, failing the command otherwise
-def body.of(+env: Cli.Env, +status: U32, body: Bytes.Bytes, good: Bool) -> IO(Bytes.Bytes):
+def body.of(+env: Cli.Env, +status: U32, body: List<&2, U32>, good: Bool) -> IO(List<&2, U32>):
   match good:
     case True{}:
-      IO.pure(Bytes.Bytes, body)
+      IO.pure(List<&2, U32>, body)
     case False{}:
-      Cli.fail(Bytes.Bytes, env, Api.message(status, body))
+      Cli.fail(List<&2, U32>, env, Api.message(status, body))
 
-def body.reply(+env: Cli.Env, r: Api.Reply) -> IO(Bytes.Bytes):
+def body.reply(+env: Cli.Env, r: Api.Reply) -> IO(List<&2, U32>):
   match r:
     case Api.Broke{why}:
-      Cli.fail(Bytes.Bytes, env, why)
+      Cli.fail(List<&2, U32>, env, why)
     case Api.Reply{+status, +next, body}:
       body.of(env, status, body, Api.ok(status))
 
@@ -184,12 +184,24 @@ def view.out(+on: Bool, json: Cli.Json, +x: Map<&2, String>) -> IO(Unit):
 def latest.of(+tag: String) -> Bool:
   Bool.or(String.is_empty(tag), String.eq(tag, "latest"))
 
+# a tag keeps its slashes in the rest of releases/tags/, so its name is encoded as a path
+def tag.path(+tag: String) -> String:
+  "releases/tags/" ++ Url.encode.path(tag)
+
+# a tag with a . or .. segment would name another endpoint, so it is refused
+def tag.msg(+cmd: String, ok: Bool) -> String:
+  match ok:
+    case True{}:
+      ""
+    case False{}:
+      cmd ++ ": a tag can't have . or .. segments"
+
 def view.url(+tag: String, latest: Bool) -> String:
   match latest:
     case True{}:
       "releases/latest"
     case False{}:
-      "releases/tags/" ++ tag
+      tag.path(tag)
 
 def view(+env: Cli.Env) -> IO(Unit):
   match env:
@@ -197,8 +209,10 @@ def view(+env: Cli.Env) -> IO(Unit):
       do IO<Unit>:
         Cli.check(env, "release view", args, ["--json"])
         +tag : String = Cli.arg(args, 1n)
+        +ok : Bool = Bool.or(latest.of(tag), Url.encode.path.ok(tag))
+        Cli.check.if(env, tag.msg("release view", ok), ok)
         r : Api.Reply <- Api.get(repo, tok, Api.path(repo, view.url(tag, latest.of(tag))))
-        b : Bytes.Bytes <- body.reply(env, r)
+        b : List<&2, U32> <- body.reply(env, r)
         view.out(on, json, release.row(Api.obj(b)))
 
 # latest
@@ -220,7 +234,7 @@ def latest(+env: Cli.Env) -> IO(Unit):
       do IO<Unit>:
         Cli.check(env, "release latest", args, ["--json"])
         r : Api.Reply <- Api.get(repo, tok, Api.path(repo, "releases/latest"))
-        b : Bytes.Bytes <- body.reply(env, r)
+        b : List<&2, U32> <- body.reply(env, r)
         latest.out(on, json, release.row(Api.obj(b)))
 
 # create
@@ -260,35 +274,22 @@ def create.tag(+env: Cli.Env, +tag: String, empty: Bool) -> IO(String):
     case False{}:
       IO.pure(String, tag)
 
-# a read result as its text, or the command fails
-def read.text(+env: Cli.Env, +path: String, r: Result<&1, &1, U32 & String, String>) -> IO(String):
-  match r:
-    case Done{s}:
+# a source read as text, or the command failing when it can't be read or is over 1 MiB
+def read.text(+env: Cli.Env, +path: String, t: Cli.Text) -> IO(String):
+  match t:
+    case Cli.TextOf{+s}:
       IO.pure(String, s)
-    case Fail{e}:
+    case Cli.TextNone{}:
       Cli.fail(String, env, "can't read " ++ path)
+    case Cli.TextOver{}:
+      Cli.fail(String, env, path ++ " is over 1 MiB")
 
-def read.got(+env: Cli.Env, +path: String, r: File & Result<&1, &1, U32 & String, String>) -> IO(String):
-  (f, got) = r
-  do IO<String>:
-    File.close(f)
-    read.text(env, path, got)
-
-def read.open(+env: Cli.Env, +path: String, r: Result<&1, &1, U32 & String, File>) -> IO(String):
-  match r:
-    case Done{f}:
-      do IO<String>:
-        got : File & Result<&1, &1, U32 & String, String> <- File.read(f, 1048576)
-        read.got(env, path, got)
-    case Fail{e}:
-      Cli.fail(String, env, "can't read " ++ path)
-
-# a file's text, failing the command when it cannot be read; "-" means stdin
+# a file's text; "-" means stdin
 def read.file(+env: Cli.Env, +path: String, dash: Bool) -> IO(String):
   do IO<String>:
     +p : String = Ctx.or.if(path, "/dev/stdin", dash)
-    r : Result<&1, &1, U32 & String, File> <- File.open(p, "r")
-    read.open(env, p, r)
+    t : Cli.Text <- Cli.file.text(p)
+    read.text(env, p, t)
 
 def notes.file(+env: Cli.Env, +path: String, empty: Bool) -> IO(String):
   match empty:
@@ -305,18 +306,18 @@ def notes.of(+env: Cli.Env, +notes: String, +path: String, from_file: Bool) -> I
     case False{}:
       IO.pure(String, notes)
 
-def kv.text(kvs: List<&1, Bytes.Bytes & Json.Val>, +k: String, +v: String, keep: Bool) -> List<&1, Bytes.Bytes & Json.Val>:
+def kv.text(kvs: List<&2, Json.Val>, +k: String, +v: String, keep: Bool) -> List<&2, Json.Val>:
   match keep:
     case True{}:
-      Con{(Json.utf8(k), Api.utf8(v)), kvs}
+      Con{Json.field(k, Api.utf8(v)), kvs}
     case False{}:
       kvs
 
-def kv.flag(kvs: List<&1, Bytes.Bytes & Json.Val>, +k: String, on: Bool) -> List<&1, Bytes.Bytes & Json.Val>:
-  Con{(Json.utf8(k), Json.Flag{on}), kvs}
+def kv.flag(kvs: List<&2, Json.Val>, +k: String, on: Bool) -> List<&2, Json.Val>:
+  Con{Json.field(k, Json.Flag{on}), kvs}
 
-def create.kvs(+tag: String, +title: String, +notes: String, +target: String, draft: Bool, pre: Bool) -> List<&1, Bytes.Bytes & Json.Val>:
-  k0 : List<&1, Bytes.Bytes & Json.Val> = Con{(Json.utf8("tag_name"), Api.utf8(tag)), Nil{}}
+def create.kvs(+tag: String, +title: String, +notes: String, +target: String, draft: Bool, pre: Bool) -> List<&2, Json.Val>:
+  k0 : List<&2, Json.Val> = Con{Json.field("tag_name", Api.utf8(tag)), Nil{}}
   k1 = kv.text(k0, "name", title, Bool.not(String.is_empty(title)))
   k2 = kv.text(k1, "body", notes, Bool.not(String.is_empty(notes)))
   k3 = kv.text(k2, "target_commitish", target, Bool.not(String.is_empty(target)))
@@ -328,7 +329,7 @@ def create.body(+tag: String, +title: String, +notes: String, +target: String, d
 def create.send(+env: Cli.Env, +repo: Ctx.Repo, +tok: String, +tag: String, +title: String, +notes: String, draft: Bool, pre: Bool, +target: String) -> IO(Unit):
   do IO<Unit>:
     r : Api.Reply <- Api.send(repo, tok, "POST", Api.path(repo, "releases"), Some{create.body(tag, title, notes, target, draft, pre)})
-    b : Bytes.Bytes <- body.reply(env, r)
+    b : List<&2, U32> <- body.reply(env, r)
     created(env, "release " ++ tag, Api.f(Api.obj(b), "html_url"))
 
 def create(+env: Cli.Env) -> IO(Unit):
@@ -348,13 +349,19 @@ def create(+env: Cli.Env) -> IO(Unit):
 # Multipart (RFC 7578), the framing Gitea's asset endpoint takes
 # --------------------------------------------------------------
 
-# The boundary comes from the wall clock, so it is new for every upload and, unlike a fixed
-# literal, cannot be sitting in the bytes of the file being uploaded (cha's own binary, at that).
+# The boundary is the wall clock plus 32 random bits, so it is new for every upload and,
+# unlike a fixed literal, can't be sitting in the bytes of the file being uploaded (cha's
+# own binary, at that), or be guessed by whoever made the file.
 
-def mp.boundary(+now: Time.Instant) -> String:
-  match now:
-    case Time.Instant{s, n}:
-      "----cha-" ++ U32.show(Int.I64.to_u32(s)) ++ "-" ++ U32.show(n)
+def mp.boundary(+now: U32, +salt: U32) -> String:
+  "----cha-" ++ U32.show(now) ++ "-" ++ U32.show(salt)
+
+def mp.salt(r: Result<&1, &1, U32 & String, U32>) -> U32:
+  match r:
+    case Done{n}:
+      n
+    case Fail{e}:
+      0
 
 # a filename sits inside a quoted header, so `"`, `\` and a line break would break out of it
 
@@ -390,62 +397,58 @@ def mp.tail(+boundary: String) -> String:
 
 # one multipart/form-data body: the part's header, the file's bytes, the terminator
 
-def mp.body(+boundary: String, +field: String, +name: String, data: Bytes.Bytes) -> Bytes.Bytes:
-  Bytes.concat([Enc.utf8.encode(mp.head(boundary, field, mp.name(name))), data, Enc.utf8.encode(mp.tail(boundary))])
+def mp.body(+boundary: String, +field: String, +name: String, data: List<&2, U32>) -> List<&2, U32>:
+  Bytes.cat(Utf8.encode(mp.head(boundary, field, mp.name(name))), Bytes.cat(data, Utf8.encode(mp.tail(boundary))))
 
 # A file, as bytes
 # ----------------
 
-# the bytes a read gave back, in one buffer
+# the bytes a read gave back
 
-def read.bytes.of(xs: List<&2, U32>, buf: Bytes.Bytes, +i: U32) -> Bytes.Bytes:
-  match xs:
-    case Nil{}:
-      buf
-    case Con{v, t}:
-      read.bytes.of(t, Bytes.set(buf, i, v), (i + 1 : U32))
+def read.bytes.of(+xs: List<&2, U32>) -> List<&2, U32>:
+  xs
 
-def read.bytes.text(+env: Cli.Env, +path: String, r: Result<&1, &1, U32 & String, List<&2, U32>>) -> IO(Bytes.Bytes):
+def read.bytes.text(+env: Cli.Env, +path: String, r: Result<&1, &1, U32 & String, List<&2, U32>>) -> IO(List<&2, U32>):
   match r:
     case Done{+xs}:
-      IO.pure(Bytes.Bytes, read.bytes.of(xs, Bytes.new(U32.from_nat(List.length(&2, U32, xs))), 0))
+      IO.pure(List<&2, U32>, read.bytes.of(xs))
     case Fail{e}:
-      Cli.fail(Bytes.Bytes, env, "can't read " ++ path)
+      Cli.fail(List<&2, U32>, env, "can't read " ++ path)
 
-def read.bytes.got(+env: Cli.Env, +path: String, r: File & Result<&1, &1, U32 & String, List<&2, U32>>) -> IO(Bytes.Bytes):
+def read.bytes.got(+env: Cli.Env, +path: String, r: File & Result<&1, &1, U32 & String, List<&2, U32>>) -> IO(List<&2, U32>):
   (f, got) = r
-  do IO<Bytes.Bytes>:
+  do IO<List<&2, U32>>:
     File.close(f)
     read.bytes.text(env, path, got)
 
-def read.bytes.sized(+env: Cli.Env, +path: String, f: File, got: Result<&1, &1, U32 & String, U32>) -> IO(Bytes.Bytes):
+def read.bytes.sized(+env: Cli.Env, +path: String, f: File, got: Result<&1, &1, U32 & String, U32>) -> IO(List<&2, U32>):
   match got:
     case Done{size}:
-      do IO<Bytes.Bytes>:
+      do IO<List<&2, U32>>:
         r : File & Result<&1, &1, U32 & String, List<&2, U32>> <- File.read_bytes(f, size)
         read.bytes.got(env, path, r)
     case Fail{e}:
-      do IO<Bytes.Bytes>:
+      do IO<List<&2, U32>>:
         File.close(f)
-        Cli.fail(Bytes.Bytes, env, "can't read " ++ path)
+        Cli.fail(List<&2, U32>, env, "can't read " ++ path)
 
-def read.bytes.size(+env: Cli.Env, +path: String, r: File & Result<&1, &1, U32 & String, U32>) -> IO(Bytes.Bytes):
+def read.bytes.size(+env: Cli.Env, +path: String, r: File & Result<&1, &1, U32 & String, U32>) -> IO(List<&2, U32>):
   (f, got) = r
   read.bytes.sized(env, path, f, got)
 
-def read.bytes.open(+env: Cli.Env, +path: String, r: Result<&1, &1, U32 & String, File>) -> IO(Bytes.Bytes):
+def read.bytes.open(+env: Cli.Env, +path: String, r: Result<&1, &1, U32 & String, File>) -> IO(List<&2, U32>):
   match r:
     case Done{f}:
-      do IO<Bytes.Bytes>:
+      do IO<List<&2, U32>>:
         s : File & Result<&1, &1, U32 & String, U32> <- File.size(f)
         read.bytes.size(env, path, s)
     case Fail{e}:
-      Cli.fail(Bytes.Bytes, env, "can't read " ++ path)
+      Cli.fail(List<&2, U32>, env, "can't read " ++ path)
 
 # a file whole, as bytes, failing the command when it cannot be read
 
-def read.bytes(+env: Cli.Env, +path: String) -> IO(Bytes.Bytes):
-  do IO<Bytes.Bytes>:
+def read.bytes(+env: Cli.Env, +path: String) -> IO(List<&2, U32>):
+  do IO<List<&2, U32>>:
     r : Result<&1, &1, U32 & String, File> <- File.open(path, "r")
     read.bytes.open(env, path, r)
 
@@ -464,14 +467,14 @@ def base.name(+path: String) -> String:
 
 # Gitea takes a multipart form; GitHub takes the file itself
 
-def upload.headers(f: Ctx.Forge, +boundary: String) -> Map<&2, List<&2, String>>:
+def upload.headers(f: Ctx.Forge, +boundary: String) -> List<&2, Http1.Field()>:
   match f:
     case Ctx.GitHub{}:
       Api.header.one("content-type", "application/octet-stream")
     case Ctx.Gitea{}:
       Api.header.one("content-type", "multipart/form-data; boundary=" ++ boundary)
 
-def upload.body(f: Ctx.Forge, +boundary: String, +name: String, data: Bytes.Bytes) -> Bytes.Bytes:
+def upload.body(f: Ctx.Forge, +boundary: String, +name: String, data: List<&2, U32>) -> List<&2, U32>:
   match f:
     case Ctx.GitHub{}:
       data
@@ -515,8 +518,8 @@ def upload.paths(+env: Cli.Env, paths: List<&2, String>) -> IO(List<&2, String>)
 
 def upload.release(+env: Cli.Env, +repo: Ctx.Repo, +tok: String, +tag: String) -> IO(Map<&2, String>):
   do IO<Map<&2, String>>:
-    r : Api.Reply <- Api.get(repo, tok, Api.path(repo, "releases/tags/" ++ tag))
-    b : Bytes.Bytes <- body.reply(env, r)
+    r : Api.Reply <- Api.get(repo, tok, Api.path(repo, tag.path(tag)))
+    b : List<&2, U32> <- body.reply(env, r)
     return Api.obj(b)
 
 def uploaded(+env: Cli.Env, +name: String, +url: String) -> IO(Unit):
@@ -530,11 +533,12 @@ def upload.file(+env: Cli.Env, +repo: Ctx.Repo, +tok: String, +release: Map<&2, 
   do IO<Unit>:
     +name : String = base.name(path)
     +f : Ctx.Forge = forge.of(repo)
-    now : Time.Instant <- Time.now()
-    +b : String = mp.boundary(now)
-    data : Bytes.Bytes <- read.bytes(env, path)
+    now : U32 <- Sys.now()
+    salt : Result<&1, &1, U32 & String, U32> <- IO.random_u32()
+    +b : String = mp.boundary(now, mp.salt(salt))
+    data : List<&2, U32> <- read.bytes(env, path)
     r : Api.Reply <- Api.send.raw(repo, tok, "POST", upload.url(f, repo, release, name), upload.headers(f, b), upload.body(f, b, name, data))
-    got : Bytes.Bytes <- body.reply(env, r)
+    got : List<&2, U32> <- body.reply(env, r)
     uploaded(env, name, Api.f(Api.obj(got), "browser_download_url"))
 
 def upload.files(xs: List<&2, String>, +env: Cli.Env, +repo: Ctx.Repo, +tok: String, +release: Map<&2, String>) -> IO(Unit):
@@ -552,7 +556,8 @@ def upload(+env: Cli.Env) -> IO(Unit):
       do IO<Unit>:
         Cli.check(env, "release upload", args, [])
         +tag : String = Cli.arg(args, 1n)
-        t : String <- upload.tag(env, tag, String.is_empty(tag))
+        +t : String <- upload.tag(env, tag, String.is_empty(tag))
+        Cli.check.if(env, tag.msg("release upload", Url.encode.path.ok(t)), Url.encode.path.ok(t))
         paths : List<&2, String> <- upload.paths(env, List.drop(&2, String, Cli.positional(args), 2n))
         release : Map<&2, String> <- upload.release(env, repo, tok, t)
         upload.files(paths, env, repo, tok, release)
