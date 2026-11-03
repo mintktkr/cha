@@ -9,11 +9,17 @@ bend=${BEND:-bend}
 # as in CI: no update notice on stderr, which would read as a failure below
 export BEND_NO_TELEMETRY=1
 bun scripts/order.ts main.bend src/*.bend src/cmd/*.bend
-# foreign_only: "SOME PROOFS FAIL", the foreign-code header, then nothing but "- def" lines
+# foreign_only: "SOME PROOFS FAIL", the foreign-code header, then nothing but the list of defs:
+# "- def" lines, or (bend 2.0.35+) "defs that depend on @unsafe|foreign effects: a, b" lines and
+# the "Hint: no law or proof uses these defs" line that follows them in a proof
 foreign_only() {
   [ "$(sed -n 1p <<<"$1")" = "SOME PROOFS FAIL" ] &&
     sed -n 2p <<<"$1" | grep -qE '^Error: [0-9]+ defs? rel(y|ies) on unsafe or foreign code:$' &&
-    ! sed '1,2d' <<<"$1" | grep -qv '^- '
+    ! sed '1,2d' <<<"$1" | grep -qvE '^(- |defs that depend on (@unsafe|foreign effects): |Hint: no law or proof uses these defs\. )'
+}
+# the foreign defs one by one, from either list format
+foreign_defs() {
+  sed '1,2d' <<<"$1" | grep -E '^(- |defs that depend on )' | sed -E 's/^- //; s/^defs that depend on [^:]*: //' | tr ',' '\n' | sed 's/^ *//'
 }
 check() {
   if out=$("$bend" "$1" --check-only 2>&1) || foreign_only "$out"; then echo "✓ $1"; return; fi
@@ -24,7 +30,7 @@ for t in test/*.bend; do check "$t"; done
 # the laws also pass with the foreign-code list, as long as no law or proof is on it
 if [ -f PROOF.bend ]; then
   if { out=$("$bend" PROOF.bend 2>&1) && grep -qx 'ALL PROOFS CHECK' <<<"$out"; } ||
-    { foreign_only "$out" && ! grep -qiE '^- (LAWS|PROOF)\.' <<<"$out"; }; then
+    { foreign_only "$out" && ! foreign_defs "$out" | grep -qiE '^(LAWS|PROOF)\.'; }; then
     echo "✓ PROOF.bend ($(grep -c '^law ' LAWS.bend) laws)"
   else
     echo "$out" | head -20; echo "✗ PROOF.bend"; exit 1

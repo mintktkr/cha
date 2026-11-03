@@ -9,13 +9,13 @@ license=('MIT')
 depends=('glibc' 'openssl')
 makedepends=('git' 'clang')
 install=cha.install
-_bendver=2.0.34
+_bendver=2.0.39
 source=("git+https://github.com/mintktkr/cha.git#tag=v$pkgver")
 source_x86_64=("https://github.com/bendlang/bend/releases/download/v$_bendver/bend-$_bendver-linux-x64.tar.gz")
 source_aarch64=("https://github.com/bendlang/bend/releases/download/v$_bendver/bend-$_bendver-linux-arm64.tar.gz")
 sha256sums=('SKIP')
-sha256sums_x86_64=('78106a97af242429dcc057258eb8d10f69cddebcd5e263022185a52d003e09bf')
-sha256sums_aarch64=('416a17d282a9fd05ab9637a238b51d5ca508114d9773c37d1c11cad595440ed1')
+sha256sums_x86_64=('6cf462fd8f70b094a4950ebb709a9c4ffd8f1d1189d9cedf1fd63cd5d041c7ab')
+sha256sums_aarch64=('71b43e1bb9313dd14ac2b0553b854e41c39d65ecaa47040796ebff4a46f54a97')
 
 build() {
   cd cha

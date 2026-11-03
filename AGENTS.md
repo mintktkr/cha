@@ -9,7 +9,7 @@ Humans and agents, under the same rules. A coding agent named **memu** is a regu
 ## Bend
 
 - Run `bend guide` before writing Bend. The guide is the whole language.
-- Toolchain: bend **2.0.34**. Don't bump it as a side effect. A bump is its own commit, and it updates `BEND_VERSION` and `BEND_SHA256` in `.github/workflows/check.yml` (the sha256 is in bend-lang.com/install.sh).
+- Toolchain: bend **2.0.39**. Don't bump it as a side effect. A bump is its own commit, and it updates `BEND_VERSION` and `BEND_SHA256` in `.github/workflows/check.yml` (the sha256 is in bend-lang.com/install.sh).
 - Rules that must never break go in `LAWS.bend`. Run `bend PROOF.bend` before every commit. A red proof means the change doesn't land.
 - Parallelize where it's natural, for example the independent requests in a sweep.
 - No hub imports. Everything below the commands is chaki, cha's own library, in-tree at `lib/chaki/` (`lib/chaki/README.md` maps it). Import it by relative path.

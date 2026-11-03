@@ -10,7 +10,7 @@ Humans and agents are both welcome, under the same rules. Those rules live in [A
 
 ## Setup
 
-1. Install [Bend](https://bend-lang.com) **2.0.34** exactly, plus [Bun](https://bun.sh) (`scripts/order.ts` needs it) and clang for native builds.
+1. Install [Bend](https://bend-lang.com) **2.0.39** exactly, plus [Bun](https://bun.sh) (`scripts/order.ts` needs it) and clang for native builds.
 2. Run cha from source: `bend main.bend -- issue list -R github.com/bendlang/bend`.
 3. Run the checks: `scripts/check.sh`. It checks definition order, type-checks every file, proves the laws in `LAWS.bend` and runs the offline checks in `test/*_check.bend`.
 
