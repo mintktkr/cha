@@ -21,6 +21,7 @@ import ./x509v.bend as X509v
 import ./tlsmsg.bend as Tlsmsg
 import ./tls.bend as Tls
 import ./hop.bend as Hop
+import ./json.bend as Json
 import ./LAWS.bend as Laws
 
 # bytes, utf8, b64 [enc]
@@ -305,6 +306,53 @@ def Laws.b64_decode_newline(s):
 
 # json [json]
 # -----------
+# Each json law is a worked case whose two sides are closed, so {==} settles it, bar the
+# dotted-key one, which holds for the prefix it is given.
+
+def Laws.json_encode_escapes():
+  {==}
+
+def Laws.json_encode_str_read_back():
+  {==}
+
+def Laws.json_encode_obj_read_back():
+  {==}
+
+def Laws.json_read_number_text():
+  {==}
+
+def Laws.json_read_surrogate_pair():
+  {==}
+
+def Laws.json_read_lone_surrogate():
+  {==}
+
+def Laws.json_read_unterminated_string():
+  {==}
+
+def Laws.json_read_trailing_comma():
+  {==}
+
+def Laws.json_read_trailing_comma_array():
+  {==}
+
+def Laws.json_read_raw_control():
+  {==}
+
+def Laws.json_read_leading_zero():
+  {==}
+
+def Laws.json_read_deep():
+  {==}
+
+def Laws.json_read_deep_unclosed():
+  {==}
+
+def Laws.json_rows_at():
+  {==}
+
+def Laws.json_child_under_prefix(c, t, k):
+  {==}
 
 # end json
 

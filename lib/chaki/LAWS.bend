@@ -25,6 +25,7 @@ import ./x509v.bend as X509v
 import ./tlsmsg.bend as Tlsmsg
 import ./tls.bend as Tls
 import ./hop.bend as Hop
+import ./json.bend as Json
 
 # bytes, utf8, b64 [enc]
 # ----------------------
@@ -251,6 +252,84 @@ law b64_pem_empty_body:
 
 # json [json]
 # -----------
+# The reader turns a document into dotted-key rows and refuses anything RFC 8259 forbids.
+# The writer's escaping is stated as a worked case rather than over every string: what the
+# writer decides per character turns on comparing a code point, and Bend's checker cannot
+# split on a comparison it cannot compute, so a law pins down the text it hands the reader
+# and the answer that comes back.
+
+# LAW: the writer writes a quote, a backslash, each of the thirty-two control characters
+# below 0x20 (a short escape where JSON has one, \u00XX for the rest) and non-ASCII text as
+# itself: the text it makes of them is exactly this.
+law json_encode_escapes:
+  {Json.encode(Json.Str{SCon{Chr{34}, SCon{Chr{92}, SCon{Chr{0}, SCon{Chr{1}, SCon{Chr{2}, SCon{Chr{3}, SCon{Chr{4}, SCon{Chr{5}, SCon{Chr{6}, SCon{Chr{7}, SCon{Chr{8}, SCon{Chr{9}, SCon{Chr{10}, SCon{Chr{11}, SCon{Chr{12}, SCon{Chr{13}, SCon{Chr{14}, SCon{Chr{15}, SCon{Chr{16}, SCon{Chr{17}, SCon{Chr{18}, SCon{Chr{19}, SCon{Chr{20}, SCon{Chr{21}, SCon{Chr{22}, SCon{Chr{23}, SCon{Chr{24}, SCon{Chr{25}, SCon{Chr{26}, SCon{Chr{27}, SCon{Chr{28}, SCon{Chr{29}, SCon{Chr{30}, SCon{Chr{31}, SCon{Chr{233}, SCon{Chr{128512}, SNil{}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}) == Utf8.decode(Bytes.of_hex("22 5c 22 5c 5c 5c 75 30 30 30 30 5c 75 30 30 30 31 5c 75 30 30 30 32 5c 75 30 30 30 33 5c 75 30 30 30 34 5c 75 30 30 30 35 5c 75 30 30 30 36 5c 75 30 30 30 37 5c 62 5c 74 5c 6e 5c 75 30 30 30 62 5c 66 5c 72 5c 75 30 30 30 65 5c 75 30 30 30 66 5c 75 30 30 31 30 5c 75 30 30 31 31 5c 75 30 30 31 32 5c 75 30 30 31 33 5c 75 30 30 31 34 5c 75 30 30 31 35 5c 75 30 30 31 36 5c 75 30 30 31 37 5c 75 30 30 31 38 5c 75 30 30 31 39 5c 75 30 30 31 61 5c 75 30 30 31 62 5c 75 30 30 31 63 5c 75 30 30 31 64 5c 75 30 30 31 65 5c 75 30 30 31 66 c3 a9 f0 9f 98 80 22")) : String}
+
+# LAW: that text, read back, is the string the writer started with.
+law json_encode_str_read_back:
+  {Json.flat(Utf8.encode(Json.encode(Json.Str{SCon{Chr{34}, SCon{Chr{92}, SCon{Chr{0}, SCon{Chr{1}, SCon{Chr{2}, SCon{Chr{3}, SCon{Chr{4}, SCon{Chr{5}, SCon{Chr{6}, SCon{Chr{7}, SCon{Chr{8}, SCon{Chr{9}, SCon{Chr{10}, SCon{Chr{11}, SCon{Chr{12}, SCon{Chr{13}, SCon{Chr{14}, SCon{Chr{15}, SCon{Chr{16}, SCon{Chr{17}, SCon{Chr{18}, SCon{Chr{19}, SCon{Chr{20}, SCon{Chr{21}, SCon{Chr{22}, SCon{Chr{23}, SCon{Chr{24}, SCon{Chr{25}, SCon{Chr{26}, SCon{Chr{27}, SCon{Chr{28}, SCon{Chr{29}, SCon{Chr{30}, SCon{Chr{31}, SCon{Chr{233}, SCon{Chr{128512}, SNil{}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}))) == Some{Map.set(&2, String, Map.new(&2, String), "", SCon{Chr{34}, SCon{Chr{92}, SCon{Chr{0}, SCon{Chr{1}, SCon{Chr{2}, SCon{Chr{3}, SCon{Chr{4}, SCon{Chr{5}, SCon{Chr{6}, SCon{Chr{7}, SCon{Chr{8}, SCon{Chr{9}, SCon{Chr{10}, SCon{Chr{11}, SCon{Chr{12}, SCon{Chr{13}, SCon{Chr{14}, SCon{Chr{15}, SCon{Chr{16}, SCon{Chr{17}, SCon{Chr{18}, SCon{Chr{19}, SCon{Chr{20}, SCon{Chr{21}, SCon{Chr{22}, SCon{Chr{23}, SCon{Chr{24}, SCon{Chr{25}, SCon{Chr{26}, SCon{Chr{27}, SCon{Chr{28}, SCon{Chr{29}, SCon{Chr{30}, SCon{Chr{31}, SCon{Chr{233}, SCon{Chr{128512}, SNil{}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}})} : Maybe<&2, Map<&2, String>>}
+
+# LAW: an object the writer made reads back as its members, under their own names: an
+# escaped name, an escaped string, a number's text, a flag, null as empty text, and an
+# array's elements under their indices with its count.
+law json_encode_obj_read_back:
+  {Json.obj(Utf8.encode(Json.encode(Json.Obj{[Json.field("s", Json.Str{SCon{Chr{34}, SCon{Chr{10}, SNil{}}}}), Json.field("n", Json.Num{"-1.5e+3"}), Json.field("f", Json.Flag{False{}}), Json.field("z", Json.Null{}), Json.field("a", Json.Arr{[Json.Num{"1"}, Json.Num{"2"}]}), Json.field(SCon{Chr{34}, SCon{Chr{10}, SNil{}}}, Json.Flag{True{}})]}))) == Map.set(&2, String, Map.set(&2, String, Map.set(&2, String, Map.set(&2, String, Map.set(&2, String, Map.set(&2, String, Map.set(&2, String, Map.set(&2, String, Map.new(&2, String), SCon{Chr{34}, SCon{Chr{10}, SNil{}}}, "true"), "z", ""), "f", "false"), "n", "-1.5e+3"), "a.#", "2"), "a.1", "2"), "a.0", "1"), "s", SCon{Chr{34}, SCon{Chr{10}, SNil{}}}) : Map<&2, String>}
+
+# LAW: a number reads back as the text it was written with, so nothing rounds it.
+law json_read_number_text:
+  {Json.flat(Bytes.of_ascii("{\"n\":-1.5e+3}")) == Some{Map.set(&2, String, Map.new(&2, String), "n", "-1.5e+3")} : Maybe<&2, Map<&2, String>>}
+
+# LAW: a surrogate pair escapes one character: \ud83d\ude00 is U+1F600.
+law json_read_surrogate_pair:
+  {Json.flat(Bytes.of_hex("22 5c 75 64 38 33 64 5c 75 64 65 30 30 22")) == Some{Map.set(&2, String, Map.new(&2, String), "", SCon{Chr{128512}, SNil{}})} : Maybe<&2, Map<&2, String>>}
+
+# LAW: half a surrogate pair becomes U+FFFD, the replacement the module documents, rather
+# than a claim that the document is valid text.
+law json_read_lone_surrogate:
+  {Json.flat(Bytes.of_hex("22 5c 75 64 38 30 30 22")) == Some{Map.set(&2, String, Map.new(&2, String), "", SCon{Chr{65533}, SNil{}})} : Maybe<&2, Map<&2, String>>}
+
+# LAW: an unterminated string makes the whole document invalid.
+law json_read_unterminated_string:
+  {Json.flat(Bytes.of_ascii("{\"a\":\"x")) == None{} : Maybe<&2, Map<&2, String>>}
+
+# LAW: a trailing comma in an object makes the whole document invalid.
+law json_read_trailing_comma:
+  {Json.flat(Bytes.of_ascii("{\"a\":1,}")) == None{} : Maybe<&2, Map<&2, String>>}
+
+# LAW: a trailing comma in an array makes the whole document invalid.
+law json_read_trailing_comma_array:
+  {Json.flat(Bytes.of_ascii("[1,]")) == None{} : Maybe<&2, Map<&2, String>>}
+
+# LAW: a raw control character below 0x20 inside a string makes the whole document
+# invalid: it has to be escaped.
+law json_read_raw_control:
+  {Json.flat(Bytes.of_hex("22 01 22")) == None{} : Maybe<&2, Map<&2, String>>}
+
+# LAW: a number with a leading zero is refused, so 01 never reads as a number.
+law json_read_leading_zero:
+  {Json.flat(Bytes.of_ascii("[01]")) == None{} : Maybe<&2, Map<&2, String>>}
+
+# LAW: sixteen nested arrays are read and not refused, the scalar at the bottom under all
+# sixteen indices and every enclosing array recording its own count: the reader keeps its
+# open containers on an explicit stack, so depth costs it no stack.
+law json_read_deep:
+  {Json.flat(Bytes.of_ascii("[[[[[[[[[[[[[[[[1]]]]]]]]]]]]]]]]")) == Some{Map.set(&2, String, Map.set(&2, String, Map.set(&2, String, Map.set(&2, String, Map.set(&2, String, Map.set(&2, String, Map.set(&2, String, Map.set(&2, String, Map.set(&2, String, Map.set(&2, String, Map.set(&2, String, Map.set(&2, String, Map.set(&2, String, Map.set(&2, String, Map.set(&2, String, Map.set(&2, String, Map.set(&2, String, Map.new(&2, String), "#", "1"), "0.#", "1"), "0.0.#", "1"), "0.0.0.#", "1"), "0.0.0.0.#", "1"), "0.0.0.0.0.#", "1"), "0.0.0.0.0.0.#", "1"), "0.0.0.0.0.0.0.#", "1"), "0.0.0.0.0.0.0.0.#", "1"), "0.0.0.0.0.0.0.0.0.#", "1"), "0.0.0.0.0.0.0.0.0.0.#", "1"), "0.0.0.0.0.0.0.0.0.0.0.#", "1"), "0.0.0.0.0.0.0.0.0.0.0.0.#", "1"), "0.0.0.0.0.0.0.0.0.0.0.0.0.#", "1"), "0.0.0.0.0.0.0.0.0.0.0.0.0.0.#", "1"), "0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.#", "1"), "0.0.0.0.0.0.0.0.0.0.0.0.0.0.0.0", "1")} : Maybe<&2, Map<&2, String>>}
+
+# LAW: the same sixteen containers left unclosed are refused, not read as a document.
+law json_read_deep_unclosed:
+  {Json.flat(Bytes.of_ascii("[[[[[[[[[[[[[[[[")) == None{} : Maybe<&2, Map<&2, String>>}
+
+# LAW: the elements of the array at a named key are one row each, which is the shape an
+# actions/runs envelope is read with.
+law json_rows_at:
+  {Json.rows.at(Bytes.of_ascii("{\"total_count\":2,\"workflow_runs\":[{\"id\":5},{\"id\":6}]}"), "workflow_runs") == [Map.set(&2, String, Map.new(&2, String), "id", "5"), Map.set(&2, String, Map.new(&2, String), "id", "6")] : List<&2, Map<&2, String>>}
+
+# LAW: a member under a non-empty prefix is answered under prefix.member, the dotted key
+# every command reads its rows by.
+law json_child_under_prefix:
+  for c: Char
+  for t: String
+  for k: String
+  {Json.child(SCon{c, t}, k) == SCon{c, t} ++ "." ++ k : String}
 
 # end json
 
