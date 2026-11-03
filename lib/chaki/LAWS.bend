@@ -928,6 +928,23 @@ law x25519_clamp_bytes:
 # asn1, x509, x509v [x509]
 # ------------------------
 
+# Constructed certificates
+# ------------------------
+# Some of these laws are about a decision rather than about DER: what the checks make of
+# a certificate whose fields are already known. These two build one, with only the
+# fields a check reads set.
+
+# a certificate with only the fields the checks read: a validity, the CA flag,
+# pathLenConstraint, and the dNSName entries. The key usage is absent (every bit), the
+# critical extensions are none, and the certificate is for TLS servers.
+def x509v_cert(nb: U32, na: U32, ca: Bool, path_len: U32, dns: List<&2, String>) -> X509.Cert:
+  X509.Cert{Nil{}, Nil{}, "", Nil{}, Nil{}, Nil{}, nb, na, "", "", Nil{}, dns, ca, path_len, 4294967295, False{}, True{}}
+
+# a certificate for the signature check: the algorithm its signature names, and the algorithm
+# of the key it carries
+def x509v_cert_sig(sig_alg: String, key_alg: String) -> X509.Cert:
+  X509.Cert{Nil{}, Nil{}, sig_alg, Nil{}, Nil{}, Nil{}, 1000, 3000, key_alg, "", Nil{}, Nil{}, False{}, 0, 4294967295, False{}, True{}}
+
 # Strict DER
 # ----------
 # Two readers that agree on an element's bytes but not on where it ends disagree about what
@@ -1072,12 +1089,6 @@ law x509v_ip_is_address:
 # the walk passes it. These are those decisions over constructed certificates: the fields
 # they read, and nothing else, set.
 
-# a certificate with only the fields the checks read: a validity, the CA flag,
-# pathLenConstraint, and the dNSName entries. The key usage is absent (every bit), the
-# critical extensions are none, and the certificate is for TLS servers.
-def x509v_cert(nb: U32, na: U32, ca: Bool, path_len: U32, dns: List<&2, String>) -> X509.Cert:
-  X509.Cert{Nil{}, Nil{}, "", Nil{}, Nil{}, Nil{}, nb, na, "", "", Nil{}, dns, ca, path_len, 4294967295, False{}, True{}}
-
 # LAW: a certificate whose notAfter is before now is refused, whatever else is right with it.
 law x509v_leaf_expired:
   {X509v.leaf.why(x509v_cert(1000, 2000, False{}, 0, Nil{}), "cha.test", 2001, True{}) == "the server's certificate has expired" : String}
@@ -1123,11 +1134,6 @@ law x509v_chain_no_anchor:
 # A certificate names the algorithm its issuer signed it with, and the issuer's key names its
 # own. The two must be the same kind, and the algorithm must be one the engine checks: an
 # unchecked algorithm is a refusal, never a pass.
-
-# a certificate for the signature check: the algorithm its signature names, and the algorithm
-# of the key it carries
-def x509v_cert_sig(sig_alg: String, key_alg: String) -> X509.Cert:
-  X509.Cert{Nil{}, Nil{}, sig_alg, Nil{}, Nil{}, Nil{}, 1000, 3000, key_alg, "", Nil{}, Nil{}, False{}, 0, 4294967295, False{}, True{}}
 
 # LAW: an RSA signature is not accepted under an EC key.
 law x509v_signed_rsa_under_ec:

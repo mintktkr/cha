@@ -931,8 +931,8 @@ def Laws.x25519_clamp_bytes(b0, mid, last):
 # asn1, x509, x509v [x509]
 # ------------------------
 # Each DER refusal is decided before the bytes that follow are looked at, so the claim holds
-# with the tail left symbolic: reflexivity alone proves it. The two positive claims reduce
-# the read over a literal tag and length and a symbolic value and tail.
+# with the tail left symbolic: reflexivity alone proves it. The positive claims reduce the
+# read over a literal tag and length, a value and a tail left symbolic.
 
 def Laws.asn1_read_high_tag(t):
   {==}
@@ -976,9 +976,9 @@ def Laws.x509_san_skips_ip():
 
 # Hosts
 # -----
-# The wildcard and exact-name laws are closed names, or one closed name against a symbolic
-# host, so each reduces to a Bool. name.ok keeps its first argument until the name is
-# compared, so the exact-name law needs the two sides joined: or with a False is the Bool
+# The wildcard laws are closed pairs of names and the exact-name law is one closed name
+# against a symbolic host, so each reduces to a Bool. A name comparison stays stuck until the
+# host is known, so the exact-name law joins the two sides first: or with a False is the Bool
 # itself.
 
 def x509v_or_false(+b: Bool) -> {Bool.or(b, False{}) == b : Bool}:
@@ -1021,14 +1021,14 @@ def Laws.x509v_name_exact_only_itself(h):
 
 # host_ok.if decides on the host's kind before it reads the certificate, so an IP literal's
 # proof rewrites the hypothesis into the goal and the certificate stays symbolic.
-def Laws.x509v_ip_never_matches(c, n, ok):
-  %Equal.sym(Bool, X509v.host.ip(n), True{}, ok) : {X509v.host_ok.if(_, c, n) == False{} : Bool}
+def Laws.x509v_host_trailing_dot():
   {==}
 
 def Laws.x509v_ip_is_address():
   {==}
 
-def Laws.x509v_host_trailing_dot():
+def Laws.x509v_ip_never_matches(c, n, ok):
+  %Equal.sym(Bool, X509v.host.ip(n), True{}, ok) : {X509v.host_ok.if(_, c, n) == False{} : Bool}
   {==}
 
 # Time and issuers
