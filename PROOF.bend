@@ -361,6 +361,12 @@ def Laws.watch_exit_github_success():
 def Laws.watch_gave_up_text():
   {==}
 
+def Laws.watch_exhausted_text():
+  {==}
+
+def Laws.watch_exhausted_code():
+  {==}
+
 def Laws.rerun_path_gitea():
   {==}
 
@@ -379,7 +385,28 @@ def Laws.rerun_path_github_failed():
 def Laws.rerun_path_github_job():
   {==}
 
-def Laws.rerun_job_id_digits():
+def Laws.missing_api_gitea():
+  {==}
+
+def Laws.missing_api_github():
+  {==}
+
+def Laws.missing_api_other():
+  {==}
+
+# Each of these reads a literal job id through the guard and normalizes to a Bool, so
+# reflexivity proves it.
+
+def Laws.rerun_job_ok_digits():
+  {==}
+
+def Laws.rerun_job_ok_empty():
+  {==}
+
+def Laws.rerun_job_ok_slash():
+  {==}
+
+def Laws.rerun_job_ok_dots():
   {==}
 
 # runs view --json

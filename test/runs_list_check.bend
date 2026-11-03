@@ -128,5 +128,14 @@ def main() -> IO(Unit):
     expect(Runs.rerun.path(Ctx.GitHub{}, "7", "42", False{}, True{}), "actions/jobs/42/rerun")
     expect(Bool.show(Cli.digits("42")), "True")
     expect(Bool.show(Cli.digits("42/cancel")), "False")
+    # --job is digits only when it is given, and a slash or ".." would walk out of the path
+    expect(Bool.show(Runs.rerun.job.ok("42")), "True")
+    expect(Bool.show(Runs.rerun.job.ok("")), "True")
+    expect(Bool.show(Runs.rerun.job.ok("42/cancel")), "False")
+    expect(Bool.show(Runs.rerun.job.ok("..")), "False")
+    # a 404 means a missing API on Gitea, and a run or job that is not there on GitHub
+    expect(Bool.show(Runs.missing.api(Ctx.Gitea{}, 404)), "True")
+    expect(Bool.show(Runs.missing.api(Ctx.GitHub{}, 404)), "False")
+    expect(Bool.show(Runs.missing.api(Ctx.Gitea{}, 500)), "False")
     expect(Runs.rerun.missing.text(), "runs rerun: this forge has no rerun API (HTTP 404, needs Gitea >= 1.26)")
     expect(Runs.cancel.missing.text(), "runs cancel: this forge has no cancel API (HTTP 404, needs Gitea >= 28); cancel it from the web UI")

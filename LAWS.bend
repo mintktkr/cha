@@ -309,9 +309,11 @@ law runs_id_empty:
 # A watch follows a run for as long as it takes, so a poll that never reached the forge says
 # nothing about the run: it is retried on the next tick, and only five failed polls in a row
 # end the watch. Giving up exits with a code of its own, so a script that gates on a watch
-# can tell "couldn't see the run" from "the run failed". A run ends where its status says
-# so, on every forge. A rerun builds one endpoint per forge and mode, and a job id reaches
-# it only as digits.
+# can tell "couldn't see the run" from "the run failed", and a watch that runs out of polls
+# exits the same way instead of passing for a run that ended. A run ends where its status
+# says so, on every forge. A rerun builds one endpoint per forge and mode, and a job id
+# reaches it only as digits, or not at all. A 404 is a missing API only on Gitea: GitHub
+# answers it for a run or a job that is not there, and its own message says so.
 
 # LAW: a poll that never reached the forge is retried.
 law watch_poll_broke:
@@ -423,6 +425,14 @@ law watch_exit_github_success:
 law watch_gave_up_text:
   {Runs.watch.gave.up.text(5n, "in_progress") == "gave up after 5 failed polls; the run is still in_progress" : String}
 
+# LAW: a watch that runs out of polls says so, and names the last state it read.
+law watch_exhausted_text:
+  {Runs.watch.exhausted.text("in_progress") == "ran out of polls; the run is still in_progress" : String}
+
+# LAW: ...and exits as one that gave up does, so a script still reads 2.
+law watch_exhausted_code:
+  {Runs.watch.exhausted.code() == Runs.watch.code(True{}) : U32}
+
 # LAW: a Gitea rerun of a run is actions/runs/<run>/rerun.
 law rerun_path_gitea:
   {Runs.rerun.path(Ctx.Gitea{}, "5056", "", False{}, False{}) == "actions/runs/5056/rerun" : String}
@@ -447,9 +457,33 @@ law rerun_path_github_failed:
 law rerun_path_github_job:
   {Runs.rerun.path(Ctx.GitHub{}, "5056", "42", False{}, True{}) == "actions/jobs/42/rerun" : String}
 
-# LAW: a job id that is not digits only never reaches a rerun path.
-law rerun_job_id_digits:
-  {Cli.digits("42/cancel") == False{} : Bool}
+# LAW: a 404 on Gitea is the forge saying it has no such API.
+law missing_api_gitea:
+  {Runs.missing.api(Ctx.Gitea{}, 404) == True{} : Bool}
+
+# LAW: ...but a 404 on GitHub is a run or a job that is not there, so its own message stands.
+law missing_api_github:
+  {Runs.missing.api(Ctx.GitHub{}, 404) == False{} : Bool}
+
+# LAW: any other status is the forge's own refusal on either forge.
+law missing_api_other:
+  {Runs.missing.api(Ctx.Gitea{}, 500) == False{} : Bool}
+
+# LAW: a job id that is digits only reaches a rerun path.
+law rerun_job_ok_digits:
+  {Runs.rerun.job.ok("42") == True{} : Bool}
+
+# LAW: no --job at all is an empty job, which is allowed.
+law rerun_job_ok_empty:
+  {Runs.rerun.job.ok("") == True{} : Bool}
+
+# LAW: a job id with a slash would walk out of the path, so it is refused.
+law rerun_job_ok_slash:
+  {Runs.rerun.job.ok("42/cancel") == False{} : Bool}
+
+# LAW: ...and so is "..", which U32.read would take as a zero.
+law rerun_job_ok_dots:
+  {Runs.rerun.job.ok("..") == False{} : Bool}
 
 # runs view --json
 # ---------------

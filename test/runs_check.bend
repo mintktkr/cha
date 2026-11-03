@@ -222,6 +222,11 @@ def main() -> IO(Unit):
     expect(U32.show(Runs.watch.code(True{})), "2")
     expect(Runs.watch.gave.up.text(5n, "in_progress"), "gave up after 5 failed polls; the run is still in_progress")
     expect(Runs.watch.gave.up.text(5n, ""), "gave up after 5 failed polls; the run is still unknown")
+    # a watch that runs out of polls stops the way giving up does, rather than quietly passing
+    # for a run that ended
+    expect(Runs.watch.exhausted.text("in_progress"), "ran out of polls; the run is still in_progress")
+    expect(Runs.watch.exhausted.text(""), "ran out of polls; the run is still unknown")
+    expect(U32.show(Runs.watch.exhausted.code()), U32.show(Runs.watch.code(True{})))
     is_true(Runs.want.job("1", "failure", "", False{}))
     expect(Bool.show(Runs.want.job("1", "success", "", True{})), "False")
     is_true(Runs.want.job("2", "success", "2", False{}))
