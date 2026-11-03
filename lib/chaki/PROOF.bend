@@ -951,6 +951,9 @@ def Laws.sha2_sha256_two_block():
   {==}
 
 # SHA-384 and SHA-512 take the 64-bit path, where W64's halves are added and rotated by hand
+def Laws.sha2_sha384_empty():
+  {==}
+
 def Laws.sha2_sha384_abc():
   {==}
 

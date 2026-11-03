@@ -996,6 +996,10 @@ law sha2_sha256_abc:
 law sha2_sha256_two_block:
   {Sha2.hash(Sha2.S256{}, Bytes.of_ascii("abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq")) == Bytes.of_hex("248d6a61d20638b8e5c026930c3e6039a33ce45964ff2167f6ecedd419db06c1") : List<&2, U32>}
 
+# LAW: SHA-384 of the empty message is the digest NIST publishes for it (FIPS 180-4 B.1).
+law sha2_sha384_empty:
+  {Sha2.hash(Sha2.S384{}, Nil{}) == Bytes.of_hex("38b060a751ac96384cd9327eb1b1e36a21fdb71114be07434c0cc7bf63f6e1da274edebfe76f65fbd51ad2f14898b95b") : List<&2, U32>}
+
 # LAW: SHA-384 of "abc" is the digest FIPS 180-4 B.1 lists for it.
 law sha2_sha384_abc:
   {Sha2.hash(Sha2.S384{}, Bytes.of_ascii("abc")) == Bytes.of_hex("cb00753f45a35e8bb5a03d699ac65007272c32ab0eded1631a8b605a43ff5bed8086072ba1e7cc2358baeca134c825a7") : List<&2, U32>}
