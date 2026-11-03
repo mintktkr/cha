@@ -2,9 +2,9 @@
 type Vars = { [name: string]: any };
 
 // Redirect.cfg's MaxHops
-const MAX_HOPS = 3;
+const MAX_HOPS = 4;
 
-export const title = "Redirects: two origins, an https start, a hop budget of 3 (http.bend at 51c3231)";
+export const title = "Redirects: two origins, an https start, a hop budget of 4 (http.bend and hop.bend at cf7905c)";
 
 const scheme = (v: Vars) => (v.secure ? "https" : "http");
 const how = (v: Vars) => (v.creds ? "with your credentials" : "without your credentials");

@@ -1,7 +1,7 @@
 // The view for Tls13Client.tla: the reader's words for each phase of tls.bend's handshake.
 type Vars = { [name: string]: any };
 
-export const title = "TLS 1.3 client handshake: tls.bend at 51c3231, with an adversary server";
+export const title = "TLS 1.3 client handshake: tls.bend at cf7905c, with an adversary server";
 
 const PHASE: { [phase: string]: string } = {
   hello: "Waiting for the ServerHello",
@@ -42,7 +42,8 @@ const STEPS: { [action: string]: string } = {
   SrvServerHello: "the ServerHello arrives",
   SrvHelloRetryRequest: "the server asks for another key exchange",
   SrvLateHelloRetryRequest: "a second key-exchange request arrives",
-  SrvDowngrade: "the server answers for TLS 1.2",
+  SrvBadVersion: "the server answers for TLS 1.2",
+  SrvDowngradeSentinel: "the ServerHello carries the TLS 1.2 downgrade sentinel",
   SrvSmallOrderShare: "the key share is all zeros",
   SrvEncryptedExtensions: "the EncryptedExtensions arrive",
   SrvBadAlpn: "the server picks a protocol you didn't offer",

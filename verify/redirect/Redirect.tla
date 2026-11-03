@@ -1,11 +1,21 @@
-\* Redirect: the redirect chain of lib/chaki/http.bend (the Redirects section) at 51c3231,
-\* over two origins and a hop budget of three, with the server choosing each answer.
+\* Redirect: the redirect chain of lib/chaki/http.bend's Redirects section and the rules it
+\* asks lib/chaki/hop.bend for, at cf7905c, over two origins and a hop budget of four, with
+\* the server choosing each answer. The budget is four because that is the chain
+\* lib/chaki/LAWS.bend's hop_credentials_stay_dropped states: a.example -> b.example ->
+\* a.example -> b.example. With three, the request that comes back to the first origin has no
+\* hop left, and R2 cannot be exercised in its own words.
 \*
-\* http.bend follows a redirect with judge: a hop to another origin drops authorization and
-\* cookie, an https -> http hop is refused, and walk's fuel bounds how many hops a chain can
-\* take. The model takes one hop as one step, because the request and the judgement are two
-\* steps in the code (walk's step and judge) with only the nondeterministic answer between
-\* them, and no rule here looks at a request before its answer.
+\* http.bend follows a redirect with judge: judge reads the response, asks hop.bend's
+\* judge.follows whether the status and the Location ask for another request, and puts the
+\* Next that judge.resp hands back into the walk's state with judge.state. hop.bend decides
+\* the rest: another origin drops authorization and cookie (judge.go, move.creds), 301, 302
+\* and 303 drop the body and the headers that framed it and turn anything but a HEAD into a
+\* GET (move.method, move.headers, move.body), an https -> http hop is refused (judge.down,
+\* judge.hop), and walk's fuel bounds how many hops a chain can take.
+\*
+\* The model takes one hop as one step, because the request and the judgement are two steps
+\* in the code (walk's step and judge) with only the nondeterministic answer between them,
+\* and no rule here looks at a request before its answer.
 \*
 \* This model checks four rules (see the INVARIANTs at the end):
 \*   R1 credentials are never sent to an origin other than the first;
@@ -14,8 +24,10 @@
 \*   R4 the chain ends within the hop budget.
 \*
 \* It leaves out the headers other than authorization and cookie, the method and body rules
-\* (301/302/303 -> GET, 307/308 keep both), a Location that isn't a url, a request that
-\* fails, ports, TLS, and the code's real fuel of 23, which allows 12 requests.
+\* (301/302/303 -> GET, 307/308 keep both; see lib/chaki/LAWS.bend's hop laws), a Location
+\* that isn't a url, a request that fails, ports, TLS, and the code's real fuel of 23, which
+\* allows 12 requests: the model's budget of four is a small bound for model checking, not
+\* the code's number.
 ---- MODULE Redirect ----
 EXTENDS Naturals
 
@@ -44,13 +56,14 @@ Init ==
   /\ creds = TRUE
   /\ dropped = FALSE
 
-\* judge.answer: the answer is not a redirect, or a 3xx with no Location, so the chain ends
+\* hop.bend's judge.resp with follow FALSE, so judge.follows found no redirect or no Location,
+\* and http.bend's judge.answer makes the response the answer: the chain ends
 Answer ==
   /\ pc = "go"
   /\ pc' = "done"
   /\ UNCHANGED <<hop, at, secure, creds, dropped>>
 
-\* judge.go with cross FALSE: a redirect to the same origin, so judge keeps the headers
+\* judge.go with cross FALSE: a redirect to the same origin, so move.creds keeps the headers
 RedirectHere ==
   /\ pc = "go"
   /\ hop < MaxHops
@@ -59,7 +72,8 @@ RedirectHere ==
   /\ at' = at
   /\ UNCHANGED <<secure, creds, dropped>>
 
-\* judge.go with cross TRUE: Url.origin differs, so drop(["authorization", "cookie"], hs1)
+\* judge.go with cross TRUE: Url.origin differs, so move.creds drops authorization and cookie
+\* (hop.bend's drop of the two names)
 RedirectElsewhere ==
   /\ pc = "go"
   /\ hop < MaxHops
@@ -70,13 +84,14 @@ RedirectElsewhere ==
   /\ dropped' = TRUE
   /\ secure' = secure
 
-\* judge.hop with down TRUE: https -> http is refused before any header is built
+\* judge.hop with down TRUE (judge.down): https -> http is refused before any header is built
 RedirectToHttp ==
   /\ pc = "go"
   /\ pc' = "stopped"
   /\ UNCHANGED <<hop, at, secure, creds, dropped>>
 
-\* walk's fuel is gone and the answer was a redirect: Fail{"too many redirects"}
+\* walk's fuel is gone and the answer was a redirect: Fail{"too many redirects"} (the walk
+\* is http.bend's; the fuel is its own step, not a decision hop.bend makes)
 TooManyRedirects ==
   /\ pc = "go"
   /\ hop = MaxHops

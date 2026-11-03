@@ -1,4 +1,4 @@
-\* Tls13Client: chaki's TLS 1.3 client handshake, as lib/chaki/tls.bend runs it at 51c3231,
+\* Tls13Client: chaki's TLS 1.3 client handshake, as lib/chaki/tls.bend runs it at cf7905c,
 \* with the server as an adversary that sends any message at any time.
 \*
 \* The client is the pure state machine of tls.bend: Phase is the message that is due next
@@ -19,8 +19,9 @@
 \*   R5 at most one HelloRetryRequest.
 \*
 \* It leaves out the record and byte layer (fragmentation, the AEAD, sequence numbers, the
-\* transcript hashes), TLS 1.2 itself (only the refusal of a ServerHello without 0x0304 is
-\* modelled), PSK and 0-RTT, KeyUpdate and NewSessionTicket after Connected, the legacy
+\* transcript hashes), TLS 1.2 itself (only its two ServerHello refusals are modelled: a
+\* supported_versions that isn't 0x0304, and the TLS 1.2 downgrade sentinel in the random),
+\* PSK and 0-RTT, KeyUpdate and NewSessionTicket after Connected, the legacy
 \* ChangeCipherSpec, the client's own close_notify, and the shell's event loop, which answers
 \* Reply.ready before a record parked in Phase.asked is replayed.
 ---- MODULE Tls13Client ----
@@ -100,9 +101,15 @@ SrvLateHelloRetryRequest ==
   \/ /\ phase = "asked"
      /\ Park("fatal")
 
-\* tlsmsg.bend's sh.ver.ok: no 0x0304 in supported_versions, which is what a TLS 1.2 server
-\* answers with the RFC 8446 4.1.3 downgrade sentinel. hs.server.res -> hs.die
-SrvDowngrade ==
+\* tlsmsg.bend's sh.ver.ok: no 0x0304 in supported_versions, which is the ServerHello a TLS
+\* 1.2 server answers with. hs.server.res -> hs.die
+SrvBadVersion ==
+  phase = "hello" /\ Failed
+
+\* tlsmsg.bend's sh.downgrade.ok: supported_versions says 0x0304 but the last 8 bytes of the
+\* random carry the TLS 1.2 downgrade sentinel (RFC 8446 4.1.3), so sh.good refuses the
+\* ServerHello however good the rest of it is. hs.server.res -> hs.die
+SrvDowngradeSentinel ==
   phase = "hello" /\ Failed
 
 \* hs.server.zero: the server's share is all zeros, so it has small order (RFC 7748 6.1)
@@ -230,7 +237,8 @@ Next ==
   \/ SrvServerHello
   \/ SrvHelloRetryRequest
   \/ SrvLateHelloRetryRequest
-  \/ SrvDowngrade
+  \/ SrvBadVersion
+  \/ SrvDowngradeSentinel
   \/ SrvSmallOrderShare
   \/ SrvEncryptedExtensions
   \/ SrvBadAlpn
