@@ -1045,6 +1045,12 @@ def Laws.x509v_leaf_not_yet():
 def Laws.x509v_leaf_ok():
   {==}
 
+def Laws.x509v_leaf_unknown_critical():
+  {==}
+
+def Laws.x509v_leaf_not_server_auth():
+  {==}
+
 def Laws.x509v_inter_not_ca():
   {==}
 
@@ -1061,6 +1067,9 @@ def Laws.x509v_chain_anchor_trusted(a, c):
   {==}
 
 def Laws.x509v_chain_no_anchor(c):
+  {==}
+
+def Laws.x509v_chain_too_long(c):
   {==}
 
 # Signature algorithms

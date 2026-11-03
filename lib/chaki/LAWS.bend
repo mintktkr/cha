@@ -940,6 +940,12 @@ law x25519_clamp_bytes:
 def x509v_cert(nb: U32, na: U32, ca: Bool, path_len: U32, dns: List<&2, String>) -> X509.Cert:
   X509.Cert{Nil{}, Nil{}, "", Nil{}, Nil{}, Nil{}, nb, na, "", "", Nil{}, dns, ca, path_len, 4294967295, False{}, True{}}
 
+# a certificate for the checks that can refuse it: whether it carries a critical extension the
+# engine doesn't read, and whether it is for TLS servers. Everything else is at its
+# permissive default.
+def x509v_cert_flags(unknown_critical: Bool, server_auth: Bool) -> X509.Cert:
+  X509.Cert{Nil{}, Nil{}, "", Nil{}, Nil{}, Nil{}, 1000, 3000, "", "", Nil{}, Nil{}, False{}, 0, 4294967295, unknown_critical, server_auth}
+
 # a certificate for the signature check: the algorithm its signature names, and the algorithm
 # of the key it carries
 def x509v_cert_sig(sig_alg: String, key_alg: String) -> X509.Cert:
@@ -1101,6 +1107,15 @@ law x509v_leaf_not_yet:
 law x509v_leaf_ok:
   {X509v.leaf.why(x509v_cert(1000, 3000, False{}, 0, Nil{}), "cha.test", 2000, True{}) == "" : String}
 
+# LAW: a critical extension the engine doesn't read refuses the certificate, rather than being
+# skipped.
+law x509v_leaf_unknown_critical:
+  {X509v.leaf.why(x509v_cert_flags(True{}, True{}), "cha.test", 2000, True{}) == "the server's certificate has a critical extension chaki doesn't know" : String}
+
+# LAW: a certificate that isn't for TLS servers is refused.
+law x509v_leaf_not_server_auth:
+  {X509v.leaf.why(x509v_cert_flags(False{}, False{}), "cha.test", 2000, True{}) == "the server's certificate isn't for TLS servers" : String}
+
 # LAW: an issuer without the CA basicConstraints flag is refused, so a leaf can't sign for
 # another host.
 law x509v_inter_not_ca:
@@ -1128,6 +1143,12 @@ law x509v_chain_anchor_trusted:
 law x509v_chain_no_anchor:
   for c: X509.Cert
   {X509v.path.anchor(None{}, c, 0, Nil{}, 2000) == X509v.Refused{"the chain doesn't lead to a trusted root"} : X509v.Path}
+
+# LAW: a walk that hasn't reached an anchor when its eight steps are spent is refused, so a
+# chain can't be arbitrarily long.
+law x509v_chain_too_long:
+  for c: X509.Cert
+  {X509v.path.go(0n, Nil{}, Nil{}, 2000, X509v.At{c, 0}) == Fail{"the chain is too long"} : Result<&1, &1, String, Unit>}
 
 # Signature algorithms
 # --------------------
