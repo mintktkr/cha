@@ -45,6 +45,19 @@ def summary(s: Runs.LogSummary) -> String:
     case Runs.LogSummary{m, p, i}:
       U32.show(m) ++ "/" ++ U32.show(p) ++ "/" ++ Bool.show(i)
 
+# a selected job as --step reads it: Gitea 1.25 lists no steps for any job
+def unstepped() -> Map<&2, String>:
+  m = Map.new(&2, String)
+  m = Map.set(&2, String, m, "name", "ok")
+  Map.set(&2, String, m, "steps.#", "0")
+
+# a selected job with one step that --step did not name
+def stepped() -> Map<&2, String>:
+  m = Map.new(&2, String)
+  m = Map.set(&2, String, m, "name", "ok")
+  m = Map.set(&2, String, m, "steps.#", "1")
+  Map.set(&2, String, m, "steps.0.name", "say hi")
+
 def body() -> String:
   "\u{feff}2026-01-01T02:59:59.9999999Z previous\n" ++
   "2026-01-01T03:00:00.0000000Z ##[group]a command unrelated to the step name\n" ++
@@ -167,6 +180,10 @@ def main() -> IO(Unit):
     expect("a selected job without the step is", Bool.show(Runs.logs.no.step(one, "Test", 0)), "True")
     expect("a matched step is not missing", Bool.show(Runs.logs.no.step(one, "Test", 1)), "False")
     expect("no --step is never missing", Bool.show(Runs.logs.no.step(one, "", 0)), "False")
+    +none : List<&2, Map<&2, String>> = [unstepped()]
+    +listed : List<&2, Map<&2, String>> = [stepped()]
+    expect("a job with no steps says to drop --step", Runs.logs.no.step.text(none, "say hi"), "runs logs: the forge lists no steps for job ok, so --step can't cut its log; drop --step for the whole log")
+    expect("steps that none match still list them", Runs.logs.no.step.text(listed, "deploy"), "runs logs: no step named deploy; steps:\nok:\n  say hi\n")
     expect("a group line opens a step", Bool.show(Runlogs.group.line("2026-01-01T00:00:02.0000000Z ##[group]Run ls")), "True")
     expect("content is not a group line", Bool.show(Runlogs.group.line("2026-01-01T00:00:02.0000000Z see ##[group]Run ls")), "False")
     expect("group text", Runlogs.group.text("2026-01-01T00:00:02.0000000Z ##[group]Run npm ci"), "npm ci")

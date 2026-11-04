@@ -109,6 +109,14 @@ def main() -> IO(Unit):
     expect(Api.f(missing, "duration"), "")
     +active : Map<&2, String> = Runs.run.row(Api.obj(Utf8.encode("{\"status\":\"in_progress\",\"completed_at\":\"2026-01-02T13:10:00Z\"}")), "", Ctx.Gitea{}, now)
     expect(Api.f(active, "completed_at"), "")
+    # Gitea writes the epoch where a run has no timestamp: 1970-01-01T00:00:00Z is a queued
+    # run, not a fifty-six-year-old one
+    +epoch : Map<&2, String> = Runs.run.row(Api.obj(Utf8.encode("{\"status\":\"queued\",\"started_at\":\"1970-01-01T00:00:00Z\",\"created_at\":\"1970-01-01T00:00:00Z\",\"updated_at\":\"1970-01-01T00:00:00Z\"}")), "", Ctx.Gitea{}, now)
+    expect(Api.f(epoch, "started_at"), "")
+    expect(Api.f(epoch, "updated_at"), "")
+    expect(Api.f(epoch, "completed_at"), "")
+    expect(Api.f(epoch, "duration"), "")
+    expect(Api.f(epoch, "age"), "")
     page.continue(Runs.list.page(env(), Ctx.Gitea{}, now, ["ci.yml"], 2n, "page-2", "", 0n, Utf8.encode(page.one()), Nil{}), now)
     gitea.more(Runs.list.page(env(), Ctx.Gitea{}, now, Nil{}, 20n, "", "fallback-2", 0n, Utf8.encode(page.counted("5")), Nil{}))
     gitea.last(Runs.list.page(env(), Ctx.Gitea{}, now, Nil{}, 20n, "", "fallback-3", 3n, Utf8.encode(page.counted("5")), Nil{}))
@@ -138,4 +146,12 @@ def main() -> IO(Unit):
     expect(Bool.show(Runs.missing.api(Ctx.GitHub{}, 404)), "False")
     expect(Bool.show(Runs.missing.api(Ctx.Gitea{}, 500)), "False")
     expect(Runs.rerun.missing.text(), "runs rerun: this forge has no rerun API (HTTP 404, needs Gitea >= 1.26)")
+    # the job read works on every Gitea cha supports, so its 404 is a stale job id: a rerun
+    # renumbers the jobs. Only the rerun POST itself says the forge has no such API.
+    expect(Bool.show(Runs.rerun.job.gone(404)), "True")
+    expect(Bool.show(Runs.rerun.job.gone(405)), "False")
+    expect(Runs.rerun.no.job.text("7", "42"), "runs rerun: no job 42 in this repo (HTTP 404); a rerun gives its jobs new ids, so list them with cha runs view 7")
+    expect(Runs.rerun.missing.text.if(Runs.missing.api(Ctx.Gitea{}, 404)), "runs rerun: this forge has no rerun API (HTTP 404, needs Gitea >= 1.26)")
+    expect(Runs.rerun.missing.text.if(Runs.missing.api(Ctx.GitHub{}, 404)), "")
+    expect(Runs.rerun.missing.text.if(Runs.missing.api(Ctx.Gitea{}, 500)), "")
     expect(Runs.cancel.missing.text(), "runs cancel: this forge has no cancel API (HTTP 404, needs Gitea >= 28); cancel it from the web UI")

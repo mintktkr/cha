@@ -77,7 +77,7 @@ def conclusion.of(+src: Map<&2, String>, +prefix: String, fj: Bool) -> String:
     case False{}:
       g.raw(src, prefix, "conclusion")
 
-# Forgejo writes the epoch when a run never got a start
+# Gitea and Forgejo write the epoch when a run or a job never got a start
 def zero.instant(+m: Maybe<&2, U32>) -> Bool:
   match m:
     case None{}:
@@ -201,18 +201,28 @@ def short.if(+s: String, cut: Bool) -> String:
 def short.sha(+s: String) -> String:
   short.if(s, Nat.is_gt(String.length(s), 7n))
 
-# Forgejo writes the epoch where a run has no timestamp
+# Go's zero time, which a forge built on Go writes for a time it never set
+def zero.go(+s: String) -> Bool:
+  String.starts_with(s, "0001-01-01T")
+
+# a forge timestamp, "" when the forge sent none. The epoch is compared as a parsed
+# instant, so every offset form of it reads as no timestamp too, and so does Go's zero.
 def time.nonzero(+s: String) -> String:
-  Ctx.or.if(s, "", zero.instant(Time.parse(s)))
+  Ctx.or.if(s, "", Bool.or(zero.instant(Time.parse(s)), zero.go(s)))
+
+# field k of an object as a timestamp: "" when the forge sent none, or the epoch
+# 1970-01-01T00:00:00Z it writes for a time that never happened
+def time.at(+src: Map<&2, String>, +prefix: String, +k: String) -> String:
+  time.nonzero(g.raw(src, prefix, k))
 
 # when a run started: Gitea says started_at, Forgejo started, GitHub
 # run_started_at then created_at
 def started.at(+src: Map<&2, String>, +prefix: String, +forge: Ctx.Forge) -> String:
   match forge:
     case Ctx.Gitea{}:
-      time.nonzero(Ctx.or(g.raw(src, prefix, "started_at"), g.raw(src, prefix, "started")))
+      Ctx.or(time.at(src, prefix, "started_at"), time.at(src, prefix, "started"))
     case Ctx.GitHub{}:
-      Ctx.or(g.raw(src, prefix, "run_started_at"), g.raw(src, prefix, "created_at"))
+      Ctx.or(time.at(src, prefix, "run_started_at"), time.at(src, prefix, "created_at"))
 
 # the workflow's name: Gitea and Forgejo name the file, GitHub names the
 # workflow
@@ -230,14 +240,14 @@ def age.at(+src: Map<&2, String>, +prefix: String, +forge: Ctx.Forge, +now: U32)
 def completed.at(+src: Map<&2, String>, +prefix: String, done: Bool) -> String:
   match done:
     case True{}:
-      time.nonzero(Ctx.or(g.raw(src, prefix, "completed_at"), g.raw(src, prefix, "stopped")))
+      Ctx.or(time.at(src, prefix, "completed_at"), time.at(src, prefix, "stopped"))
     case False{}:
       ""
 
 # when the run appeared: GitHub stamps created_at, Forgejo created, and Gitea 1.25
 # neither, so a run that has started stands in for one that is still queued
 def created.at(+src: Map<&2, String>, +prefix: String) -> String:
-  time.nonzero(Ctx.or(g.raw(src, prefix, "created_at"), Ctx.or(g.raw(src, prefix, "created"), Ctx.or(g.raw(src, prefix, "started_at"), g.raw(src, prefix, "started")))))
+  Ctx.or(time.at(src, prefix, "created_at"), Ctx.or(time.at(src, prefix, "created"), Ctx.or(time.at(src, prefix, "started_at"), time.at(src, prefix, "started"))))
 
 def elapsed.valid(+secs: U32, bad: Bool) -> String:
   match bad:
@@ -253,9 +263,10 @@ def elapsed.of(start: Maybe<&2, U32>, end: Maybe<&2, U32>) -> String:
     case a b:
       ""
 
-# elapsed seconds; absent/invalid timestamps do not imply a zero-length run.
+# elapsed seconds; a missing timestamp, or the epoch a forge writes for one, does not
+# imply a zero-length run (nor a run of fifty-six years).
 def elapsed(+start: String, +end: String) -> String:
-  elapsed.of(Time.parse(start), Time.parse(end))
+  elapsed.of(Time.parse(time.nonzero(start)), Time.parse(time.nonzero(end)))
 
 # Gitea leaves head_branch empty for tags and PR refs. Keep those full refs
 # recognizable instead of presenting a tag or pull request as a branch.
@@ -296,7 +307,7 @@ def run.row(+src: Map<&2, String>, +prefix: String, +forge: Ctx.Forge, +now: U32
   m = Map.set(&2, String, m, "title", Ctx.or(Ctx.or(g.raw(src, prefix, "display_title"), g.raw(src, prefix, "title")), wf.of(src, prefix, forge)))
   m = Map.set(&2, String, m, "event", g.raw(src, prefix, "event"))
   m = Map.set(&2, String, m, "started_at", started)
-  m = Map.set(&2, String, m, "updated_at", Ctx.or(g.raw(src, prefix, "updated_at"), g.raw(src, prefix, "updated")))
+  m = Map.set(&2, String, m, "updated_at", Ctx.or(time.at(src, prefix, "updated_at"), time.at(src, prefix, "updated")))
   m = Map.set(&2, String, m, "completed_at", finished)
   m = Map.set(&2, String, m, "duration", elapsed(started, finished))
   m = Map.set(&2, String, m, "age", age.at(src, prefix, forge, now))
@@ -366,14 +377,16 @@ def job.duration.text(+seconds: String) -> String:
 
 # Copy each step to the normalized job row, retaining the flat array convention.
 def step.copy(+src: Map<&2, String>, +source: String, +target: String, m: Map<&2, String>) -> Map<&2, String>:
+  +started : String = time.at(src, source, "started_at")
+  +finished : String = time.at(src, source, "completed_at")
   m = Map.set(&2, String, m, Api.key(target, "number"), g.raw(src, source, "number"))
   m = Map.set(&2, String, m, Api.key(target, "name"), g.raw(src, source, "name"))
   m = Map.set(&2, String, m, Api.key(target, "status"), g.raw(src, source, "status"))
   m = Map.set(&2, String, m, Api.key(target, "conclusion"), g.raw(src, source, "conclusion"))
   m = Map.set(&2, String, m, Api.key(target, "state"), state(src, source))
-  m = Map.set(&2, String, m, Api.key(target, "started_at"), g.raw(src, source, "started_at"))
-  m = Map.set(&2, String, m, Api.key(target, "completed_at"), g.raw(src, source, "completed_at"))
-  Map.set(&2, String, m, Api.key(target, "duration"), job.duration(g.raw(src, source, "started_at"), g.raw(src, source, "completed_at")))
+  m = Map.set(&2, String, m, Api.key(target, "started_at"), started)
+  m = Map.set(&2, String, m, Api.key(target, "completed_at"), finished)
+  Map.set(&2, String, m, Api.key(target, "duration"), job.duration(started, finished))
 
 def steps.copy(n: Nat, +i: U32, +src: Map<&2, String>, +prefix: String, m: Map<&2, String>) -> Map<&2, String>:
   match n:
@@ -387,6 +400,8 @@ def job.row(+src: Map<&2, String>, +prefix: String) -> Map<&2, String>:
   +fj : Bool = fj.job(src, prefix)
   +status : String = status.of(src, prefix, fj)
   +conclusion : String = conclusion.of(src, prefix, fj)
+  +started : String = time.at(src, prefix, "started_at")
+  +finished : String = time.at(src, prefix, "completed_at")
   m = Map.new(&2, String)
   m = Map.set(&2, String, m, "kind", "job")
   m = Map.set(&2, String, m, "id", g.raw(src, prefix, "id"))
@@ -395,9 +410,9 @@ def job.row(+src: Map<&2, String>, +prefix: String) -> Map<&2, String>:
   m = Map.set(&2, String, m, "conclusion", conclusion)
   m = Map.set(&2, String, m, "state", state.of(status, conclusion, String.eq(status, "completed")))
   m = Map.set(&2, String, m, "runner_name", g.raw(src, prefix, "runner_name"))
-  m = Map.set(&2, String, m, "started_at", g.raw(src, prefix, "started_at"))
-  m = Map.set(&2, String, m, "completed_at", g.raw(src, prefix, "completed_at"))
-  m = Map.set(&2, String, m, "duration", job.duration(g.raw(src, prefix, "started_at"), g.raw(src, prefix, "completed_at")))
+  m = Map.set(&2, String, m, "started_at", started)
+  m = Map.set(&2, String, m, "completed_at", finished)
+  m = Map.set(&2, String, m, "duration", job.duration(started, finished))
   m = Map.set(&2, String, m, "html_url", g.raw(src, prefix, "html_url"))
   +count = Api.count(src, Api.key(prefix, "steps"))
   m = Map.set(&2, String, m, "steps.#", Nat.show(count))
@@ -810,6 +825,22 @@ def logs.jobs(+env: Cli.Env, +id: String, xs: List<&2, Map<&2, String>>, +step: 
 def logs.miss(+xs: List<&2, Map<&2, String>>, +job: String) -> Bool:
   Bool.and(Bool.not(String.is_empty(job)), Nat.is_eq(List.length(&2, Map<&2, String>, xs), 0n))
 
+# the steps the selected jobs list, all told. Gitea 1.25 sends "steps": null for every
+# job, so a job can list none at all.
+def logs.steps.count(xs: List<&2, Map<&2, String>>) -> Nat:
+  match xs:
+    case Nil{}:
+      0n
+    case Con{+row, rest}:
+      Nat.add(Api.count(row, "steps"), logs.steps.count(rest))
+
+def logs.job.names(xs: List<&2, Map<&2, String>>, acc: List<&2, String>) -> List<&2, String>:
+  match xs:
+    case Nil{}:
+      acc
+    case Con{+row, rest}:
+      logs.job.names(rest, List.append(&2, String, acc, [Api.f(row, "name")]))
+
 def logs.available.steps(xs: List<&2, Map<&2, String>>) -> String:
   match xs:
     case Nil{}:
@@ -817,12 +848,25 @@ def logs.available.steps(xs: List<&2, Map<&2, String>>) -> String:
     case Con{+row, rest}:
       Api.f(row, "name") ++ ":\n" ++ Runlogs.steps.names(Runlogs.steps.of(row, "steps", "")) ++ logs.available.steps(rest)
 
+# --step matched no step of the selected jobs. A job the forge lists no steps for has no
+# step list to search, so the message says how to read its log instead of printing an
+# empty one.
+def logs.no.step.text.at(+steps: Nat, +names: String, +available: String, +step: String) -> String:
+  match steps:
+    case 0n:
+      "runs logs: the forge lists no steps for job " ++ names ++ ", so --step can't cut its log; drop --step for the whole log"
+    case 1n+p:
+      "runs logs: no step named " ++ step ++ "; steps:\n" ++ available
+
+def logs.no.step.text(+xs: List<&2, Map<&2, String>>, +step: String) -> String:
+  logs.no.step.text.at(logs.steps.count(xs), String.join(logs.job.names(xs, Nil{}), ", "), logs.available.steps(xs), step)
+
 def logs.finish.if(+env: Cli.Env, +xs: List<&2, Map<&2, String>>, +step: String, missing: Bool, incomplete: Bool) -> IO(Unit):
   match missing incomplete:
     case _ True{}:
       IO.die(Unit, 1, "")
     case True{} False{}:
-      Cli.fail(Unit, env, "runs logs: no step named " ++ step ++ "; steps:\n" ++ logs.available.steps(xs))
+      Cli.fail(Unit, env, logs.no.step.text(xs, step))
     case False{} False{}:
       IO.pure(Unit, Unit{})
 
@@ -1384,7 +1428,8 @@ def rerun.path(+forge: Ctx.Forge, +id: String, +job: String, failed: Bool, speci
     case False{} False{}:
       rerun.run.path(id, "rerun")
 
-# Gitea has a rerun endpoint from 1.26 on, and answers 404 before that
+# Gitea has a rerun endpoint from 1.26 on, and answers 404 before that: the POST itself is
+# where a 404 means the forge has no such API
 def rerun.missing.text() -> String:
   "runs rerun: this forge has no rerun API (HTTP 404, needs Gitea >= 1.26)"
 
@@ -1393,19 +1438,23 @@ def rerun.missing.text() -> String:
 def missing.api(+forge: Ctx.Forge, +status: U32) -> Bool:
   U32.is_eq(status, 404) && forge.gitea(forge)
 
-def rerun.bad(+env: Cli.Env, +status: U32, body: List<&2, U32>, missing: Bool) -> IO(Unit):
+# the missing-API text, "" when the forge's refusal is something else
+def rerun.missing.text.if(+missing: Bool) -> String:
   match missing:
     case True{}:
-      Cli.fail(Unit, env, rerun.missing.text())
+      rerun.missing.text()
     case False{}:
-      Cli.fail(Unit, env, Api.message(status, body))
+      ""
+
+def rerun.bad(+env: Cli.Env, +status: U32, body: List<&2, U32>, +text: String) -> IO(Unit):
+  Cli.fail(Unit, env, Ctx.or(text, Api.message(status, body)))
 
 def rerun.if(+env: Cli.Env, +status: U32, body: List<&2, U32>, +id: String, +forge: Ctx.Forge, good: Bool) -> IO(Unit):
   match good:
     case True{}:
       done.url(env, "actions/runs/" ++ id)
     case False{}:
-      rerun.bad(env, status, body, missing.api(forge, status))
+      rerun.bad(env, status, body, rerun.missing.text.if(missing.api(forge, status)))
 
 def rerun.check(+env: Cli.Env, r: Api.Reply, +id: String, +forge: Ctx.Forge) -> IO(Unit):
   match r:
@@ -1428,23 +1477,32 @@ def rerun.job.check(+env: Cli.Env, +forge: Ctx.Forge, +id: String, +job: String,
     case False{}:
       Cli.fail(Unit, env, "runs rerun: job does not belong to run " ++ id)
 
-# the job's record, read before its rerun. A Gitea below 1.26 has no rerun API, so the read
-# itself is a 404 there, and it says what a 404 from the endpoint says.
-def rerun.job.body.if(+env: Cli.Env, +status: U32, body: List<&2, U32>, +forge: Ctx.Forge, missing: Bool, good: Bool) -> IO(List<&2, U32>):
-  match missing good:
+# a rerun's job read answers 404 for an id the repo does not have. A rerun gives its jobs
+# new ids, so the id the user copied from before it is stale, not unknown to the forge.
+def rerun.job.gone(+status: U32) -> Bool:
+  U32.is_eq(status, 404)
+
+def rerun.no.job.text(+id: String, +job: String) -> String:
+  "runs rerun: no job " ++ job ++ " in this repo (HTTP 404); a rerun gives its jobs new ids, so list them with cha runs view " ++ id
+
+# the job's record, read before its rerun: it carries the run id the job belongs to, which
+# is how cha knows the job is the run's. The job read works on every Gitea cha supports,
+# so a 404 here is a stale job id, never a forge without the rerun API.
+def rerun.job.body.if(+env: Cli.Env, +status: U32, body: List<&2, U32>, +id: String, +job: String, gone: Bool, good: Bool) -> IO(List<&2, U32>):
+  match gone good:
     case True{} _:
-      Cli.fail(List<&2, U32>, env, rerun.missing.text())
+      Cli.fail(List<&2, U32>, env, rerun.no.job.text(id, job))
     case False{} True{}:
       IO.pure(List<&2, U32>, body)
     case False{} False{}:
       Cli.fail(List<&2, U32>, env, Api.message(status, body))
 
-def rerun.job.body(+env: Cli.Env, +forge: Ctx.Forge, r: Api.Reply) -> IO(List<&2, U32>):
+def rerun.job.body(+env: Cli.Env, r: Api.Reply, +id: String, +job: String) -> IO(List<&2, U32>):
   match r:
     case Api.Broke{w}:
       Cli.fail(List<&2, U32>, env, w)
     case Api.Reply{+status, next, body}:
-      rerun.job.body.if(env, status, body, forge, missing.api(forge, status), Api.ok(status))
+      rerun.job.body.if(env, status, body, id, job, rerun.job.gone(status), Api.ok(status))
 
 def rerun.selected(+env: Cli.Env, +forge: Ctx.Forge, +id: String, +job: String, +failed: Bool, specific: Bool) -> IO(Unit):
   match env specific:
@@ -1453,7 +1511,7 @@ def rerun.selected(+env: Cli.Env, +forge: Ctx.Forge, +id: String, +job: String, 
     case Cli.Env{+repo, +tok, on, json, a} True{}:
       do IO<Unit>:
         r : Api.Reply <- Api.get(repo, tok, Api.path(repo, "actions/jobs/" ++ Url.encode(job)))
-        b : List<&2, U32> <- rerun.job.body(env, forge, r)
+        b : List<&2, U32> <- rerun.job.body(env, r, id, job)
         rerun.job.check(env, forge, id, job, String.eq(Api.f(Api.obj(b), "run_id"), id))
 
 def rerun.valid(+env: Cli.Env, +forge: Ctx.Forge, +id: String, +job: String, +failed: Bool, conflict: Bool) -> IO(Unit):

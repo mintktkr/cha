@@ -128,6 +128,29 @@ def fj.check.page(page: Runs.JobPages) -> IO(Unit):
     case _:
       IO.die(Unit, 1, "a bare job array is the whole list, with no link to follow")
 
+# Gitea 28 stamps a job that never started with the epoch, and sends a real completed_at
+# beside it; a queued job can carry the epoch in both. Gitea 1.25 sends "steps": null.
+def epoch.body() -> String:
+  "{\"jobs\":[{\"id\":201,\"name\":\"cancelled\",\"status\":\"completed\",\"conclusion\":\"cancelled\",\"started_at\":\"1970-01-01T00:00:00Z\",\"completed_at\":\"2026-01-02T13:01:30Z\",\"steps\":[{\"number\":1,\"name\":\"say hi\",\"status\":\"completed\",\"conclusion\":\"cancelled\",\"started_at\":\"1970-01-01T00:00:00Z\",\"completed_at\":\"1970-01-01T00:00:00Z\"}]},{\"id\":202,\"name\":\"queued\",\"status\":\"queued\",\"started_at\":\"1970-01-01T00:00:00Z\",\"completed_at\":\"1970-01-01T00:00:00Z\",\"steps\":null}]}"
+
+def epoch.check(xs: List<&2, Map<&2, String>>) -> IO(Unit):
+  match xs:
+    case Con{+job, Con{+queued, Nil{}}}:
+      do IO<Unit>:
+        expect(Api.f(job, "started_at"), "")
+        expect(Api.f(job, "completed_at"), "2026-01-02T13:01:30Z")
+        expect(Api.f(job, "duration"), "")
+        expect(Api.f(job, "steps.0.started_at"), "")
+        expect(Api.f(job, "steps.0.completed_at"), "")
+        expect(Api.f(job, "steps.0.duration"), "")
+        expect(Runs.job.line(False{}, job), "  cancelled  cancelled  #201    \n    cancelled  say hi  \n")
+        expect(Api.f(queued, "started_at"), "")
+        expect(Api.f(queued, "completed_at"), "")
+        expect(Api.f(queued, "duration"), "")
+        expect(Api.f(queued, "steps.#"), "0")
+    case _:
+      IO.die(Unit, 1, "two jobs with epoch timestamps must flatten to two rows")
+
 def main() -> IO(Unit):
   do IO<Unit>:
     expect(Runs.job.duration("2026-01-02T10:00:00-03:00", "2026-01-02T13:01:30Z"), "90")
@@ -135,6 +158,8 @@ def main() -> IO(Unit):
     expect(Runs.job.duration("2026-01-02T13:00:01Z", "2026-01-02T13:00:00Z"), "")
     expect(Runs.job.duration("2026-01-02T00:00:00Z", "2026-03-03T00:00:00Z"), "5184000")
     expect(Runs.job.duration("", "2026-01-02T13:00:00Z"), "")
+    expect(Runs.job.duration("1970-01-01T00:00:00Z", "2026-01-02T13:01:30Z"), "")
+    expect(Runs.job.duration("1970-01-01T01:00:00+01:00", "2026-01-02T13:01:30Z"), "")
     expect(Runs.job.duration("invalid", "2026-01-02T13:00:00Z"), "")
     expect(Runs.job.duration("2026-01-02T13:00:00Z", ""), "")
     +src : Map<&2, String> = Api.obj(Utf8.encode(jobs.body()))
@@ -161,3 +186,4 @@ def main() -> IO(Unit):
     expect(Bool.show(String.contains(Runs.view.text(False{}, fake.first(""), Nil{}), "attempt")), "False")
     yes(String.contains(Runs.view.text(False{}, fake.first("3"), Nil{}), "#7  success  ci  attempt 3\n"))
     fj.check.page(Runs.jobs.page("", "fallback-2", Utf8.encode(fj.jobs.body()), Nil{}))
+    epoch.check(Runs.jrows.of(Api.obj(Utf8.encode(epoch.body()))))
