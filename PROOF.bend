@@ -436,6 +436,15 @@ def Laws.epoch_kept():
 def Laws.epoch_duration():
   {==}
 
+# The message def takes the count of steps the selected jobs list and the text of those
+# steps, both closed here, so each branch normalizes to its message.
+
+def Laws.logs_step_none_listed():
+  {==}
+
+def Laws.logs_step_none_matched():
+  {==}
+
 # runs view --json
 # ---------------
 # The document builder is the whole shape: two literals in, and the text that starts with the

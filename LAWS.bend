@@ -524,6 +524,19 @@ law epoch_kept:
 law epoch_duration:
   {Runs.job.duration("1970-01-01T00:00:00Z", "2026-01-02T13:01:30Z") == "" : String}
 
+# --step cuts a job's log at a step the forge names, and Gitea 1.25 sends "steps": null
+# for every job: a selected job can list no steps at all. There is then no step list to
+# cut, and reporting a step that is not there over an empty list reads as a job that had
+# steps and lost them.
+
+# LAW: a job the forge lists no steps for says so, and how to read its log.
+law logs_step_none_listed:
+  {Runs.logs.no.step.text.at(0n, "ok", "", "say hi") == "runs logs: the forge lists no steps for job ok, so --step can't cut its log; drop --step for the whole log" : String}
+
+# LAW: steps that exist but none match still list the ones the job has.
+law logs_step_none_matched:
+  {Runs.logs.no.step.text.at(2n, "ok", "ok:\n  say hi\n", "deploy") == "runs logs: no step named deploy; steps:\nok:\n  say hi\n" : String}
+
 # runs view --json
 # ---------------
 # A command that addresses one run prints one object, as issue view --comments does.

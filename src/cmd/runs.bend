@@ -821,6 +821,22 @@ def logs.jobs(+env: Cli.Env, +id: String, xs: List<&2, Map<&2, String>>, +step: 
 def logs.miss(+xs: List<&2, Map<&2, String>>, +job: String) -> Bool:
   Bool.and(Bool.not(String.is_empty(job)), Nat.is_eq(List.length(&2, Map<&2, String>, xs), 0n))
 
+# the steps the selected jobs list, all told. Gitea 1.25 sends "steps": null for every
+# job, so a job can list none at all.
+def logs.steps.count(xs: List<&2, Map<&2, String>>) -> Nat:
+  match xs:
+    case Nil{}:
+      0n
+    case Con{+row, rest}:
+      Nat.add(Api.count(row, "steps"), logs.steps.count(rest))
+
+def logs.job.names(xs: List<&2, Map<&2, String>>, acc: List<&2, String>) -> List<&2, String>:
+  match xs:
+    case Nil{}:
+      acc
+    case Con{+row, rest}:
+      logs.job.names(rest, List.append(&2, String, acc, [Api.f(row, "name")]))
+
 def logs.available.steps(xs: List<&2, Map<&2, String>>) -> String:
   match xs:
     case Nil{}:
@@ -828,12 +844,25 @@ def logs.available.steps(xs: List<&2, Map<&2, String>>) -> String:
     case Con{+row, rest}:
       Api.f(row, "name") ++ ":\n" ++ Runlogs.steps.names(Runlogs.steps.of(row, "steps", "")) ++ logs.available.steps(rest)
 
+# --step matched no step of the selected jobs. A job the forge lists no steps for has no
+# step list to search, so the message says how to read its log instead of printing an
+# empty one.
+def logs.no.step.text.at(+steps: Nat, +names: String, +available: String, +step: String) -> String:
+  match steps:
+    case 0n:
+      "runs logs: the forge lists no steps for job " ++ names ++ ", so --step can't cut its log; drop --step for the whole log"
+    case 1n+p:
+      "runs logs: no step named " ++ step ++ "; steps:\n" ++ available
+
+def logs.no.step.text(+xs: List<&2, Map<&2, String>>, +step: String) -> String:
+  logs.no.step.text.at(logs.steps.count(xs), String.join(logs.job.names(xs, Nil{}), ", "), logs.available.steps(xs), step)
+
 def logs.finish.if(+env: Cli.Env, +xs: List<&2, Map<&2, String>>, +step: String, missing: Bool, incomplete: Bool) -> IO(Unit):
   match missing incomplete:
     case _ True{}:
       IO.die(Unit, 1, "")
     case True{} False{}:
-      Cli.fail(Unit, env, "runs logs: no step named " ++ step ++ "; steps:\n" ++ logs.available.steps(xs))
+      Cli.fail(Unit, env, logs.no.step.text(xs, step))
     case False{} False{}:
       IO.pure(Unit, Unit{})
 
