@@ -60,6 +60,7 @@ On GitHub, an issue and a pull request share one number sequence: the first PR i
 | | `C runs rerun RUN --failed` / `--job JOB` / no flag | attempt 2 (#21: `runs view` should show it) |
 | | `C runs rerun RUN --job JOB-OF-ANOTHER-RUN` | `job does not belong to run`, exit 1 |
 | | `C runs watch RUN` on a failed run | exit 1 |
+| | `C runs watch RUN` on a succeeded run | exit 0 |
 | release | `C release create v0.0.1-test --title T --notes N --target main` | URL |
 | | `C release upload v0.0.1-test FILE out/cha` | one download URL per file (#18) |
 | | `C release view v0.0.1-test` | lists both assets; the binary downloads byte-identical |
@@ -79,4 +80,35 @@ On GitHub, an issue and a pull request share one number sequence: the first PR i
 - #20: `pr comment` accepts an issue number; merging a merged PR says nothing.
 - #21: `runs view` doesn't show the attempt, so a rerun has to be checked through the API.
 
-Gitea's write paths are still to be run the same way, against a Gitea sandbox.
+**2026-11-03, a self-hosted Gitea 1.25.3, cha main at f939798, native build.** Every row in the table passed except:
+
+- `runs logs RUN --job ok --step "say hi"`: `runs logs: no step named say hi; steps:` + `ok:` and exit 1. Gitea 1.25.3 sends `steps: null` for a job, from both the job list and the single-job endpoint, so a step has no name or timestamps to cut on. The forge's limit, not cha's. The message read oddly (an empty step list), and #63 makes it say to drop `--step`.
+- `runs cancel RUN`: clean refusal, `runs cancel: this forge has no cancel API (HTTP 404, needs Gitea >= 28); cancel it from the web UI`, exit 1. Needs Gitea 28.
+- `runs rerun RUN` (no flag, `--failed`, `--job ID`): clean refusal on all three, `runs rerun: this forge has no rerun API (HTTP 404, needs Gitea >= 1.26)`, exit 1. Needs Gitea 1.26.
+
+Gitea numbers issues and pull requests in one sequence, so the sandbox's first pull request was #2. Rows that were bugs on GitHub on 2026-10-03 now pass here:
+
+- #17 is gone: `runs dispatch` printed the run it created (`actions/runs/6` for Gitea run id 4888, `run_number` 6), twice, on both forges.
+- #18 is gone: `release upload` of a 17-byte text file and the 6.1 MB binary answered with an attachment URL each, and both downloaded byte-identical (sha256 of each asset matched the local file).
+- #19 is gone: `issue labels 1 add no-such-label` exits 1 with `issue labels: unknown label: no-such-label` and changes nothing.
+- #20 is gone: `pr comment 1 --body B` on an issue exits 1 with `#1 is not a pull request (an issue, or no such number)`, and `pr merge 3` on a merged pull request exits 1 with `#3 is already merged (commit abd011a)`.
+- #21 is gone on Gitea 28: `runs view` prints `attempt 3` after two reruns.
+
+Two rows the table lacks, both added and both passing: `pr reopen 2` after a close (state follows, and the `--comment` of the close landed on the pull request), and `runs watch RUN` on a succeeded run (exit 0, `success`).
+
+Not observed on 1.25.3: `runs view` step timings and `runs logs --step`, for the reason above.
+
+**2026-11-03, a self-hosted Gitea 28.2, cha main at f939798, native build.** Every row in the table passed except:
+
+- The five rows that need a run to execute were skipped: this user-owned repo had no runner, so its runs stayed `queued` for the whole session and `runners --user` listed nothing. Skipped: `runs logs --step`, `runs logs --failed`, `runs watch` on a failed run, and the `pr checks` row (both checks read `pending`, exit 0, never `flaky failed`). The dispatch, cancel and rerun rows still ran, against runs that never started.
+- `runs rerun RUN --failed` reached the forge and relayed its own refusal, `HTTP 400: this workflow run has no failed jobs to re-run`, on the cancelled run it was given. With no runner there was no failed job to rerun.
+
+New on 28.2, both fixed in #63 before v0.2.0:
+
+- A run cancelled before a runner picked it up renders `sleep  cancelled  #13611    1793753021s`: Gitea sends `started_at: 1970-01-01T00:00:00Z` for a job that never started, and `runs view` subtracts it from `completed_at`. `--json` also prints that epoch as `started_at` instead of the empty string the docs promise for a missing timestamp.
+- `runs rerun RUN --job ID` with an id that the run no longer holds (a rerun renumbers its jobs) answers the forge's 404 with `this forge has no rerun API (HTTP 404, needs Gitea >= 1.26)`, which is false on 28.2. The right reading is a stale job id.
+
+`runs rerun` works on 28.2 with no flag and with `--job ID` (attempt 2 and 3 both appeared as `queued`), `runs cancel` cancels a queued run, and `runs rerun RUN --job <job of another run>` exits 1 with `job does not belong to run 7690` before any rerun request, on both forges.
+
+Gitea has no API that serves a release asset's bytes: `/repos/O/R/releases/assets/{id}` is a 404 on 1.25.3, so both assets were downloaded from the release's `releases/download/...` URL with the same `Authorization: token` header and hashed there.
+
