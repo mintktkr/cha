@@ -77,7 +77,7 @@ def conclusion.of(+src: Map<&2, String>, +prefix: String, fj: Bool) -> String:
     case False{}:
       g.raw(src, prefix, "conclusion")
 
-# Forgejo writes the epoch when a run never got a start
+# Gitea and Forgejo write the epoch when a run or a job never got a start
 def zero.instant(+m: Maybe<&2, U32>) -> Bool:
   match m:
     case None{}:
@@ -201,18 +201,24 @@ def short.if(+s: String, cut: Bool) -> String:
 def short.sha(+s: String) -> String:
   short.if(s, Nat.is_gt(String.length(s), 7n))
 
-# Forgejo writes the epoch where a run has no timestamp
+# a forge timestamp, "" when the forge sent none. The epoch is compared as a parsed
+# instant, so every offset form of it reads as no timestamp too.
 def time.nonzero(+s: String) -> String:
   Ctx.or.if(s, "", zero.instant(Time.parse(s)))
+
+# field k of an object as a timestamp: "" when the forge sent none, or the epoch
+# 1970-01-01T00:00:00Z it writes for a time that never happened
+def time.at(+src: Map<&2, String>, +prefix: String, +k: String) -> String:
+  time.nonzero(g.raw(src, prefix, k))
 
 # when a run started: Gitea says started_at, Forgejo started, GitHub
 # run_started_at then created_at
 def started.at(+src: Map<&2, String>, +prefix: String, +forge: Ctx.Forge) -> String:
   match forge:
     case Ctx.Gitea{}:
-      time.nonzero(Ctx.or(g.raw(src, prefix, "started_at"), g.raw(src, prefix, "started")))
+      Ctx.or(time.at(src, prefix, "started_at"), time.at(src, prefix, "started"))
     case Ctx.GitHub{}:
-      Ctx.or(g.raw(src, prefix, "run_started_at"), g.raw(src, prefix, "created_at"))
+      Ctx.or(time.at(src, prefix, "run_started_at"), time.at(src, prefix, "created_at"))
 
 # the workflow's name: Gitea and Forgejo name the file, GitHub names the
 # workflow
@@ -230,14 +236,14 @@ def age.at(+src: Map<&2, String>, +prefix: String, +forge: Ctx.Forge, +now: U32)
 def completed.at(+src: Map<&2, String>, +prefix: String, done: Bool) -> String:
   match done:
     case True{}:
-      time.nonzero(Ctx.or(g.raw(src, prefix, "completed_at"), g.raw(src, prefix, "stopped")))
+      Ctx.or(time.at(src, prefix, "completed_at"), time.at(src, prefix, "stopped"))
     case False{}:
       ""
 
 # when the run appeared: GitHub stamps created_at, Forgejo created, and Gitea 1.25
 # neither, so a run that has started stands in for one that is still queued
 def created.at(+src: Map<&2, String>, +prefix: String) -> String:
-  time.nonzero(Ctx.or(g.raw(src, prefix, "created_at"), Ctx.or(g.raw(src, prefix, "created"), Ctx.or(g.raw(src, prefix, "started_at"), g.raw(src, prefix, "started")))))
+  Ctx.or(time.at(src, prefix, "created_at"), Ctx.or(time.at(src, prefix, "created"), Ctx.or(time.at(src, prefix, "started_at"), time.at(src, prefix, "started"))))
 
 def elapsed.valid(+secs: U32, bad: Bool) -> String:
   match bad:
@@ -253,9 +259,10 @@ def elapsed.of(start: Maybe<&2, U32>, end: Maybe<&2, U32>) -> String:
     case a b:
       ""
 
-# elapsed seconds; absent/invalid timestamps do not imply a zero-length run.
+# elapsed seconds; a missing timestamp, or the epoch a forge writes for one, does not
+# imply a zero-length run (nor a run of fifty-six years).
 def elapsed(+start: String, +end: String) -> String:
-  elapsed.of(Time.parse(start), Time.parse(end))
+  elapsed.of(Time.parse(time.nonzero(start)), Time.parse(time.nonzero(end)))
 
 # Gitea leaves head_branch empty for tags and PR refs. Keep those full refs
 # recognizable instead of presenting a tag or pull request as a branch.
@@ -296,7 +303,7 @@ def run.row(+src: Map<&2, String>, +prefix: String, +forge: Ctx.Forge, +now: U32
   m = Map.set(&2, String, m, "title", Ctx.or(Ctx.or(g.raw(src, prefix, "display_title"), g.raw(src, prefix, "title")), wf.of(src, prefix, forge)))
   m = Map.set(&2, String, m, "event", g.raw(src, prefix, "event"))
   m = Map.set(&2, String, m, "started_at", started)
-  m = Map.set(&2, String, m, "updated_at", Ctx.or(g.raw(src, prefix, "updated_at"), g.raw(src, prefix, "updated")))
+  m = Map.set(&2, String, m, "updated_at", Ctx.or(time.at(src, prefix, "updated_at"), time.at(src, prefix, "updated")))
   m = Map.set(&2, String, m, "completed_at", finished)
   m = Map.set(&2, String, m, "duration", elapsed(started, finished))
   m = Map.set(&2, String, m, "age", age.at(src, prefix, forge, now))
@@ -366,14 +373,16 @@ def job.duration.text(+seconds: String) -> String:
 
 # Copy each step to the normalized job row, retaining the flat array convention.
 def step.copy(+src: Map<&2, String>, +source: String, +target: String, m: Map<&2, String>) -> Map<&2, String>:
+  +started : String = time.at(src, source, "started_at")
+  +finished : String = time.at(src, source, "completed_at")
   m = Map.set(&2, String, m, Api.key(target, "number"), g.raw(src, source, "number"))
   m = Map.set(&2, String, m, Api.key(target, "name"), g.raw(src, source, "name"))
   m = Map.set(&2, String, m, Api.key(target, "status"), g.raw(src, source, "status"))
   m = Map.set(&2, String, m, Api.key(target, "conclusion"), g.raw(src, source, "conclusion"))
   m = Map.set(&2, String, m, Api.key(target, "state"), state(src, source))
-  m = Map.set(&2, String, m, Api.key(target, "started_at"), g.raw(src, source, "started_at"))
-  m = Map.set(&2, String, m, Api.key(target, "completed_at"), g.raw(src, source, "completed_at"))
-  Map.set(&2, String, m, Api.key(target, "duration"), job.duration(g.raw(src, source, "started_at"), g.raw(src, source, "completed_at")))
+  m = Map.set(&2, String, m, Api.key(target, "started_at"), started)
+  m = Map.set(&2, String, m, Api.key(target, "completed_at"), finished)
+  Map.set(&2, String, m, Api.key(target, "duration"), job.duration(started, finished))
 
 def steps.copy(n: Nat, +i: U32, +src: Map<&2, String>, +prefix: String, m: Map<&2, String>) -> Map<&2, String>:
   match n:
@@ -387,6 +396,8 @@ def job.row(+src: Map<&2, String>, +prefix: String) -> Map<&2, String>:
   +fj : Bool = fj.job(src, prefix)
   +status : String = status.of(src, prefix, fj)
   +conclusion : String = conclusion.of(src, prefix, fj)
+  +started : String = time.at(src, prefix, "started_at")
+  +finished : String = time.at(src, prefix, "completed_at")
   m = Map.new(&2, String)
   m = Map.set(&2, String, m, "kind", "job")
   m = Map.set(&2, String, m, "id", g.raw(src, prefix, "id"))
@@ -395,9 +406,9 @@ def job.row(+src: Map<&2, String>, +prefix: String) -> Map<&2, String>:
   m = Map.set(&2, String, m, "conclusion", conclusion)
   m = Map.set(&2, String, m, "state", state.of(status, conclusion, String.eq(status, "completed")))
   m = Map.set(&2, String, m, "runner_name", g.raw(src, prefix, "runner_name"))
-  m = Map.set(&2, String, m, "started_at", g.raw(src, prefix, "started_at"))
-  m = Map.set(&2, String, m, "completed_at", g.raw(src, prefix, "completed_at"))
-  m = Map.set(&2, String, m, "duration", job.duration(g.raw(src, prefix, "started_at"), g.raw(src, prefix, "completed_at")))
+  m = Map.set(&2, String, m, "started_at", started)
+  m = Map.set(&2, String, m, "completed_at", finished)
+  m = Map.set(&2, String, m, "duration", job.duration(started, finished))
   m = Map.set(&2, String, m, "html_url", g.raw(src, prefix, "html_url"))
   +count = Api.count(src, Api.key(prefix, "steps"))
   m = Map.set(&2, String, m, "steps.#", Nat.show(count))

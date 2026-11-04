@@ -485,6 +485,28 @@ law rerun_job_ok_slash:
 law rerun_job_ok_dots:
   {Runs.rerun.job.ok("..") == False{} : Bool}
 
+# A forge writes the epoch where a run or a job has no timestamp: Gitea 28 sends
+# 1970-01-01T00:00:00Z for a job cancelled while queued, with a real completed_at beside
+# it. It is compared as a parsed instant, so every offset form of it reads as no
+# timestamp, and a real time is kept. A duration is measured between two real instants, so
+# one whose start is missing is no duration at all.
+
+# LAW: the epoch reads as missing.
+law epoch_missing:
+  {Runs.time.nonzero("1970-01-01T00:00:00Z") == "" : String}
+
+# LAW: ...in any offset form of it, since the instants are what is compared.
+law epoch_missing_offset:
+  {Runs.time.nonzero("1970-01-01T01:00:00+01:00") == "" : String}
+
+# LAW: a real time is kept as the forge sent it.
+law epoch_kept:
+  {Runs.time.nonzero("2026-01-02T13:01:30Z") == "2026-01-02T13:01:30Z" : String}
+
+# LAW: a duration whose start the forge never sent is no duration.
+law epoch_duration:
+  {Runs.job.duration("1970-01-01T00:00:00Z", "2026-01-02T13:01:30Z") == "" : String}
+
 # runs view --json
 # ---------------
 # A command that addresses one run prints one object, as issue view --comments does.

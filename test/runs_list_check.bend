@@ -109,6 +109,14 @@ def main() -> IO(Unit):
     expect(Api.f(missing, "duration"), "")
     +active : Map<&2, String> = Runs.run.row(Api.obj(Utf8.encode("{\"status\":\"in_progress\",\"completed_at\":\"2026-01-02T13:10:00Z\"}")), "", Ctx.Gitea{}, now)
     expect(Api.f(active, "completed_at"), "")
+    # Gitea writes the epoch where a run has no timestamp: 1970-01-01T00:00:00Z is a queued
+    # run, not a fifty-six-year-old one
+    +epoch : Map<&2, String> = Runs.run.row(Api.obj(Utf8.encode("{\"status\":\"queued\",\"started_at\":\"1970-01-01T00:00:00Z\",\"created_at\":\"1970-01-01T00:00:00Z\",\"updated_at\":\"1970-01-01T00:00:00Z\"}")), "", Ctx.Gitea{}, now)
+    expect(Api.f(epoch, "started_at"), "")
+    expect(Api.f(epoch, "updated_at"), "")
+    expect(Api.f(epoch, "completed_at"), "")
+    expect(Api.f(epoch, "duration"), "")
+    expect(Api.f(epoch, "age"), "")
     page.continue(Runs.list.page(env(), Ctx.Gitea{}, now, ["ci.yml"], 2n, "page-2", "", 0n, Utf8.encode(page.one()), Nil{}), now)
     gitea.more(Runs.list.page(env(), Ctx.Gitea{}, now, Nil{}, 20n, "", "fallback-2", 0n, Utf8.encode(page.counted("5")), Nil{}))
     gitea.last(Runs.list.page(env(), Ctx.Gitea{}, now, Nil{}, 20n, "", "fallback-3", 3n, Utf8.encode(page.counted("5")), Nil{}))

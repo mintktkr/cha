@@ -409,6 +409,21 @@ def Laws.rerun_job_ok_slash():
 def Laws.rerun_job_ok_dots():
   {==}
 
+# A timestamp normalizes through Time.parse on a closed string, and a duration through the
+# two instants it parses to, so the two sides of each claim are one term.
+
+def Laws.epoch_missing():
+  {==}
+
+def Laws.epoch_missing_offset():
+  {==}
+
+def Laws.epoch_kept():
+  {==}
+
+def Laws.epoch_duration():
+  {==}
+
 # runs view --json
 # ---------------
 # The document builder is the whole shape: two literals in, and the text that starts with the
