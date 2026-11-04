@@ -72,13 +72,41 @@ In a terminal, cha uses a pink → lavender → mint palette where every colour 
 
 `cha help` goes all out with glow, animation and kaomoji ✧･ﾟ: ･ﾟ✧. Piped, it prints plain text.
 
-## ✨ Written in Bend
+## ✨ Written in Bend, laws first
 
-cha is written in [Bend](https://bend-lang.com). The rules that must never break live in `LAWS.bend`, and a commit only lands if they still prove:
+cha is written in [Bend](https://bend-lang.com), down to its own HTTP, JSON and TLS library, [chaki 茶器](lib/chaki/README.md). Nothing comes from a package hub.
+
+```mermaid
+flowchart LR
+  shell([your shell]) --> main["main.bend<br/>flags · repo · token · colour"]
+  main --> cmd["src/cmd/*<br/>one file per command"]
+  cmd --> api["src/api.bend<br/>requests · pages · flat rows"]
+  api --> http["chaki http + hop<br/>HTTP/1.1 · redirects"]
+  http -->|default| ossl["system OpenSSL 3"]
+  http -->|CHA_TLS=bend| tls["chaki TLS 1.3<br/>x509 · crypto"]
+  ossl --> forge[("Gitea · Forgejo · GitHub")]
+  tls --> forge
+```
+
+Bend has **laws**: a claim about the code, written in the code, that the checker refuses until a proof exists. cha keeps **468** of them. A commit only lands while every one still proves:
+
+```mermaid
+flowchart LR
+  law["law in LAWS.bend<br/>the claim, plus one plain sentence"] --> proof["def in PROOF.bend<br/>its type is the claim"]
+  proof --> check{"bend PROOF.bend"}
+  check -->|SOME PROOFS FAIL| red["check.sh red<br/>the commit doesn't land"]
+  check -->|ALL PROOFS CHECK| kernel{"--verdict<br/>BendTT kernel, proven in Lean"}
+  kernel --> green["check.sh green"]
+```
 
 - 🔐 a token, a webhook secret or a webhook URL's path and query never reach the output
 - 🎨 with colour off, no escape byte is printed
-- 🔁 pagination always terminates
+- 🧭 an id or a ref can't walk out of its URL path
+- ↪️ a redirect to another origin drops your credentials, and they stay dropped, even back at the first origin
+- 🤝 TLS: no application data before the server's Finished, the certificate chain and its signature all check out, and a failed connection stays failed
+- 🧾 every RFC 3986 resolution example, every published hash and cipher vector chaki claims, every UTF-8 edge
+
+Laws over every input hold where the code is structural. Where it computes, a law pins exact answers instead. Writing chaki's 320 laws turned up five real bugs, from a TLS downgrade check to an HTTP request-smuggling shape. [docs/laws.md](docs/laws.md) explains how to read a law, the two kinds, every area and what they found. Promises about the *order* of events also have TLA+ models, with charts, in [verify/](verify/README.md).
 
 ## 💌 Contributing
 

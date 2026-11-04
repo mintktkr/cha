@@ -19,7 +19,7 @@ import ./src/cmd/hooks.bend as Hooks
 import ./src/cmd/secrets.bend as Secrets
 
 def version() -> String:
-  "0.1.0"
+  "0.2.0"
 
 # the command word's index in this list, or its length when unknown
 def names() -> List<&2, String>:
