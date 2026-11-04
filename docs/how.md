@@ -18,9 +18,9 @@ your shell
 └─────────────────────────────────┬────────────────────────────────┘
                                   ▼
 ┌──────────────────────────────────────────────────────────────────┐
-│ api    HTTPS + JSON in-process: no gh, tea, git, curl or jq      │
-│        Link: rel="next" pages; rows counted against              │
-│        total_count when Gitea sends no Link header               │
+│ api    requests and pages; total_count when Gitea sends no Link  │
+│ chaki  HTTP/1.1 over the system's OpenSSL 3, or with             │
+│        CHA_TLS=bend its own TLS 1.3; JSON, URLs, redirects       │
 └─────────────────────────────────┬────────────────────────────────┘
                                   ▼
                   ┌───────────────────────────────┐
@@ -74,10 +74,11 @@ your shell
 
 ## The laws
 
-`LAWS.bend` holds the claims the pure core must never break, one `law` each:
-colour off leaves text unchanged, `or` and the flag helpers behave at their
-edges, a remote URL parses to the repo it names, and a `Link` header without
-`rel="next"` has no next page. `PROOF.bend` discharges every one, some by
-induction. `cha` only ships when `bend PROOF.bend` is clean, and
-`scripts/check.sh` runs the proofs with the type checks, the definition-order
-check and the offline `test/*_check.bend`.
+`LAWS.bend` holds the claims cha must never break, one `law` each: colour off
+leaves text unchanged, a remote URL parses to the repo it names without its
+credentials, an id can't walk out of its path, a flag fails loud instead of
+vanishing. `lib/chaki/LAWS.bend` holds what chaki promises, on its pure modules:
+redirects, HTTP/1.1 framing, TLS, X.509, JSON, URLs and the crypto vectors.
+`PROOF.bend` beside each discharges every one. `scripts/check.sh` runs both with
+the type checks, the definition-order check and the offline `test/*_check.bend`,
+and cha only ships when it's green. [laws.md](laws.md) explains them in full.
