@@ -146,4 +146,12 @@ def main() -> IO(Unit):
     expect(Bool.show(Runs.missing.api(Ctx.GitHub{}, 404)), "False")
     expect(Bool.show(Runs.missing.api(Ctx.Gitea{}, 500)), "False")
     expect(Runs.rerun.missing.text(), "runs rerun: this forge has no rerun API (HTTP 404, needs Gitea >= 1.26)")
+    # the job read works on every Gitea cha supports, so its 404 is a stale job id: a rerun
+    # renumbers the jobs. Only the rerun POST itself says the forge has no such API.
+    expect(Bool.show(Runs.rerun.job.gone(404)), "True")
+    expect(Bool.show(Runs.rerun.job.gone(405)), "False")
+    expect(Runs.rerun.no.job.text("7", "42"), "runs rerun: no job 42 in this repo (HTTP 404); a rerun gives its jobs new ids, so list them with cha runs view 7")
+    expect(Runs.rerun.missing.text.if(Runs.missing.api(Ctx.Gitea{}, 404)), "runs rerun: this forge has no rerun API (HTTP 404, needs Gitea >= 1.26)")
+    expect(Runs.rerun.missing.text.if(Runs.missing.api(Ctx.GitHub{}, 404)), "")
+    expect(Runs.rerun.missing.text.if(Runs.missing.api(Ctx.Gitea{}, 500)), "")
     expect(Runs.cancel.missing.text(), "runs cancel: this forge has no cancel API (HTTP 404, needs Gitea >= 28); cancel it from the web UI")

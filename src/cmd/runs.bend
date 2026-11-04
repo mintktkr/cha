@@ -1395,7 +1395,8 @@ def rerun.path(+forge: Ctx.Forge, +id: String, +job: String, failed: Bool, speci
     case False{} False{}:
       rerun.run.path(id, "rerun")
 
-# Gitea has a rerun endpoint from 1.26 on, and answers 404 before that
+# Gitea has a rerun endpoint from 1.26 on, and answers 404 before that: the POST itself is
+# where a 404 means the forge has no such API
 def rerun.missing.text() -> String:
   "runs rerun: this forge has no rerun API (HTTP 404, needs Gitea >= 1.26)"
 
@@ -1404,19 +1405,23 @@ def rerun.missing.text() -> String:
 def missing.api(+forge: Ctx.Forge, +status: U32) -> Bool:
   U32.is_eq(status, 404) && forge.gitea(forge)
 
-def rerun.bad(+env: Cli.Env, +status: U32, body: List<&2, U32>, missing: Bool) -> IO(Unit):
+# the missing-API text, "" when the forge's refusal is something else
+def rerun.missing.text.if(+missing: Bool) -> String:
   match missing:
     case True{}:
-      Cli.fail(Unit, env, rerun.missing.text())
+      rerun.missing.text()
     case False{}:
-      Cli.fail(Unit, env, Api.message(status, body))
+      ""
+
+def rerun.bad(+env: Cli.Env, +status: U32, body: List<&2, U32>, +text: String) -> IO(Unit):
+  Cli.fail(Unit, env, Ctx.or(text, Api.message(status, body)))
 
 def rerun.if(+env: Cli.Env, +status: U32, body: List<&2, U32>, +id: String, +forge: Ctx.Forge, good: Bool) -> IO(Unit):
   match good:
     case True{}:
       done.url(env, "actions/runs/" ++ id)
     case False{}:
-      rerun.bad(env, status, body, missing.api(forge, status))
+      rerun.bad(env, status, body, rerun.missing.text.if(missing.api(forge, status)))
 
 def rerun.check(+env: Cli.Env, r: Api.Reply, +id: String, +forge: Ctx.Forge) -> IO(Unit):
   match r:
@@ -1439,23 +1444,32 @@ def rerun.job.check(+env: Cli.Env, +forge: Ctx.Forge, +id: String, +job: String,
     case False{}:
       Cli.fail(Unit, env, "runs rerun: job does not belong to run " ++ id)
 
-# the job's record, read before its rerun. A Gitea below 1.26 has no rerun API, so the read
-# itself is a 404 there, and it says what a 404 from the endpoint says.
-def rerun.job.body.if(+env: Cli.Env, +status: U32, body: List<&2, U32>, +forge: Ctx.Forge, missing: Bool, good: Bool) -> IO(List<&2, U32>):
-  match missing good:
+# a rerun's job read answers 404 for an id the repo does not have. A rerun gives its jobs
+# new ids, so the id the user copied from before it is stale, not unknown to the forge.
+def rerun.job.gone(+status: U32) -> Bool:
+  U32.is_eq(status, 404)
+
+def rerun.no.job.text(+id: String, +job: String) -> String:
+  "runs rerun: no job " ++ job ++ " in this repo (HTTP 404); a rerun gives its jobs new ids, so list them with cha runs view " ++ id
+
+# the job's record, read before its rerun: it carries the run id the job belongs to, which
+# is how cha knows the job is the run's. The job read works on every Gitea cha supports,
+# so a 404 here is a stale job id, never a forge without the rerun API.
+def rerun.job.body.if(+env: Cli.Env, +status: U32, body: List<&2, U32>, +id: String, +job: String, gone: Bool, good: Bool) -> IO(List<&2, U32>):
+  match gone good:
     case True{} _:
-      Cli.fail(List<&2, U32>, env, rerun.missing.text())
+      Cli.fail(List<&2, U32>, env, rerun.no.job.text(id, job))
     case False{} True{}:
       IO.pure(List<&2, U32>, body)
     case False{} False{}:
       Cli.fail(List<&2, U32>, env, Api.message(status, body))
 
-def rerun.job.body(+env: Cli.Env, +forge: Ctx.Forge, r: Api.Reply) -> IO(List<&2, U32>):
+def rerun.job.body(+env: Cli.Env, r: Api.Reply, +id: String, +job: String) -> IO(List<&2, U32>):
   match r:
     case Api.Broke{w}:
       Cli.fail(List<&2, U32>, env, w)
     case Api.Reply{+status, next, body}:
-      rerun.job.body.if(env, status, body, forge, missing.api(forge, status), Api.ok(status))
+      rerun.job.body.if(env, status, body, id, job, rerun.job.gone(status), Api.ok(status))
 
 def rerun.selected(+env: Cli.Env, +forge: Ctx.Forge, +id: String, +job: String, +failed: Bool, specific: Bool) -> IO(Unit):
   match env specific:
@@ -1464,7 +1478,7 @@ def rerun.selected(+env: Cli.Env, +forge: Ctx.Forge, +id: String, +job: String, 
     case Cli.Env{+repo, +tok, on, json, a} True{}:
       do IO<Unit>:
         r : Api.Reply <- Api.get(repo, tok, Api.path(repo, "actions/jobs/" ++ Url.encode(job)))
-        b : List<&2, U32> <- rerun.job.body(env, forge, r)
+        b : List<&2, U32> <- rerun.job.body(env, r, id, job)
         rerun.job.check(env, forge, id, job, String.eq(Api.f(Api.obj(b), "run_id"), id))
 
 def rerun.valid(+env: Cli.Env, +forge: Ctx.Forge, +id: String, +job: String, +failed: Bool, conflict: Bool) -> IO(Unit):

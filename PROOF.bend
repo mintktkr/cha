@@ -409,6 +409,18 @@ def Laws.rerun_job_ok_slash():
 def Laws.rerun_job_ok_dots():
   {==}
 
+# The job-read text and the missing-API text gated by a literal Gitea and a literal GitHub
+# 404 are closed values, so reflexivity is the whole proof.
+
+def Laws.rerun_job_gone_text():
+  {==}
+
+def Laws.rerun_post_gitea_missing():
+  {==}
+
+def Laws.rerun_post_github_missing():
+  {==}
+
 # A timestamp normalizes through Time.parse on a closed string, and a duration through the
 # two instants it parses to, so the two sides of each claim are one term.
 

@@ -485,6 +485,23 @@ law rerun_job_ok_slash:
 law rerun_job_ok_dots:
   {Runs.rerun.job.ok("..") == False{} : Bool}
 
+# A rerun's job read answers 404 for an id the repo does not have, and a rerun gives its
+# jobs new ids: an id copied from before it is stale. That is what the message says, on
+# every forge, naming the job and the run to list. The version text stays where a 404 is
+# really a missing endpoint, which is the rerun POST itself on Gitea.
+
+# LAW: a 404 on the job read says the id is gone, and names the job and the run.
+law rerun_job_gone_text:
+  {Runs.rerun.no.job.text("7", "42") == "runs rerun: no job 42 in this repo (HTTP 404); a rerun gives its jobs new ids, so list them with cha runs view 7" : String}
+
+# LAW: a 404 on the rerun POST itself, on Gitea, is still the forge-without-the-API text.
+law rerun_post_gitea_missing:
+  {Runs.rerun.missing.text.if(Runs.missing.api(Ctx.Gitea{}, 404)) == "runs rerun: this forge has no rerun API (HTTP 404, needs Gitea >= 1.26)" : String}
+
+# LAW: ...and on GitHub it is the forge's own message, not cha's version text.
+law rerun_post_github_missing:
+  {Runs.rerun.missing.text.if(Runs.missing.api(Ctx.GitHub{}, 404)) == "" : String}
+
 # A forge writes the epoch where a run or a job has no timestamp: Gitea 28 sends
 # 1970-01-01T00:00:00Z for a job cancelled while queued, with a real completed_at beside
 # it. It is compared as a parsed instant, so every offset form of it reads as no
