@@ -201,10 +201,14 @@ def short.if(+s: String, cut: Bool) -> String:
 def short.sha(+s: String) -> String:
   short.if(s, Nat.is_gt(String.length(s), 7n))
 
+# Go's zero time, which a forge built on Go writes for a time it never set
+def zero.go(+s: String) -> Bool:
+  String.starts_with(s, "0001-01-01T")
+
 # a forge timestamp, "" when the forge sent none. The epoch is compared as a parsed
-# instant, so every offset form of it reads as no timestamp too.
+# instant, so every offset form of it reads as no timestamp too, and so does Go's zero.
 def time.nonzero(+s: String) -> String:
-  Ctx.or.if(s, "", zero.instant(Time.parse(s)))
+  Ctx.or.if(s, "", Bool.or(zero.instant(Time.parse(s)), zero.go(s)))
 
 # field k of an object as a timestamp: "" when the forge sent none, or the epoch
 # 1970-01-01T00:00:00Z it writes for a time that never happened

@@ -516,6 +516,14 @@ law epoch_missing:
 law epoch_missing_offset:
   {Runs.time.nonzero("1970-01-01T01:00:00+01:00") == "" : String}
 
+# LAW: ...behind UTC too, the way Gitea writes its local offset.
+law epoch_missing_behind:
+  {Runs.time.nonzero("1969-12-31T21:00:00-03:00") == "" : String}
+
+# LAW: Go's zero time, which a Gitea or Forgejo field can carry, is no timestamp either.
+law epoch_missing_go_zero:
+  {Runs.time.nonzero("0001-01-01T00:00:00Z") == "" : String}
+
 # LAW: a real time is kept as the forge sent it.
 law epoch_kept:
   {Runs.time.nonzero("2026-01-02T13:01:30Z") == "2026-01-02T13:01:30Z" : String}

@@ -430,6 +430,12 @@ def Laws.epoch_missing():
 def Laws.epoch_missing_offset():
   {==}
 
+def Laws.epoch_missing_behind():
+  {==}
+
+def Laws.epoch_missing_go_zero():
+  {==}
+
 def Laws.epoch_kept():
   {==}
 
